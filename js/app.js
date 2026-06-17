@@ -24,6 +24,15 @@ let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [] };
 ══════════════════════════════════════════════════ */
 
 document.addEventListener('DOMContentLoaded', async () => {
+  /* Restaurar credenciais salvas */
+  const savedNome  = localStorage.getItem('rc_nome');
+  const savedSenha = localStorage.getItem('rc_senha');
+  if (savedNome && savedSenha) {
+    document.getElementById('login-nome').value    = savedNome;
+    document.getElementById('login-senha').value   = savedSenha;
+    document.getElementById('login-lembrar').checked = true;
+  }
+
   try {
     const total = await contarUsuarios();
     if (total === 0) {
@@ -176,6 +185,15 @@ async function doLogin() {
     usuarioAtual = usuario;
     roleAtivo    = null;
     document.getElementById('header-usuario').textContent = usuario.nome;
+
+    /* Salvar ou limpar credenciais conforme checkbox */
+    if (document.getElementById('login-lembrar').checked) {
+      localStorage.setItem('rc_nome',  nome);
+      localStorage.setItem('rc_senha', senha);
+    } else {
+      localStorage.removeItem('rc_nome');
+      localStorage.removeItem('rc_senha');
+    }
     document.getElementById('login-senha').value = '';
 
     /* CEO sempre vai direto ao painel; outros com múltiplos papéis vêem o seletor */
