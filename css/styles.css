@@ -885,6 +885,70 @@ body {
 .aviso-alteracao strong { display: block; color: #78350F; margin-bottom: 4px; }
 .aviso-alteracao p { color: var(--cinza-700); }
 
+/* ══ BLOQUEIO DURANTE EDIÇÃO DO ADMIN ═══════════════════ */
+.aviso-editando {
+  text-align: center;
+  padding: 40px 24px;
+  background: #FEF3C7;
+  border: 2px solid #F59E0B;
+  border-radius: var(--raio);
+  margin: 16px 0;
+}
+.aviso-editando-icone { font-size: 36px; margin-bottom: 12px; }
+.aviso-editando strong { display: block; font-size: 16px; color: #78350F; margin-bottom: 8px; }
+.aviso-editando p { font-size: 13px; color: var(--cinza-700); }
+
+/* ══ BUSCA NA SEPARAÇÃO ════════════════════════════════ */
+.busca-sep-wrap { margin-bottom: 12px; }
+.busca-sep {
+  width: 100%;
+  padding: 10px 14px;
+  border: var(--borda);
+  border-radius: var(--raio);
+  font-size: 14px;
+  background: var(--branco);
+  color: var(--cinza-900);
+}
+.busca-sep:focus { outline: none; border-color: var(--roxo); box-shadow: 0 0 0 3px rgba(91,33,182,.15); }
+
+/* ══ SELETOR DE STATUS (ADMIN) ════════════════════════ */
+.detalhe-status-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.status-editor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--cinza-500);
+}
+.status-select {
+  font-size: 13px;
+  padding: 4px 8px;
+  border: var(--borda);
+  border-radius: var(--raio);
+  background: var(--branco);
+  color: var(--cinza-700);
+  cursor: pointer;
+}
+.status-select:focus { outline: none; border-color: var(--roxo); }
+
+/* ══ TIMING DE SEPARAÇÃO ═══════════════════════════════ */
+.sep-timing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: var(--borda);
+  font-size: 12px;
+  color: var(--cinza-500);
+}
+.sep-timing strong { color: var(--cinza-700); }
+
 /* ══ INICIAR SEPARAÇÃO ════════════════════════════════ */
 .box-iniciar {
   text-align: center;

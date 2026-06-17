@@ -84,6 +84,12 @@ function navegar(id, subtitulo = '') {
 }
 
 function goBack() {
+  /* Ao sair da edição (cancelar), libera o separador */
+  const atual = historico[historico.length - 1];
+  if (atual === 'tela-editar-festa' && festaEditandoId) {
+    atualizarFesta(festaEditandoId, { editandoAgora: null }).catch(() => {});
+  }
+
   historico.pop();
   const anterior = historico[historico.length - 1];
   if (anterior) {
@@ -445,15 +451,34 @@ function renderizarSeparacao(festa) {
   document.getElementById('btn-sep-concluir').style.display = '';
   document.getElementById('sep-info').innerHTML = htmlInfoFesta(festa);
 
+  /* Bloquear separador enquanto admin edita quantidades */
+  if (festa.editandoAgora) {
+    document.getElementById('sep-itens').innerHTML = `
+      <div class="aviso-editando">
+        <div class="aviso-editando-icone">✏️</div>
+        <strong>${festa.editandoAgora} está editando as quantidades</strong>
+        <p>Aguarde enquanto o administrador finaliza as alterações. A tela será atualizada automaticamente.</p>
+      </div>
+    `;
+    document.getElementById('btn-sep-concluir').style.display = 'none';
+    return;
+  }
+
   const alteracoes = festa.alteracoes || [];
   let avisoHTML = '';
   if (alteracoes.length > 0) {
     const ultima = alteracoes[alteracoes.length - 1];
-    const campos = (ultima.campos || []).map(c => c.campo).join(', ');
+    const detalhes = (ultima.campos || [])
+      .filter(c => c.campo !== 'Data' && c.campo !== 'Horario')
+      .map(c => `${c.campo}: ${c.de} → ${c.para}`)
+      .join(', ');
+    const quando = ultima.alteradoEm
+      ? new Date(ultima.alteradoEm).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
+      : '';
     avisoHTML = `
       <div class="aviso-alteracao">
-        <strong>Atencao: esta festa foi alterada pelo administrador.</strong>
-        <p>Alterado por ${ultima.alteradoPor} — campos: ${campos || 'data/itens'}. Verifique as quantidades antes de continuar.</p>
+        <strong>⚠ Quantidades alteradas pelo administrador</strong>
+        <p>${ultima.alteradoPor}${quando ? ' em ' + quando : ''}${detalhes ? ': ' + detalhes : ''}. Verifique os itens antes de continuar.</p>
       </div>
     `;
   }
@@ -468,7 +493,16 @@ function renderizarSeparacao(festa) {
   const pendentes = itens.map((item, i) => ({ ...item, _i: i })).filter(it => !it.separado);
   const separados = itens.map((item, i) => ({ ...item, _i: i })).filter(it =>  it.separado);
 
+  /* Preservar texto da busca em re-renders automáticos */
+  const buscaAtual = document.getElementById('busca-sep-input')?.value || '';
+
   document.getElementById('sep-itens').innerHTML = avisoHTML + `
+    <div class="busca-sep-wrap">
+      <input type="search" id="busca-sep-input" class="busca-sep"
+        placeholder="Pesquisar item..."
+        oninput="filtrarItensSep(this.value)"
+        value="${buscaAtual.replace(/"/g, '&quot;')}" />
+    </div>
     <div class="sep-tabs">
       <button class="sep-tab ${tab === 'pendente' ? 'ativo' : ''}" onclick="mudarTabSep('pendente')">
         Pendente <span class="sep-badge">${pendentes.length}</span>
@@ -488,6 +522,8 @@ function renderizarSeparacao(festa) {
         : '<p class="vazio-sep">Nenhum item separado ainda.</p>'}
     </div>
   `;
+
+  if (buscaAtual) filtrarItensSep(buscaAtual);
 }
 
 function htmlItemPendente(item, i) {
@@ -630,6 +666,40 @@ function formatarTempo(s) {
   const m = Math.floor((s % 3600) / 60);
   const seg = s % 60;
   return [h, m, seg].map(v => String(v).padStart(2, '0')).join(':');
+}
+
+function formatarDataHora(val) {
+  if (!val) return '—';
+  return toDate(val).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+function formatarDuracao(inicio, fim) {
+  const seg = Math.max(0, Math.floor((( fim ? toDate(fim) : new Date()) - toDate(inicio)) / 1000));
+  const h   = Math.floor(seg / 3600);
+  const m   = Math.floor((seg % 3600) / 60);
+  if (h > 0) return `${h}h ${m}min`;
+  if (m > 0) return `${m}min`;
+  return `${seg}s`;
+}
+
+async function mudarStatusFesta(id, novoStatus) {
+  const label = STATUS_LABELS[novoStatus] || novoStatus;
+  try {
+    await atualizarFesta(id, { status: novoStatus });
+    toast(`Status alterado para "${label}".`, 'sucesso');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao alterar status.', 'erro');
+    if (festaAtual) renderizarDetalhe(festaAtual);
+  }
+}
+
+function filtrarItensSep(q) {
+  const termo = q.trim().toLowerCase();
+  document.querySelectorAll('.item-pend-card, .item-sep-card').forEach(card => {
+    const nome = card.querySelector('.item-nome')?.textContent.toLowerCase() || '';
+    card.style.display = (!termo || nome.includes(termo)) ? '' : 'none';
+  });
 }
 
 function pararTimers() {
@@ -1112,13 +1182,37 @@ function renderizarDetalhe(festa) {
        </div>`
     : '';
 
+  const sepTimingHTML = festa.separacaoInicio ? (() => {
+    const concluida = !!festa.separacaoFim;
+    const dur = formatarDuracao(festa.separacaoInicio, festa.separacaoFim || null);
+    return `<div class="sep-timing">
+      <span>Separação iniciada: <strong>${formatarDataHora(festa.separacaoInicio)}</strong></span>
+      ${concluida
+        ? `<span>Duração: <strong>${dur}</strong></span>`
+        : `<span>Em andamento há <strong>${dur}</strong></span>`}
+    </div>`;
+  })() : '';
+
+  const statusOpcoesHTML = Object.entries(STATUS_LABELS)
+    .map(([k, v]) => `<option value="${k}"${festa.status === k ? ' selected' : ''}>${v}</option>`)
+    .join('');
+
   document.getElementById('detalhe-content').innerHTML = `
     <div class="card-festa-info" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
         <h2>${festa.nome}</h2>
-        <span class="badge badge-${festa.status}">${STATUS_LABELS[festa.status] || festa.status}</span>
+        <div class="detalhe-status-col">
+          <span class="badge badge-${festa.status}">${STATUS_LABELS[festa.status] || festa.status}</span>
+          <div class="status-editor">
+            <label>Alterar:</label>
+            <select class="status-select" onchange="mudarStatusFesta('${festa.id}',this.value)">
+              ${statusOpcoesHTML}
+            </select>
+          </div>
+        </div>
       </div>
       ${htmlInfoLinhas(festa)}
+      ${sepTimingHTML}
     </div>
 
     ${avancarHTML}
@@ -1185,11 +1279,14 @@ function ceoSepararFesta(id) {
 }
 
 /* ── Edição de data/quantidades ── */
-function abrirEditarFesta(id) {
+async function abrirEditarFesta(id) {
   festaEditandoId = id;
   pararListeners();
   historico.push('tela-editar-festa');
   mostrarTela('tela-editar-festa', 'Editar Festa');
+
+  /* Avisar o separador que o admin está editando */
+  try { await atualizarFesta(id, { editandoAgora: usuarioAtual.nome }); } catch(_) {}
 
   unsubFesta = escutarFesta(id, festa => {
     festaAtual = festa;
@@ -1266,6 +1363,9 @@ async function salvarEdicaoFesta() {
       alteracoes,
       usuarioAtual.nome
     );
+
+    /* Liberar separador */
+    try { await atualizarFesta(festaEditandoId, { editandoAgora: null }); } catch(_) {}
 
     const msg = alteracoes.length
       ? `Alteracoes salvas. ${alteracoes.length} campo(s) modificado(s).`
