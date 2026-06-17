@@ -1598,7 +1598,7 @@ function removerFoto(tipo, idx, btn) {
 ══════════════════════════════════════════════════ */
 
 const STATUS_LABELS = {
-  separando: 'Separando', conferencia: 'Em Conferência',
+  agendada: 'Agendada', separando: 'Separando', conferencia: 'Em Conferência',
   festa: 'Em Festa', retorno: 'Retorno',
   galpao: 'Conf. Galpão', concluida: 'Concluída',
 };
