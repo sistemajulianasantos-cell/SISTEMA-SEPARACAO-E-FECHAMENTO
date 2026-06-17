@@ -78,11 +78,16 @@ function goBack() {
   historico.pop();
   const anterior = historico[historico.length - 1];
   if (anterior) {
-    mostrarTela(anterior);
-    if (anterior === 'tela-ceo')          carregarCEO();
-    if (anterior === 'tela-colaborador')  carregarColab();
-    if (anterior === 'tela-coordenador')  carregarCoord(filtroAtualCoord);
-    if (anterior === 'tela-usuarios')     carregarUsuarios();
+    if (anterior === 'tela-lista-festas') {
+      mostrarTela('tela-lista-festas', subtituloListaFestas());
+      if (!unsubFestas) carregarCEO(); else atualizarVisaoCEO();
+    } else {
+      mostrarTela(anterior);
+      if (anterior === 'tela-ceo')          carregarCEO();
+      if (anterior === 'tela-colaborador')  carregarColab();
+      if (anterior === 'tela-coordenador')  carregarCoord(filtroAtualCoord);
+      if (anterior === 'tela-usuarios')     carregarUsuarios();
+    }
   } else {
     irParaPrincipal();
   }
@@ -248,15 +253,15 @@ function renderizarStatsCEO(festas) {
       <div class="stat-label">${nomes[s]}</div>
     </div>
   `).join('');
+
+  renderizarTiraData(festas);
 }
 
-/* Aplica filtro de status + filtro de data e re-renderiza */
+/* Aplica filtro de status + filtro de data e re-renderiza a lista */
 function atualizarVisaoCEO() {
   const porStatus = filtroAtualCEO === 'todas'
     ? todasFestasCache
     : todasFestasCache.filter(f => f.status === filtroAtualCEO);
-
-  renderizarTiraData(porStatus);
 
   const lista = filtroData
     ? porStatus.filter(f => normalizarData(f.data) === filtroData)
@@ -330,26 +335,32 @@ function renderizarTiraData(festas) {
   `;
 }
 
+function subtituloListaFestas() {
+  if (!filtroData) return 'Todas as Festas';
+  const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const DIAS  = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const dt = new Date(filtroData + 'T12:00:00');
+  return `${dt.getDate()} ${MESES[dt.getMonth()]} — ${DIAS[dt.getDay()]}`;
+}
+
 function filtrarPorData(dia, btn) {
-  filtroData = dia;
+  filtroData      = dia;
+  filtroAtualCEO  = 'todas';
 
   /* Atualizar visual da tira */
   document.querySelectorAll('#tira-datas .data-btn, #tira-datas .data-btn-todas')
     .forEach(b => b.classList.remove('ativo'));
   if (btn) btn.classList.add('ativo');
 
-  /* Re-renderizar lista sem refazer query */
-  const porStatus = filtroAtualCEO === 'todas'
-    ? todasFestasCache
-    : todasFestasCache.filter(f => f.status === filtroAtualCEO);
+  /* Resetar tabs da lista */
+  document.querySelectorAll('#ceo-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  const todasTab = document.querySelector('#ceo-tabs .tab[data-filtro="todas"]');
+  if (todasTab) todasTab.classList.add('ativo');
 
-  const lista = filtroData
-    ? porStatus.filter(f => normalizarData(f.data) === filtroData)
-    : porStatus;
-
-  document.getElementById('ceo-lista').innerHTML = lista.length
-    ? lista.map(f => htmlCardFesta(f, 'ceo')).join('')
-    : estadoVazio('Nenhuma festa nesta data.');
+  /* Navegar para a tela de lista */
+  historico = ['tela-ceo'];
+  navegar('tela-lista-festas', subtituloListaFestas());
+  atualizarVisaoCEO();
 }
 
 /* ══════════════════════════════════════════════════
@@ -982,7 +993,7 @@ async function abrirCriarFesta() {
     { nome: 'Guardanapos',        qtd: 200, un: 'un' },
   ].forEach(p => addItemCriar(p));
 
-  historico = ['tela-ceo'];
+  historico = ['tela-ceo', 'tela-lista-festas'];
   mostrarTela('tela-criar', 'Nova Festa');
 }
 
@@ -1268,7 +1279,7 @@ async function avancarParaRetorno(id) {
 const ROLE_LABELS = { colaborador: 'Colaborador', coordenador: 'Coordenador', ceo: 'CEO / Administrador' };
 
 function abrirUsuarios() {
-  historico = ['tela-ceo'];
+  historico = ['tela-ceo', 'tela-lista-festas'];
   mostrarTela('tela-usuarios', 'Usuários');
   carregarUsuarios();
 }

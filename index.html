@@ -86,29 +86,33 @@
     </div>
   </div>
 
-  <!-- ══════════ TELA: CEO — DASHBOARD ══════════ -->
+  <!-- ══════════ TELA: CEO — HOME (só datas) ══════════ -->
   <div id="tela-ceo" class="tela hidden">
     <div class="container">
       <div id="ceo-stats" class="stats-grid"></div>
       <div id="tira-datas" class="tira-datas"></div>
+    </div>
+  </div>
 
+  <!-- ══════════ TELA: LISTA DE FESTAS (CEO) ══════════ -->
+  <div id="tela-lista-festas" class="tela hidden">
+    <div class="container">
       <div class="barra-acoes">
         <div class="filtros-tabs" id="ceo-tabs">
-          <button class="tab ativo" data-filtro="todas"      onclick="filtrarCEO('todas',this)">Todas</button>
-          <button class="tab"       data-filtro="agendada"   onclick="filtrarCEO('agendada',this)">Agendadas</button>
-        <button class="tab"       data-filtro="separando"  onclick="filtrarCEO('separando',this)">Separando</button>
-          <button class="tab"       data-filtro="conferencia"onclick="filtrarCEO('conferencia',this)">Conferência</button>
-          <button class="tab"       data-filtro="festa"      onclick="filtrarCEO('festa',this)">Em Festa</button>
-          <button class="tab"       data-filtro="retorno"    onclick="filtrarCEO('retorno',this)">Retorno</button>
-          <button class="tab"       data-filtro="galpao"     onclick="filtrarCEO('galpao',this)">Galpão</button>
-          <button class="tab"       data-filtro="concluida"  onclick="filtrarCEO('concluida',this)">Concluídas</button>
+          <button class="tab ativo" data-filtro="todas"       onclick="filtrarCEO('todas',this)">Todas</button>
+          <button class="tab"       data-filtro="agendada"    onclick="filtrarCEO('agendada',this)">Agendadas</button>
+          <button class="tab"       data-filtro="separando"   onclick="filtrarCEO('separando',this)">Separando</button>
+          <button class="tab"       data-filtro="conferencia" onclick="filtrarCEO('conferencia',this)">Conferência</button>
+          <button class="tab"       data-filtro="festa"       onclick="filtrarCEO('festa',this)">Em Festa</button>
+          <button class="tab"       data-filtro="retorno"     onclick="filtrarCEO('retorno',this)">Retorno</button>
+          <button class="tab"       data-filtro="galpao"      onclick="filtrarCEO('galpao',this)">Galpão</button>
+          <button class="tab"       data-filtro="concluida"   onclick="filtrarCEO('concluida',this)">Concluídas</button>
         </div>
         <div class="acoes-dir">
           <button class="btn-secundario" onclick="abrirUsuarios()">Usuários</button>
           <button class="btn-primario"   onclick="abrirCriarFesta()">Nova Festa</button>
         </div>
       </div>
-
       <div id="ceo-lista" class="lista-festas"></div>
     </div>
   </div>
