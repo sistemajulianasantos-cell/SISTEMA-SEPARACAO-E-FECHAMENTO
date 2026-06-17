@@ -1311,20 +1311,25 @@ async function carregarUsuarios() {
       el.innerHTML = estadoVazio('Nenhum usuário cadastrado.');
       return;
     }
-    el.innerHTML = usuarios.map(u => `
-      <div class="usuario-row">
-        <div class="usuario-info">
-          <div class="usuario-nome">${u.nome}</div>
-          <div class="usuario-role">${ROLE_LABELS[u.role] || u.role}</div>
+    el.innerHTML = usuarios.map(u => {
+      const rolesTexto = (u.roles || [u.role])
+        .map(r => ROLE_LABELS[r] || r)
+        .join(', ');
+      return `
+        <div class="usuario-row">
+          <div class="usuario-info">
+            <div class="usuario-nome">${u.nome}</div>
+            <div class="usuario-role">${rolesTexto}</div>
+          </div>
+          <div class="usuario-acoes">
+            ${u.id !== usuarioAtual.id
+              ? `<button class="btn-perigo" onclick="confirmarDeletarUsuario('${u.id}','${u.nome}')">Remover</button>`
+              : '<span style="font-size:12px;color:var(--cinza-400)">Você</span>'
+            }
+          </div>
         </div>
-        <div class="usuario-acoes">
-          ${u.id !== usuarioAtual.id
-            ? `<button class="btn-perigo" onclick="confirmarDeletarUsuario('${u.id}','${u.nome}')">Remover</button>`
-            : '<span style="font-size:12px;color:var(--cinza-400)">Você</span>'
-          }
-        </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
   } catch (e) {
     console.error(e);
     el.innerHTML = estadoVazio('Erro ao carregar usuários.');
@@ -1332,10 +1337,10 @@ async function carregarUsuarios() {
 }
 
 function abrirFormUsuario() {
-  document.getElementById('fu-nome').value    = '';
-  document.getElementById('fu-senha').value   = '';
-  document.getElementById('fu-confirma').value= '';
-  document.getElementById('fu-role').value    = '';
+  document.getElementById('fu-nome').value     = '';
+  document.getElementById('fu-senha').value    = '';
+  document.getElementById('fu-confirma').value = '';
+  document.querySelectorAll('input[name="fu-roles"]').forEach(cb => cb.checked = false);
   document.getElementById('form-usuario-titulo').textContent = 'Novo Usuário';
 
   historico.push('tela-form-usuario');
