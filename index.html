@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#3B0D8E">
+  <title>Romero Coquetéis — Sistema</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header id="header" class="header hidden">
+    <div class="header-content">
+      <div class="header-left">
+        <button id="btn-back" class="btn-voltar hidden" onclick="goBack()">&#8592; Voltar</button>
+        <div>
+          <div class="header-titulo">Romero Coquetéis</div>
+          <div id="header-subtitulo" class="header-subtitulo"></div>
+        </div>
+      </div>
+      <div class="header-right">
+        <span id="header-usuario" class="header-usuario"></span>
+        <button class="btn-sair" onclick="logout()">Sair</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ══════════ TELA: SELEÇÃO DE PAPEL ══════════ -->
+  <div id="tela-roles" class="tela hidden">
+    <div class="auth-container">
+      <div class="auth-marca">Romero Coquetéis</div>
+      <h2 class="auth-titulo">Como deseja acessar?</h2>
+      <p class="auth-desc" id="roles-boas-vindas"></p>
+      <div id="roles-opcoes" class="roles-grid"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: CONFIGURAÇÃO INICIAL ══════════ -->
+  <div id="tela-setup" class="tela hidden">
+    <div class="auth-container">
+      <div class="auth-marca">Romero Coquetéis</div>
+      <h2 class="auth-titulo">Configuração Inicial</h2>
+      <p class="auth-desc">Nenhum usuário cadastrado. Crie o primeiro administrador do sistema.</p>
+
+      <div class="form-group">
+        <label>Nome completo</label>
+        <input type="text" id="setup-nome" placeholder="Nome do administrador" autocomplete="name" />
+      </div>
+      <div class="form-group">
+        <label>Senha</label>
+        <input type="password" id="setup-senha" placeholder="Crie uma senha" autocomplete="new-password" />
+      </div>
+      <div class="form-group">
+        <label>Confirmar senha</label>
+        <input type="password" id="setup-confirma" placeholder="Repita a senha" autocomplete="new-password"
+          onkeydown="if(event.key==='Enter') finalizarSetup()" />
+      </div>
+
+      <button class="btn-primario btn-full" onclick="finalizarSetup()">Criar Administrador</button>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: LOGIN ══════════ -->
+  <div id="tela-login" class="tela hidden">
+    <div class="auth-container">
+      <div class="auth-marca">Romero Coquetéis</div>
+      <h2 class="auth-titulo">Acesso ao Sistema</h2>
+      <p class="auth-desc">Digite suas credenciais para continuar.</p>
+
+      <div class="form-group">
+        <label>Nome de usuário</label>
+        <input type="text" id="login-nome" placeholder="Seu nome completo" autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label>Senha</label>
+        <input type="password" id="login-senha" placeholder="Sua senha" autocomplete="current-password"
+          onkeydown="if(event.key==='Enter') doLogin()" />
+      </div>
+      <div id="login-erro" class="msg-erro hidden">Usuário ou senha incorretos.</div>
+
+      <button class="btn-primario btn-full" id="btn-entrar" onclick="doLogin()">Entrar</button>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: CEO — DASHBOARD ══════════ -->
+  <div id="tela-ceo" class="tela hidden">
+    <div class="container">
+      <div id="ceo-stats" class="stats-grid"></div>
+      <div id="tira-datas" class="tira-datas"></div>
+
+      <div class="barra-acoes">
+        <div class="filtros-tabs" id="ceo-tabs">
+          <button class="tab ativo" data-filtro="todas"      onclick="filtrarCEO('todas',this)">Todas</button>
+          <button class="tab"       data-filtro="agendada"   onclick="filtrarCEO('agendada',this)">Agendadas</button>
+        <button class="tab"       data-filtro="separando"  onclick="filtrarCEO('separando',this)">Separando</button>
+          <button class="tab"       data-filtro="conferencia"onclick="filtrarCEO('conferencia',this)">Conferência</button>
+          <button class="tab"       data-filtro="festa"      onclick="filtrarCEO('festa',this)">Em Festa</button>
+          <button class="tab"       data-filtro="retorno"    onclick="filtrarCEO('retorno',this)">Retorno</button>
+          <button class="tab"       data-filtro="galpao"     onclick="filtrarCEO('galpao',this)">Galpão</button>
+          <button class="tab"       data-filtro="concluida"  onclick="filtrarCEO('concluida',this)">Concluídas</button>
+        </div>
+        <div class="acoes-dir">
+          <button class="btn-secundario" onclick="abrirUsuarios()">Usuários</button>
+          <button class="btn-primario"   onclick="abrirCriarFesta()">Nova Festa</button>
+        </div>
+      </div>
+
+      <div id="ceo-lista" class="lista-festas"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: CRIAR FESTA ══════════ -->
+  <div id="tela-criar" class="tela hidden">
+    <div class="container">
+      <h2 class="titulo-tela">Nova Festa</h2>
+
+      <div class="importar-or-box">
+        <input type="file" id="input-importar-or" accept=".pdf" style="display:none"
+          onchange="processarArquivoOR(this)">
+        <div>
+          <div class="importar-or-titulo">Importar Ordem de Separacao</div>
+          <div class="importar-or-desc">Selecione o PDF gerado pelo sistema para preencher automaticamente os campos e a lista de itens.</div>
+        </div>
+        <button class="btn-primario btn-sm" onclick="document.getElementById('input-importar-or').click()">
+          Selecionar PDF
+        </button>
+      </div>
+
+      <div class="form-secao">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nome da Festa *</label>
+            <input type="text" id="cf-nome" placeholder="Ex: Casamento Silva" />
+          </div>
+          <div class="form-group">
+            <label>Cliente *</label>
+            <input type="text" id="cf-cliente" placeholder="Nome do cliente" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Data do Evento *</label>
+            <input type="date" id="cf-data" />
+          </div>
+          <div class="form-group">
+            <label>Horário</label>
+            <input type="time" id="cf-hora" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Local / Endereço</label>
+          <input type="text" id="cf-local" placeholder="Endereço do evento" />
+        </div>
+        <div class="form-group">
+          <label>Colaborador Responsável</label>
+          <select id="cf-colaborador">
+            <option value="">— Selecionar —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Observações</label>
+          <textarea id="cf-obs" placeholder="Informações importantes para a equipe..."></textarea>
+        </div>
+      </div>
+
+      <div class="secao-header">
+        <h3>Itens para Separar</h3>
+        <button class="btn-secundario btn-sm" onclick="addItemCriar()">+ Adicionar Item</button>
+      </div>
+
+      <div class="tabela-criar-header">
+        <span>Item</span><span>Quantidade</span><span>Unidade</span><span></span>
+      </div>
+      <div id="itens-criar-lista"></div>
+
+      <div class="rodape-form">
+        <button class="btn-secundario" onclick="goBack()">Cancelar</button>
+        <button class="btn-primario"   onclick="submitCriarFesta()">Criar Festa</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: USUÁRIOS (CEO) ══════════ -->
+  <div id="tela-usuarios" class="tela hidden">
+    <div class="container">
+      <div class="secao-header">
+        <h2 class="titulo-tela">Gerenciamento de Usuários</h2>
+        <button class="btn-primario" onclick="abrirFormUsuario()">Novo Usuário</button>
+      </div>
+      <div id="usuarios-lista"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: CRIAR/EDITAR USUÁRIO ══════════ -->
+  <div id="tela-form-usuario" class="tela hidden">
+    <div class="container">
+      <h2 class="titulo-tela" id="form-usuario-titulo">Novo Usuário</h2>
+
+      <div class="form-secao">
+        <div class="form-group">
+          <label>Nome completo *</label>
+          <input type="text" id="fu-nome" placeholder="Nome do colaborador" />
+        </div>
+        <div class="form-group">
+          <label>Funcoes * (pode marcar mais de uma)</label>
+          <div class="check-grupo">
+            <label class="check-item"><input type="checkbox" name="fu-roles" value="separador"> Separador</label>
+            <label class="check-item"><input type="checkbox" name="fu-roles" value="coordenador"> Coordenador</label>
+            <label class="check-item"><input type="checkbox" name="fu-roles" value="ceo"> CEO / Administrador</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Senha *</label>
+          <input type="password" id="fu-senha" placeholder="Senha de acesso" autocomplete="new-password" />
+        </div>
+        <div class="form-group">
+          <label>Confirmar senha *</label>
+          <input type="password" id="fu-confirma" placeholder="Repita a senha" autocomplete="new-password" />
+        </div>
+      </div>
+
+      <div class="rodape-form">
+        <button class="btn-secundario" onclick="goBack()">Cancelar</button>
+        <button class="btn-primario"   onclick="salvarUsuario()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: COLABORADOR — LISTA ══════════ -->
+  <div id="tela-colaborador" class="tela hidden">
+    <div class="container">
+      <h2 class="titulo-tela">Festas para Separar</h2>
+      <div id="colab-lista" class="lista-festas"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: SEPARAÇÃO — DETALHE ══════════ -->
+  <div id="tela-separacao" class="tela hidden">
+    <div class="container">
+      <div id="sep-info" class="card-festa-info"></div>
+      <h3 class="titulo-secao">Itens para Separar</h3>
+      <div id="sep-itens"></div>
+
+      <div class="form-group mt-lg">
+        <label>Fotos das Caixas</label>
+        <div class="area-upload" onclick="document.getElementById('input-foto-sep').click()">
+          <input type="file" id="input-foto-sep" accept="image/*" multiple capture="environment"
+            style="display:none" onchange="handleFotos(this,'separacao')">
+          Selecionar / Tirar Foto
+        </div>
+        <div id="preview-sep" class="grade-fotos"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Observações</label>
+        <textarea id="sep-obs" placeholder="Algo a reportar para o coordenador..."></textarea>
+      </div>
+
+      <button class="btn-confirmar btn-full" id="btn-sep-concluir" onclick="concluirSeparacao()">
+        Finalizar Separação
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: COORDENADOR — DASHBOARD ══════════ -->
+  <div id="tela-coordenador" class="tela hidden">
+    <div class="container">
+      <h2 class="titulo-tela">Painel do Coordenador</h2>
+      <div class="filtros-tabs">
+        <button class="tab ativo" onclick="filtrarCoord('conferencia',this)">Conferência</button>
+        <button class="tab"       onclick="filtrarCoord('retorno',this)">Retorno</button>
+        <button class="tab"       onclick="filtrarCoord('galpao',this)">Galpão</button>
+      </div>
+      <div id="coord-lista" class="lista-festas"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: CONFERÊNCIA — DETALHE ══════════ -->
+  <div id="tela-conferencia" class="tela hidden">
+    <div class="container">
+      <div id="conf-info" class="card-festa-info"></div>
+      <h3 class="titulo-secao">Conferência de Itens</h3>
+      <div id="conf-itens"></div>
+      <div id="conf-div-box" class="hidden alerta-divergencia">
+        <strong>Divergências identificadas:</strong>
+        <div id="conf-div-lista"></div>
+      </div>
+
+      <div class="form-group mt-lg">
+        <label>Fotos (danos, observações)</label>
+        <div class="area-upload" onclick="document.getElementById('input-foto-conf').click()">
+          <input type="file" id="input-foto-conf" accept="image/*" multiple capture="environment"
+            style="display:none" onchange="handleFotos(this,'conferencia')">
+          Selecionar / Tirar Foto
+        </div>
+        <div id="preview-conf" class="grade-fotos"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Observações da Conferência</label>
+        <textarea id="conf-obs" placeholder="Divergências, danos observados..."></textarea>
+      </div>
+
+      <button class="btn-confirmar btn-full" id="btn-conf-concluir" onclick="concluirConferencia()">
+        Confirmar Conferência — Liberar para Festa
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: RETORNO — DETALHE ══════════ -->
+  <div id="tela-retorno" class="tela hidden">
+    <div class="container">
+      <div id="ret-info" class="card-festa-info"></div>
+      <h3 class="titulo-secao">Registro de Retorno</h3>
+      <div id="ret-itens"></div>
+
+      <div class="form-group mt-lg">
+        <label>Fotos do Retorno</label>
+        <div class="area-upload" onclick="document.getElementById('input-foto-ret').click()">
+          <input type="file" id="input-foto-ret" accept="image/*" multiple capture="environment"
+            style="display:none" onchange="handleFotos(this,'retorno')">
+          Selecionar / Tirar Foto
+        </div>
+        <div id="preview-ret" class="grade-fotos"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Observações</label>
+        <textarea id="ret-obs" placeholder="Itens danificados, perdidos..."></textarea>
+      </div>
+
+      <button class="btn-confirmar btn-full" id="btn-ret-concluir" onclick="concluirRetorno()">
+        Confirmar Retorno — Enviar para Galpão
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: GALPÃO — DETALHE ══════════ -->
+  <div id="tela-galpao" class="tela hidden">
+    <div class="container">
+      <div id="gal-info" class="card-festa-info"></div>
+      <h3 class="titulo-secao">Conferência do Galpão</h3>
+      <div id="gal-itens"></div>
+      <div id="gal-div-box" class="hidden alerta-divergencia">
+        <strong>Divergências no galpão:</strong>
+        <div id="gal-div-lista"></div>
+      </div>
+
+      <div class="form-group mt-lg">
+        <label>Fotos do Galpão</label>
+        <div class="area-upload" onclick="document.getElementById('input-foto-gal').click()">
+          <input type="file" id="input-foto-gal" accept="image/*" multiple capture="environment"
+            style="display:none" onchange="handleFotos(this,'galpao')">
+          Selecionar / Tirar Foto
+        </div>
+        <div id="preview-gal" class="grade-fotos"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Observações Finais</label>
+        <textarea id="gal-obs" placeholder="Observações finais do processo..."></textarea>
+      </div>
+
+      <button class="btn-confirmar btn-full" id="btn-gal-concluir" onclick="concluirGalpao()">
+        Concluir e Arquivar Festa
+      </button>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: EDITAR FESTA ══════════ -->
+  <div id="tela-editar-festa" class="tela hidden">
+    <div class="container">
+      <h2 class="titulo-tela">Editar Festa</h2>
+      <div class="form-secao">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Data do Evento</label>
+            <input type="date" id="ef-data" />
+          </div>
+          <div class="form-group">
+            <label>Horario</label>
+            <input type="time" id="ef-hora" />
+          </div>
+        </div>
+      </div>
+      <h3 class="titulo-secao">Quantidades Necessarias</h3>
+      <div id="ef-itens"></div>
+      <div class="rodape-form">
+        <button class="btn-secundario" onclick="goBack()">Cancelar</button>
+        <button class="btn-primario"   onclick="salvarEdicaoFesta()">Salvar Alteracoes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: DETALHE FESTA (CEO) ══════════ -->
+  <div id="tela-detalhe" class="tela hidden">
+    <div class="container">
+      <div id="detalhe-content"></div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- PDF.js para importação de OR -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <!-- Firebase SDK (Compat) -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
+
+  <script src="js/config.js"></script>
+  <script src="js/firestore.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
