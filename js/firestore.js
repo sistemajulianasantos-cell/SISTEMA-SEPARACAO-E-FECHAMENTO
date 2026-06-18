@@ -170,6 +170,31 @@ async function editarFestaDados(id, { data, hora, itens }, alteracoes, usuarioNo
 }
 
 /* ════════════════════════════════════════
+   CONFIGURAÇÕES DE ITENS (grupos, prioridade, stand-by)
+════════════════════════════════════════ */
+
+async function listarItemConfigs() {
+  const snap = await db.collection('item_config').orderBy('grupo').get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function salvarItemConfigDB(dados) {
+  /* Upsert por nomeKey */
+  const snap = await db.collection('item_config')
+    .where('nomeKey', '==', dados.nomeKey).limit(1).get();
+  if (!snap.empty) {
+    return db.collection('item_config').doc(snap.docs[0].id).update({
+      ...dados, updatedAt: TS(),
+    });
+  }
+  return db.collection('item_config').add({ ...dados, criadoEm: TS(), updatedAt: TS() });
+}
+
+async function deletarItemConfigDB(id) {
+  return db.collection('item_config').doc(id).delete();
+}
+
+/* ════════════════════════════════════════
    ESTOQUE
 ════════════════════════════════════════ */
 

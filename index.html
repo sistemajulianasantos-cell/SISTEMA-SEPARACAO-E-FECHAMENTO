@@ -33,15 +33,21 @@
   <!-- SIDEBAR OVERLAY -->
   <div id="sidebar-overlay" class="sidebar-overlay hidden" onclick="fecharSidebar()"></div>
 
-  <!-- SIDEBAR -->
+  <!-- SIDEBAR (esquerdo) -->
   <aside id="sidebar" class="sidebar">
     <div class="sidebar-topo">
       <span class="sidebar-logo">Romero Coquetéis</span>
-      <button class="sidebar-close" onclick="fecharSidebar()">&#10005;</button>
+      <div class="sidebar-topo-acoes">
+        <button id="btn-pin-sidebar" class="sidebar-pin" onclick="togglePinSidebar()" title="Fixar menu aberto">&#128204;</button>
+        <button class="sidebar-close" onclick="fecharSidebar(true)">&#10005;</button>
+      </div>
     </div>
-    <div class="sidebar-corpo">
-      <!-- Stats rápidos -->
-      <div id="sidebar-stats" class="sidebar-stats"></div>
+    <nav class="sidebar-corpo">
+
+      <!-- Ação rápida -->
+      <div class="sidebar-secao sidebar-secao-topo">
+        <button class="sidebar-btn sidebar-btn-primario" onclick="navegarSidebar(); abrirCriarFesta()">&#43; Nova Festa</button>
+      </div>
 
       <!-- Agenda -->
       <div class="sidebar-secao">
@@ -52,11 +58,21 @@
       <!-- Administração -->
       <div class="sidebar-secao">
         <div class="sidebar-secao-label">Administração</div>
-        <button class="sidebar-btn" onclick="fecharSidebar(); abrirSidebarNovoUsuario()">+ Novo Usuário</button>
-        <button class="sidebar-btn" onclick="fecharSidebar(); abrirUsuarios()">Gerenciar Usuários</button>
-        <button class="sidebar-btn sidebar-btn-destaque" onclick="fecharSidebar(); abrirEstoque()">Estoque &amp; Relatório</button>
+        <button class="sidebar-btn" onclick="navegarSidebar(); abrirSidebarNovoUsuario()">&#43; Novo Usuário</button>
+        <button class="sidebar-btn" onclick="navegarSidebar(); abrirUsuarios()">Gerenciar Usuários</button>
+        <button class="sidebar-btn sidebar-btn-destaque" onclick="navegarSidebar(); abrirEstoque()">Estoque &amp; Relatório</button>
       </div>
-    </div>
+
+      <!-- Cadastro -->
+      <div class="sidebar-secao">
+        <div class="sidebar-secao-label">Cadastro</div>
+        <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroItens()">Grupos &amp; Itens</button>
+      </div>
+
+      <!-- Stats rápidos -->
+      <div id="sidebar-stats" class="sidebar-stats"></div>
+
+    </nav>
   </aside>
 
   <!-- ══════════ TELA: SELEÇÃO DE PAPEL ══════════ -->
@@ -121,14 +137,21 @@
     </div>
   </div>
 
-  <!-- ══════════ TELA: CEO — HOME (só datas) ══════════ -->
+  <!-- ══════════ TELA: CEO — HOME (Lista de Produção) ══════════ -->
   <div id="tela-ceo" class="tela hidden">
     <div class="container">
-      <div class="ceo-home-header">
-        <h2>Agenda</h2>
-        <p>Selecione uma data ou veja todas as festas</p>
+      <div class="producao-header">
+        <div>
+          <h2 class="titulo-tela" style="margin-bottom:2px">Lista de Produção</h2>
+          <p class="producao-subtitulo">Totais de todas as festas ativas</p>
+        </div>
+        <button class="btn-secundario btn-sm" onclick="recarregarProducao()">&#8635; Atualizar</button>
       </div>
-      <div id="tira-datas" class="tira-datas"></div>
+      <div class="filtros-tabs" id="producao-tabs">
+        <button class="tab ativo" data-aba="sintetico" onclick="trocarAbaProducao('sintetico',this)">Sintético</button>
+        <button class="tab"       data-aba="analitico" onclick="trocarAbaProducao('analitico',this)">Analítico</button>
+      </div>
+      <div id="producao-conteudo"></div>
     </div>
   </div>
 
@@ -442,6 +465,72 @@
   <div id="tela-detalhe" class="tela hidden">
     <div class="container">
       <div id="detalhe-content"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: CADASTRO DE ITENS (CEO) ══════════ -->
+  <div id="tela-cadastro-itens" class="tela hidden">
+    <div class="container">
+      <div class="secao-header">
+        <h2 class="titulo-tela">Cadastro de Itens</h2>
+        <button class="btn-primario" onclick="abrirFormItemConfig()">&#43; Novo Item</button>
+      </div>
+      <p class="desc-tela">Configure grupos, ordem de separação, prioridade e stand-by para os itens.</p>
+      <div id="cadastro-itens-lista"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: FORM ITEM CONFIG (CEO) ══════════ -->
+  <div id="tela-form-item-config" class="tela hidden">
+    <div class="container">
+      <h2 class="titulo-tela" id="form-item-titulo">Novo Item</h2>
+      <div class="form-secao">
+        <div class="form-group">
+          <label>Nome do Item *</label>
+          <input type="text" id="ic-nome" placeholder="Ex: Água Tônica" list="ic-nomes-lista" />
+          <datalist id="ic-nomes-lista"></datalist>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Grupo / Categoria *</label>
+            <input type="text" id="ic-grupo" placeholder="Ex: Bebidas" list="ic-grupos-lista" />
+            <datalist id="ic-grupos-lista"></datalist>
+          </div>
+          <div class="form-group">
+            <label>Ordem de Separação</label>
+            <input type="number" id="ic-ordem" placeholder="1" min="1" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Prioridade</label>
+          <div class="radio-grupo">
+            <label class="radio-item"><input type="radio" name="ic-prioridade" value="alta"> Alta</label>
+            <label class="radio-item"><input type="radio" name="ic-prioridade" value="media" checked> Média</label>
+            <label class="radio-item"><input type="radio" name="ic-prioridade" value="baixa"> Baixa</label>
+          </div>
+        </div>
+        <div class="form-group">
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-row-titulo">Refrigerado / Stand-by</div>
+              <div class="toggle-row-desc">Item só pode ser separado próximo ao evento (ex: bebidas geladas)</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="ic-refrigerado" onchange="toggleRefrigeradoForm(this.checked)">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div id="ic-standby-config" class="form-group hidden">
+          <label>Liberar separação X dias antes do evento</label>
+          <input type="number" id="ic-dias-antes" value="0" min="0" max="30" style="width:80px" />
+          <p class="form-hint">0 = somente no dia do evento &nbsp;|&nbsp; 1 = a partir do dia anterior</p>
+        </div>
+      </div>
+      <div class="rodape-form">
+        <button class="btn-secundario" onclick="goBack()">Cancelar</button>
+        <button class="btn-primario"   onclick="salvarItemConfig()">Salvar</button>
+      </div>
     </div>
   </div>
 

@@ -17,9 +17,13 @@ let festaEditandoId   = null;   /* id da festa em edição */
 let timers    = {};
 let intervalos= {};
 
-let abaEstoqueAtual = 'sintetico';
-let estoqueCache    = {};
-let _comprarContext = null;
+let abaEstoqueAtual   = 'sintetico';
+let abaProducaoAtual  = 'sintetico';
+let estoqueCache      = {};
+let itemConfigsCache  = {};   /* nomeKey → config */
+let _comprarContext   = null;
+let _itemConfigEditId = null; /* id do item config em edição */
+let sidebarPinada     = false;
 
 let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [] };
 
@@ -133,6 +137,7 @@ function irParaPrincipal() {
   const papel = roles.includes('ceo') ? 'ceo' : (roleAtivo || roles[0]);
 
   if (papel === 'ceo') {
+    initSidebarPin();
     mostrarTela('tela-ceo');
     carregarCEO();
   } else if (papel === 'coordenador') {
@@ -262,6 +267,14 @@ function logout() {
   festaAtual   = null;
   fotosCache   = { separacao: [], conferencia: [], retorno: [], galpao: [] };
   historico    = [];
+  /* Fechar e desafixar sidebar */
+  sidebarPinada = false;
+  const sb = document.getElementById('sidebar');
+  if (sb) sb.classList.remove('aberto', 'pinada');
+  const ov = document.getElementById('sidebar-overlay');
+  if (ov) ov.classList.add('hidden');
+  document.body.classList.remove('sidebar-pinada');
+  document.body.style.overflow = '';
   document.getElementById('login-nome').value  = '';
   document.getElementById('login-senha').value = '';
   document.getElementById('login-erro').classList.add('hidden');
@@ -272,12 +285,21 @@ function logout() {
    CEO — DASHBOARD
 ══════════════════════════════════════════════════ */
 
-function carregarCEO() {
+async function carregarCEO() {
   pararListeners();
+
+  /* Carregar configs e estoque em paralelo */
+  try {
+    const [configs, est] = await Promise.all([listarItemConfigs(), buscarEstoque()]);
+    itemConfigsCache = {};
+    configs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    estoqueCache = est;
+  } catch(e) { console.error('Erro ao carregar configs/estoque:', e); }
+
   unsubFestas = escutarFestas({}, festas => {
     todasFestasCache = festas;
     renderizarStatsCEO(festas);
-    atualizarVisaoCEO();
+    renderizarProducaoCEO();
   });
 }
 
@@ -510,12 +532,33 @@ function renderizarSeparacao(festa) {
     return;
   }
 
-  const tab       = window._tabSep || 'pendente';
-  const pendentes = itens.map((item, i) => ({ ...item, _i: i })).filter(it => !it.separado);
-  const separados = itens.map((item, i) => ({ ...item, _i: i })).filter(it =>  it.separado);
+  const tab          = window._tabSep || 'pendente';
+  const comIdx       = itens.map((item, i) => ({ ...item, _i: i }));
+  const separados    = comIdx.filter(it =>  it.separado);
+  const naoSeparados = comIdx.filter(it => !it.separado);
+  const standBy      = naoSeparados.filter(it => standByInfo(it, festa.data) !== null);
+  const pendentes    = naoSeparados.filter(it => standByInfo(it, festa.data) === null);
 
   /* Preservar texto da busca em re-renders automáticos */
   const buscaAtual = document.getElementById('busca-sep-input')?.value || '';
+
+  const htmlStandBy = standBy.length ? `
+    <div class="standby-section">
+      <div class="standby-section-titulo">&#10052; Itens Refrigerados — Stand-by</div>
+      ${standBy.map(it => {
+        const info = standByInfo(it, festa.data);
+        return `
+          <div class="item-standby-card">
+            <span class="item-standby-icone">&#10052;</span>
+            <div class="item-standby-corpo">
+              <div class="item-standby-nome">${it.nome}</div>
+              <div class="item-standby-msg">${info.msg} &mdash; Qtd: <strong>${it.qtdNecessaria}</strong> ${it.unidade || 'un'}</div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  ` : '';
 
   document.getElementById('sep-itens').innerHTML = avisoHTML + `
     <div class="busca-sep-wrap">
@@ -536,6 +579,7 @@ function renderizarSeparacao(festa) {
       ${pendentes.length
         ? pendentes.map(it => htmlItemPendente(it, it._i)).join('')
         : '<p class="vazio-sep">Todos os itens foram separados.</p>'}
+      ${tab === 'pendente' ? htmlStandBy : ''}
     </div>
     <div id="sep-lista-separado" ${tab !== 'separado' ? 'class="hidden"' : ''}>
       ${separados.length
@@ -622,9 +666,10 @@ async function concluirSeparacao() {
   if (!festaAtual) return;
 
   const itens      = festaAtual.itens || [];
-  const pendentes  = itens.filter(it => !it.separado);
+  /* Itens em stand-by não bloqueiam a conclusão — serão separados no dia */
+  const pendentes  = itens.filter(it => !it.separado && standByInfo(it, festaAtual.data) === null);
   if (pendentes.length > 0) {
-    toast(`Ainda ha ${pendentes.length} item(ns) pendente(s). Separe todos antes de finalizar.`, 'erro');
+    toast(`Ainda há ${pendentes.length} item(ns) pendente(s). Separe todos antes de finalizar.`, 'erro');
     window._tabSep = 'pendente';
     renderizarSeparacao(festaAtual);
     return;
@@ -1849,16 +1894,68 @@ function toast(msg, tipo = '') {
    SIDEBAR
 ══════════════════════════════════════════════════ */
 
-function abrirSidebar() {
-  document.getElementById('sidebar').classList.add('aberto');
-  document.getElementById('sidebar-overlay').classList.remove('hidden');
-  document.body.style.overflow = 'hidden';
+function initSidebarPin() {
+  sidebarPinada = localStorage.getItem('rc_sidebar_pinada') === '1';
+  const sb     = document.getElementById('sidebar');
+  const btnPin = document.getElementById('btn-pin-sidebar');
+  if (sidebarPinada) {
+    sb.classList.add('aberto', 'pinada');
+    document.body.classList.add('sidebar-pinada');
+    if (btnPin) btnPin.classList.add('ativo');
+  } else {
+    sb.classList.remove('pinada');
+    document.body.classList.remove('sidebar-pinada');
+    if (btnPin) btnPin.classList.remove('ativo');
+  }
 }
 
-function fecharSidebar() {
+function abrirSidebar() {
+  const sb = document.getElementById('sidebar');
+  const ov = document.getElementById('sidebar-overlay');
+  sb.classList.add('aberto');
+  if (!sidebarPinada) {
+    ov.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+function fecharSidebar(forca) {
+  if (sidebarPinada && !forca) return;
+  if (forca && sidebarPinada) {
+    /* Botão X: desafixar também */
+    sidebarPinada = false;
+    localStorage.setItem('rc_sidebar_pinada', '0');
+    document.body.classList.remove('sidebar-pinada');
+    const btn = document.getElementById('btn-pin-sidebar');
+    if (btn) btn.classList.remove('ativo');
+    document.getElementById('sidebar').classList.remove('pinada');
+  }
   document.getElementById('sidebar').classList.remove('aberto');
   document.getElementById('sidebar-overlay').classList.add('hidden');
   document.body.style.overflow = '';
+}
+
+function togglePinSidebar() {
+  sidebarPinada = !sidebarPinada;
+  localStorage.setItem('rc_sidebar_pinada', sidebarPinada ? '1' : '0');
+  const sb  = document.getElementById('sidebar');
+  const ov  = document.getElementById('sidebar-overlay');
+  const btn = document.getElementById('btn-pin-sidebar');
+  if (sidebarPinada) {
+    sb.classList.add('pinada');
+    ov.classList.add('hidden');
+    document.body.classList.add('sidebar-pinada');
+    document.body.style.overflow = '';
+    if (btn) btn.classList.add('ativo');
+  } else {
+    sb.classList.remove('pinada');
+    document.body.classList.remove('sidebar-pinada');
+    if (btn) btn.classList.remove('ativo');
+  }
+}
+
+function navegarSidebar() {
+  if (!sidebarPinada) fecharSidebar();
 }
 
 function renderizarSidebarAgenda(festas) {
@@ -1877,7 +1974,7 @@ function renderizarSidebarAgenda(festas) {
 
   el.innerHTML = `
     <button class="sidebar-data-btn todas"
-      onclick="fecharSidebar(); filtrarPorData(null, null)">Ver Todas as Festas</button>
+      onclick="navegarSidebar(); filtrarPorData(null, null)">Ver Todas as Festas</button>
     ${dias.map(d => {
       const dt  = new Date(d + 'T12:00:00');
       const num = String(dt.getDate()).padStart(2,'0');
@@ -1886,7 +1983,7 @@ function renderizarSidebarAgenda(festas) {
       const qtd = contagemPorDia[d];
       return `
         <button class="sidebar-data-btn"
-          onclick="fecharSidebar(); filtrarPorData('${d}', null)">
+          onclick="navegarSidebar(); filtrarPorData('${d}', null)">
           <span class="sidebar-data-dia">${num}</span>
           <span class="sidebar-data-info">
             <span class="sidebar-data-texto">${sem}, ${num} ${mes}</span>
@@ -1900,8 +1997,161 @@ function renderizarSidebarAgenda(festas) {
 
 /* Atalho "Novo Usuário" pela sidebar: garante navegação correta após salvar */
 function abrirSidebarNovoUsuario() {
+  navegarSidebar();
   historico = ['tela-ceo', 'tela-lista-festas', 'tela-usuarios'];
   abrirFormUsuario();
+}
+
+/* ══════════════════════════════════════════════════
+   LISTA DE PRODUÇÃO (tela-ceo)
+══════════════════════════════════════════════════ */
+
+function trocarAbaProducao(aba, btn) {
+  abaProducaoAtual = aba;
+  document.querySelectorAll('#producao-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  renderizarProducaoCEO();
+}
+
+function recarregarProducao() {
+  carregarCEO();
+}
+
+function renderizarProducaoCEO() {
+  const el = document.getElementById('producao-conteudo');
+  if (!el) return;
+
+  const ativas = todasFestasCache.filter(f => f.status !== 'concluida');
+  const itens  = agregarItensFestas(ativas);
+
+  if (!itens.length) {
+    el.innerHTML = estadoVazio('Nenhum item encontrado nas festas ativas.');
+    return;
+  }
+
+  /* Agrupar por grupo configurado ou "Sem Grupo" */
+  const grupos = {};
+  itens.forEach(item => {
+    const cfg   = itemConfigsCache[item.nomeKey];
+    const grupo = cfg?.grupo || 'Sem Grupo';
+    const ordem = cfg?.ordemSeparacao != null ? cfg.ordemSeparacao : 999;
+    if (!grupos[grupo]) grupos[grupo] = { nome: grupo, ordemMin: ordem, itens: [] };
+    grupos[grupo].itens.push({ ...item, cfg });
+    if (ordem < grupos[grupo].ordemMin) grupos[grupo].ordemMin = ordem;
+  });
+
+  const gruposOrdenados = Object.values(grupos)
+    .sort((a, b) => a.ordemMin - b.ordemMin || a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  el.innerHTML = gruposOrdenados.map(g => {
+    const grupoKey = g.nome.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+    const itensDomGrupo = g.itens.sort((a, b) => {
+      const oA = a.cfg?.ordemSeparacao != null ? a.cfg.ordemSeparacao : 999;
+      const oB = b.cfg?.ordemSeparacao != null ? b.cfg.ordemSeparacao : 999;
+      return oA - oB || a.nome.localeCompare(b.nome, 'pt-BR');
+    });
+
+    const htmlItens = abaProducaoAtual === 'sintetico'
+      ? htmlProducaoSintetico(itensDomGrupo)
+      : htmlProducaoAnalitico(itensDomGrupo);
+
+    return `
+      <div class="producao-grupo">
+        <div class="producao-grupo-header" onclick="toggleGrupo('${grupoKey}')">
+          <span class="producao-grupo-seta">&#9660;</span>
+          <span class="producao-grupo-nome">${g.nome}</span>
+          <span class="producao-grupo-qtd">${g.itens.length} item${g.itens.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div class="producao-grupo-itens" id="grupo-${grupoKey}">
+          ${htmlItens}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function htmlProducaoSintetico(itens) {
+  return itens.map(item => {
+    const est    = estoqueCache[item.nomeKey];
+    const qtdEst = est?.qtd || 0;
+    const diff   = qtdEst - item.total;
+    const pct    = item.total > 0 ? Math.min(100, Math.round((qtdEst / item.total) * 100)) : 100;
+    const cfg    = item.cfg;
+    const badgeRefrig = cfg?.refrigerado
+      ? '<span class="badge-refrigerado">&#10052; Refrig.</span>' : '';
+    const badgePrior  = cfg?.prioridade
+      ? `<span class="badge-prioridade prior-${cfg.prioridade}">${cfg.prioridade}</span>` : '';
+
+    return `
+      <div class="producao-item-row">
+        <div class="producao-item-info">
+          <div class="producao-item-nome">${item.nome}</div>
+          ${badgeRefrig || badgePrior ? `<div class="producao-item-badges">${badgeRefrig}${badgePrior}</div>` : ''}
+          <div class="producao-item-total">Necessário: <strong>${item.total}</strong> ${item.unidade}</div>
+        </div>
+        <div class="producao-item-nums">
+          <span class="${diff < 0 ? 'producao-diff-falta' : 'producao-diff-ok'}">
+            ${diff < 0 ? `Falta ${Math.abs(diff)}` : `+${diff} ok`}
+          </span>
+          <span style="font-size:11px;color:var(--cinza-500)">${qtdEst} em estoque</span>
+          <div class="producao-mini-bar">
+            <div class="producao-mini-fill ${diff < 0 ? 'deficit' : 'ok'}" style="width:${pct}%"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function htmlProducaoAnalitico(itens) {
+  const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return itens.map(item => {
+    const est    = estoqueCache[item.nomeKey];
+    const qtdEst = est?.qtd || 0;
+    const diff   = qtdEst - item.total;
+    const cfg    = item.cfg;
+    const badgeRefrig = cfg?.refrigerado
+      ? '<span class="badge-refrigerado">&#10052;</span>' : '';
+
+    const subRows = item.festas.map(f => {
+      let dataTxt = '';
+      if (f.festaData) {
+        const d = toDate(f.festaData);
+        if (!isNaN(d)) dataTxt = ` — ${String(d.getDate()).padStart(2,'0')} ${MESES_ABR[d.getMonth()]}`;
+      }
+      return `
+        <div class="analitico-sub-row">
+          <span class="analitico-sub-nome">${f.festaNome}${dataTxt}</span>
+          <span class="analitico-sub-qty">${f.qtd} ${item.unidade}</span>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="producao-item-row">
+        <div class="producao-item-info" style="width:100%">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div class="producao-item-nome">${item.nome} ${badgeRefrig}</div>
+            <div class="producao-item-nums" style="flex-direction:row;gap:10px;align-items:center">
+              <span class="producao-item-total">Total: <strong>${item.total}</strong> ${item.unidade}</span>
+              <span class="${diff < 0 ? 'producao-diff-falta' : 'producao-diff-ok'}">
+                ${diff < 0 ? 'Falta ' + Math.abs(diff) : '+' + diff + ' ok'}
+              </span>
+            </div>
+          </div>
+          <div class="analitico-sub-lista">${subRows}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleGrupo(grupoKey) {
+  const el     = document.getElementById(`grupo-${grupoKey}`);
+  const header = el?.previousElementSibling;
+  if (!el) return;
+  el.classList.toggle('collapsed');
+  if (header) header.classList.toggle('collapsed');
 }
 
 /* ══════════════════════════════════════════════════
@@ -1941,6 +2191,32 @@ function agregarItensFestas(festas) {
     });
   });
   return Object.values(mapa).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+/* Retorna {diasRestantes, msg} se item está em stand-by, null se já liberado ou não refrigerado */
+function standByInfo(item, festaData) {
+  const cfg = itemConfigsCache[normalizarNomeItem(item.nome)];
+  if (!cfg?.refrigerado) return null;
+  if (!festaData) return null;
+
+  const dataFesta = toDate(festaData);
+  if (isNaN(dataFesta)) return null;
+
+  const diasAntes = cfg.diasAntesEvento || 1;
+  const dataLibera = new Date(dataFesta);
+  dataLibera.setDate(dataLibera.getDate() - diasAntes);
+  dataLibera.setHours(0, 0, 0, 0);
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  const diasRestantes = Math.ceil((dataLibera - hoje) / (1000 * 60 * 60 * 24));
+  if (diasRestantes <= 0) return null;
+
+  return {
+    diasRestantes,
+    msg: diasRestantes === 1 ? 'Libera amanhã' : `Libera em ${diasRestantes} dias`,
+  };
 }
 
 async function abrirEstoque() {
@@ -2161,6 +2437,182 @@ async function confirmarCompra() {
   } catch (e) {
     console.error(e);
     toast('Erro ao registrar compra.', 'erro');
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   CADASTRO DE ITENS (grupos, prioridade, refrigerado)
+══════════════════════════════════════════════════ */
+
+async function abrirCadastroItens() {
+  navegarSidebar();
+  historico.push('tela-cadastro-itens');
+  mostrarTela('tela-cadastro-itens', 'Cadastro de Itens');
+  await renderizarCadastroItens();
+}
+
+async function renderizarCadastroItens() {
+  const el = document.getElementById('cadastro-itens-lista');
+  if (!el) return;
+  el.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
+  try {
+    const configs = await listarItemConfigs();
+    itemConfigsCache = {};
+    configs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+
+    if (!configs.length) {
+      el.innerHTML = estadoVazio('Nenhum item configurado ainda. Clique em "+ Novo Item" para começar.');
+      return;
+    }
+
+    /* Agrupar por grupo para exibição */
+    const grupos = {};
+    configs.forEach(c => {
+      const g = c.grupo || 'Sem Grupo';
+      if (!grupos[g]) grupos[g] = [];
+      grupos[g].push(c);
+    });
+
+    el.innerHTML = Object.entries(grupos).sort(([a],[b]) => a.localeCompare(b, 'pt-BR')).map(([grupo, itens]) => `
+      <div class="config-grupo-bloco">
+        <div class="config-grupo-titulo">${grupo}</div>
+        ${itens.map(c => `
+          <div class="config-item-row">
+            <div class="config-item-info">
+              <div class="config-item-nome">${c.nome}</div>
+              <div class="config-item-meta">
+                ${c.ordemSeparacao ? `<span class="badge-ordem">#${c.ordemSeparacao}</span>` : ''}
+                ${c.prioridade ? `<span class="badge-prioridade prior-${c.prioridade}">${c.prioridade}</span>` : ''}
+                ${c.refrigerado ? '<span class="badge-refrigerado">&#10052; Refrig.</span>' : ''}
+              </div>
+            </div>
+            <div class="config-item-acoes">
+              <button class="btn-icone" title="Editar" onclick="abrirFormItemConfig('${c.id}')">&#9998;</button>
+              <button class="btn-icone btn-icone-del" title="Remover" onclick="confirmarDeletarItemConfig('${_esc(c.id)}','${_esc(c.nome)}')">&#128465;</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+  } catch(e) {
+    console.error(e);
+    el.innerHTML = estadoVazio('Erro ao carregar. Tente novamente.');
+  }
+}
+
+async function abrirFormItemConfig(id) {
+  _itemConfigEditId = id || null;
+
+  /* Preencher datalists com sugestões */
+  await preencherSugestoesItemConfig();
+
+  if (id) {
+    const configs = await listarItemConfigs();
+    const cfg = configs.find(c => c.id === id);
+    if (!cfg) return toast('Item não encontrado.', 'erro');
+
+    document.getElementById('ic-nome').value  = cfg.nome || '';
+    document.getElementById('ic-grupo').value = cfg.grupo || '';
+    document.getElementById('ic-ordem').value = cfg.ordemSeparacao || '';
+    document.getElementById('ic-dias-antes').value  = cfg.diasAntesEvento || 1;
+    document.getElementById('ic-refrigerado').checked = !!cfg.refrigerado;
+    toggleRefrigeradoForm(!!cfg.refrigerado);
+
+    document.querySelectorAll('input[name="ic-prioridade"]').forEach(r => {
+      r.checked = r.value === (cfg.prioridade || '');
+    });
+
+    historico.push('tela-form-item-config');
+    mostrarTela('tela-form-item-config', 'Editar Item');
+  } else {
+    document.getElementById('ic-nome').value  = '';
+    document.getElementById('ic-grupo').value = '';
+    document.getElementById('ic-ordem').value = '';
+    document.getElementById('ic-dias-antes').value  = '1';
+    document.getElementById('ic-refrigerado').checked = false;
+    toggleRefrigeradoForm(false);
+    document.querySelectorAll('input[name="ic-prioridade"]').forEach(r => { r.checked = false; });
+
+    historico.push('tela-form-item-config');
+    mostrarTela('tela-form-item-config', 'Novo Item');
+  }
+}
+
+async function preencherSugestoesItemConfig() {
+  try {
+    const festas = todasFestasCache.length ? todasFestasCache : await buscarTodasFestas();
+    const nomesSet  = new Set();
+    const gruposSet = new Set();
+
+    festas.forEach(f => (f.itens || []).forEach(it => {
+      if (it.nome) nomesSet.add(it.nome);
+    }));
+    Object.values(itemConfigsCache).forEach(c => {
+      if (c.grupo) gruposSet.add(c.grupo);
+    });
+
+    const dlNomes = document.getElementById('ic-nomes-lista');
+    if (dlNomes) dlNomes.innerHTML = [...nomesSet].sort().map(n => `<option value="${n}">`).join('');
+
+    const dlGrupos = document.getElementById('ic-grupos-lista');
+    if (dlGrupos) dlGrupos.innerHTML = [...gruposSet].sort().map(g => `<option value="${g}">`).join('');
+  } catch(e) { console.error(e); }
+}
+
+function toggleRefrigeradoForm(checked) {
+  const section = document.getElementById('ic-standby-config');
+  if (section) section.classList.toggle('hidden', !checked);
+}
+
+async function salvarItemConfig() {
+  const nome = document.getElementById('ic-nome').value.trim();
+  if (!nome) return toast('Informe o nome do item.', 'erro');
+
+  const grupo       = document.getElementById('ic-grupo').value.trim();
+  const ordemStr    = document.getElementById('ic-ordem').value.trim();
+  const diasStr     = document.getElementById('ic-dias-antes').value.trim();
+  const refrigerado = document.getElementById('ic-refrigerado').checked;
+  const prioEl      = document.querySelector('input[name="ic-prioridade"]:checked');
+  const prioridade  = prioEl ? prioEl.value : '';
+
+  const dados = {
+    nome,
+    nomeKey:         normalizarNomeItem(nome),
+    grupo:           grupo || '',
+    ordemSeparacao:  ordemStr ? parseInt(ordemStr) : 999,
+    prioridade,
+    refrigerado,
+    diasAntesEvento: refrigerado ? (parseInt(diasStr) || 1) : 1,
+  };
+
+  try {
+    await salvarItemConfigDB(dados);
+    itemConfigsCache[dados.nomeKey] = { ...(itemConfigsCache[dados.nomeKey] || {}), ...dados };
+    toast('Item salvo com sucesso.', 'sucesso');
+    goBack();
+    /* Recarregar lista se voltou para tela de cadastro */
+    setTimeout(async () => {
+      if (historico[historico.length - 1] === 'tela-cadastro-itens') {
+        await renderizarCadastroItens();
+      }
+    }, 100);
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao salvar item.', 'erro');
+  }
+}
+
+async function confirmarDeletarItemConfig(id, nome) {
+  if (!confirm(`Remover configuração de "${nome}"?\n\nIsso não afeta as festas já cadastradas.`)) return;
+  try {
+    await deletarItemConfigDB(id);
+    const nomeKey = Object.keys(itemConfigsCache).find(k => itemConfigsCache[k].id === id);
+    if (nomeKey) delete itemConfigsCache[nomeKey];
+    toast('Item removido.', 'sucesso');
+    await renderizarCadastroItens();
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao remover item.', 'erro');
   }
 }
 
