@@ -170,6 +170,49 @@ async function editarFestaDados(id, { data, hora, itens }, alteracoes, usuarioNo
 }
 
 /* ════════════════════════════════════════
+   ESTOQUE
+════════════════════════════════════════ */
+
+async function buscarEstoque() {
+  const snap = await db.collection('estoque').get();
+  const result = {};
+  snap.docs.forEach(d => {
+    const data = d.data();
+    result[data.nomeKey] = { id: d.id, ...data };
+  });
+  return result;
+}
+
+async function salvarItemEstoque(nomeKey, dados) {
+  const snap = await db.collection('estoque')
+    .where('nomeKey', '==', nomeKey).limit(1).get();
+  if (!snap.empty) {
+    return db.collection('estoque').doc(snap.docs[0].id).update({
+      ...dados, nomeKey, updatedAt: TS(),
+    });
+  }
+  return db.collection('estoque').add({
+    ...dados, nomeKey, updatedAt: TS(),
+  });
+}
+
+/* Atualiza apenas os itens de uma festa (sem registrar alterações no histórico) */
+async function buscarTodasFestas() {
+  const snap = await db.collection('festas').get();
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => toDate(b.data) - toDate(a.data));
+}
+
+async function editarQtdFesta(festaId, itens) {
+  return db.collection('festas').doc(festaId).update({
+    itens,
+    editandoAgora: null,
+    ultimaAlteracao: TS(),
+  });
+}
+
+/* ════════════════════════════════════════
    STORAGE — fotos
 ════════════════════════════════════════ */
 

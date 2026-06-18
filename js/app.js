@@ -17,6 +17,10 @@ let festaEditandoId   = null;   /* id da festa em edição */
 let timers    = {};
 let intervalos= {};
 
+let abaEstoqueAtual = 'sintetico';
+let estoqueCache    = {};
+let _comprarContext = null;
+
 let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [] };
 
 /* ══════════════════════════════════════════════════
@@ -72,6 +76,18 @@ function mostrarTela(id, subtitulo = '') {
       btnBack.classList.add('hidden');
     } else {
       btnBack.classList.remove('hidden');
+    }
+  }
+
+  /* Menu button: visível apenas para CEO em telas autenticadas */
+  const btnMenu = document.getElementById('btn-menu');
+  if (btnMenu) {
+    const ehCeo = usuarioAtual &&
+      (usuarioAtual.roles || [usuarioAtual.role || '']).includes('ceo');
+    if (!telasAuth.includes(id) && ehCeo) {
+      btnMenu.classList.remove('hidden');
+    } else {
+      btnMenu.classList.add('hidden');
     }
   }
 
@@ -271,14 +287,19 @@ function renderizarStatsCEO(festas) {
   const nomes  = { agendada:'Agendadas', separando:'Separando', conferencia:'Conferência', festa:'Em Festa', retorno:'Retorno', galpao:'Galpão', concluida:'Concluídas' };
   const status = ['agendada','separando','conferencia','festa','retorno','galpao','concluida'];
 
-  document.getElementById('ceo-stats').innerHTML = status.map(s => `
-    <div class="stat-card">
-      <div class="stat-numero" style="color:${cores[s]}">${c(s)}</div>
-      <div class="stat-label">${nomes[s]}</div>
-    </div>
-  `).join('');
+  /* Stats agora ficam no sidebar */
+  const sidebarStats = document.getElementById('sidebar-stats');
+  if (sidebarStats) {
+    sidebarStats.innerHTML = status.map(s => `
+      <div class="sidebar-stat">
+        <div class="sidebar-stat-num" style="color:${cores[s]}">${c(s)}</div>
+        <div class="sidebar-stat-label">${nomes[s]}</div>
+      </div>
+    `).join('');
+  }
 
   renderizarTiraData(festas);
+  renderizarSidebarAgenda(festas);
 }
 
 /* Aplica filtro de status + filtro de data e re-renderiza a lista */
@@ -1823,4 +1844,324 @@ function toast(msg, tipo = '') {
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => el.classList.add('hidden'), 3500);
 }
+
+/* ══════════════════════════════════════════════════
+   SIDEBAR
+══════════════════════════════════════════════════ */
+
+function abrirSidebar() {
+  document.getElementById('sidebar').classList.add('aberto');
+  document.getElementById('sidebar-overlay').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+
+function fecharSidebar() {
+  document.getElementById('sidebar').classList.remove('aberto');
+  document.getElementById('sidebar-overlay').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+function renderizarSidebarAgenda(festas) {
+  const el = document.getElementById('sidebar-agenda');
+  if (!el) return;
+
+  const contagemPorDia = {};
+  festas.forEach(f => {
+    const key = normalizarData(f.data);
+    if (key) contagemPorDia[key] = (contagemPorDia[key] || 0) + 1;
+  });
+
+  const dias = Object.keys(contagemPorDia).sort();
+  const MESES     = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const DIAS_SEM  = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+  el.innerHTML = `
+    <button class="sidebar-data-btn todas"
+      onclick="fecharSidebar(); filtrarPorData(null, null)">Ver Todas as Festas</button>
+    ${dias.map(d => {
+      const dt  = new Date(d + 'T12:00:00');
+      const num = String(dt.getDate()).padStart(2,'0');
+      const mes = MESES[dt.getMonth()];
+      const sem = DIAS_SEM[dt.getDay()];
+      const qtd = contagemPorDia[d];
+      return `
+        <button class="sidebar-data-btn"
+          onclick="fecharSidebar(); filtrarPorData('${d}', null)">
+          <span class="sidebar-data-dia">${num}</span>
+          <span class="sidebar-data-info">
+            <span class="sidebar-data-texto">${sem}, ${num} ${mes}</span>
+            <span class="sidebar-data-qtd">${qtd} festa${qtd !== 1 ? 's' : ''}</span>
+          </span>
+        </button>
+      `;
+    }).join('')}
+  `;
+}
+
+/* Atalho "Novo Usuário" pela sidebar: garante navegação correta após salvar */
+function abrirSidebarNovoUsuario() {
+  historico = ['tela-ceo', 'tela-lista-festas', 'tela-usuarios'];
+  abrirFormUsuario();
+}
+
+/* ══════════════════════════════════════════════════
+   ESTOQUE & RELATÓRIO
+══════════════════════════════════════════════════ */
+
+function normalizarNomeItem(nome) {
+  return (nome || '').trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function agregarItensFestas(festas) {
+  const mapa = {};
+  festas.filter(f => f.status !== 'concluida').forEach(f => {
+    (f.itens || []).forEach((item, itemIdx) => {
+      const key = normalizarNomeItem(item.nome);
+      if (!mapa[key]) {
+        mapa[key] = {
+          nomeKey: key,
+          nome:    item.nome,
+          unidade: item.unidade || 'un',
+          total:   0,
+          festas:  [],
+        };
+      }
+      mapa[key].total += (item.qtdNecessaria || 0);
+      mapa[key].festas.push({
+        festaId:     f.id,
+        festaNome:   f.nome,
+        festaStatus: f.status,
+        festaData:   f.data,
+        itemIdx,
+        qtd: item.qtdNecessaria || 0,
+      });
+    });
+  });
+  return Object.values(mapa).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+
+async function abrirEstoque() {
+  historico.push('tela-estoque');
+  mostrarTela('tela-estoque', 'Estoque & Relatório');
+  abaEstoqueAtual = 'sintetico';
+  document.querySelectorAll('#estoque-tabs .tab').forEach((b, i) => {
+    b.classList.toggle('ativo', i === 0);
+  });
+  await recarregarEstoque();
+}
+
+async function recarregarEstoque() {
+  document.getElementById('estoque-conteudo').innerHTML =
+    '<div class="estado-vazio"><p>Carregando...</p></div>';
+  try {
+    const [estoqueMap, festas] = await Promise.all([
+      buscarEstoque(),
+      buscarTodasFestas(),
+    ]);
+    estoqueCache     = estoqueMap;
+    todasFestasCache = festas;
+    renderizarEstoque(todasFestasCache, estoqueCache);
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao carregar estoque.', 'erro');
+    document.getElementById('estoque-conteudo').innerHTML =
+      '<div class="estado-vazio"><p>Erro ao carregar. Tente novamente.</p></div>';
+  }
+}
+
+function trocarAbaEstoque(aba, btn) {
+  abaEstoqueAtual = aba;
+  document.querySelectorAll('#estoque-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  renderizarEstoque(todasFestasCache, estoqueCache);
+}
+
+function renderizarEstoque(festas, estoqueMap) {
+  const itens = agregarItensFestas(festas);
+  if (!itens.length) {
+    document.getElementById('estoque-conteudo').innerHTML =
+      estadoVazio('Nenhum item encontrado nas festas ativas.');
+    return;
+  }
+  document.getElementById('estoque-conteudo').innerHTML = abaEstoqueAtual === 'sintetico'
+    ? itens.map(it => htmlEstoqueSintetico(it, estoqueMap[it.nomeKey])).join('')
+    : itens.map(it => htmlEstoqueAnalitico(it, estoqueMap[it.nomeKey])).join('');
+}
+
+function _esc(s) {
+  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+}
+
+function htmlEstoqueSintetico(item, est) {
+  const qtdEst = est?.qtd || 0;
+  const diff   = qtdEst - item.total;
+  const pct    = item.total > 0 ? Math.min(100, Math.round((qtdEst / item.total) * 100)) : 100;
+
+  return `
+    <div class="estoque-item-card">
+      <div class="estoque-item-header">
+        <div class="estoque-item-nome">${item.nome}</div>
+        <div class="estoque-item-total">Necessário: <strong>${item.total}</strong> ${item.unidade}</div>
+      </div>
+      <div class="estoque-body-row">
+        <span class="estoque-body-label">Em estoque:</span>
+        <div class="estoque-qty-wrap">
+          <input type="number" class="estoque-qty-input"
+            id="estoque-qty-${item.nomeKey}"
+            value="${qtdEst}" min="0"
+            onchange="salvarEstoqueQtd('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(item.unidade)}',this.value)"
+          />
+          <span class="estoque-qty-un">${item.unidade}</span>
+        </div>
+        <button class="btn-comprar"
+          onclick="comprarItemEstoque('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(item.unidade)}')">
+          + Comprar
+        </button>
+      </div>
+      <div class="estoque-progress-track">
+        <div class="estoque-progress-bar ${diff < 0 ? 'deficit' : 'ok'}" style="width:${pct}%"></div>
+      </div>
+      <div class="estoque-diff ${diff < 0 ? 'deficit-text' : 'ok-text'}">
+        ${diff < 0
+          ? `Falta <strong>${Math.abs(diff)}</strong> ${item.unidade} (${pct}% coberto)`
+          : `Estoque suficiente — sobra <strong>${diff}</strong> ${item.unidade}`}
+      </div>
+    </div>
+  `;
+}
+
+function htmlEstoqueAnalitico(item, est) {
+  const qtdEst = est?.qtd || 0;
+  const diff   = qtdEst - item.total;
+
+  const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+  const festasHTML = item.festas.map(f => {
+    let dataTxt = '';
+    if (f.festaData) {
+      const d = toDate(f.festaData);
+      if (!isNaN(d)) dataTxt = ` — ${String(d.getDate()).padStart(2,'0')} ${MESES_ABR[d.getMonth()]}`;
+    }
+    return `
+      <div class="analitico-festa-row">
+        <div class="analitico-festa-nome">
+          ${f.festaNome}${dataTxt}
+          <span class="badge badge-${f.festaStatus}" style="font-size:9px;margin-left:4px">
+            ${STATUS_LABELS[f.festaStatus] || f.festaStatus}
+          </span>
+        </div>
+        <div class="analitico-festa-qty">
+          <input type="number" class="estoque-qty-input-sm"
+            value="${f.qtd}" min="0"
+            onchange="editarQtdFestaEstoque('${_esc(f.festaId)}',${f.itemIdx},this.value)"
+          />
+          <span class="estoque-qty-un">${item.unidade}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="estoque-item-card">
+      <div class="estoque-item-header">
+        <div class="estoque-item-nome">${item.nome}</div>
+        <div class="estoque-item-total">
+          Total: <strong>${item.total}</strong> ${item.unidade} &nbsp;|&nbsp;
+          Estoque: <strong>${qtdEst}</strong> ${item.unidade}
+          <span class="${diff < 0 ? 'deficit-text' : 'ok-text'}" style="font-weight:700">
+            &nbsp;(${diff < 0 ? 'falta ' + Math.abs(diff) : 'sobra ' + diff})
+          </span>
+        </div>
+      </div>
+      <div class="analitico-festas-lista">${festasHTML}</div>
+      <div class="analitico-item-footer">
+        <button class="btn-comprar"
+          onclick="comprarItemEstoque('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(item.unidade)}')">
+          + Comprar
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+async function salvarEstoqueQtd(nomeKey, nome, unidade, qtdStr) {
+  const qtd = parseFloat(qtdStr) || 0;
+  try {
+    await salvarItemEstoque(nomeKey, { nome, unidade, qtd });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey };
+    toast('Estoque atualizado.', 'sucesso');
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao salvar estoque.', 'erro');
+  }
+}
+
+async function editarQtdFestaEstoque(festaId, itemIdx, novaQtdStr) {
+  const novaQtd = parseFloat(novaQtdStr) || 0;
+  const festa   = todasFestasCache.find(f => f.id === festaId);
+  if (!festa) return toast('Festa não encontrada.', 'erro');
+
+  const itens = (festa.itens || []).map((it, i) =>
+    i === itemIdx ? { ...it, qtdNecessaria: novaQtd } : { ...it }
+  );
+
+  try {
+    await editarQtdFesta(festaId, itens);
+    /* Atualizar cache local para que a re-renderização seja imediata */
+    const idx = todasFestasCache.findIndex(f => f.id === festaId);
+    if (idx >= 0) todasFestasCache[idx] = { ...todasFestasCache[idx], itens };
+    toast('Quantidade atualizada na festa.', 'sucesso');
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao atualizar quantidade.', 'erro');
+  }
+}
+
+/* ── Modal Comprar ── */
+function comprarItemEstoque(nomeKey, nome, unidade) {
+  _comprarContext = { nomeKey, nome, unidade };
+  document.getElementById('modal-comprar-titulo').textContent = `Comprar: ${nome}`;
+  document.getElementById('modal-comprar-qty').value = '';
+  document.getElementById('modal-comprar').classList.remove('hidden');
+  setTimeout(() => document.getElementById('modal-comprar-qty').focus(), 80);
+}
+
+function fecharModalComprar() {
+  document.getElementById('modal-comprar').classList.add('hidden');
+  _comprarContext = null;
+}
+
+async function confirmarCompra() {
+  if (!_comprarContext) return;
+  const qtdCompra = parseFloat(document.getElementById('modal-comprar-qty').value);
+  if (isNaN(qtdCompra) || qtdCompra <= 0) {
+    toast('Informe uma quantidade válida.', 'erro');
+    return;
+  }
+
+  const { nomeKey, nome, unidade } = _comprarContext;
+  const qtdAtual = estoqueCache[nomeKey]?.qtd || 0;
+  const novaQtd  = qtdAtual + qtdCompra;
+
+  try {
+    await salvarItemEstoque(nomeKey, { nome, unidade, qtd: novaQtd });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd: novaQtd, nomeKey };
+
+    /* Atualizar input visível se existir */
+    const inputEl = document.getElementById(`estoque-qty-${nomeKey}`);
+    if (inputEl) inputEl.value = novaQtd;
+
+    /* Re-renderizar para atualizar barras de progresso */
+    renderizarEstoque(todasFestasCache, estoqueCache);
+    fecharModalComprar();
+    toast(`+${qtdCompra} ${unidade} adicionados ao estoque de "${nome}".`, 'sucesso');
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao registrar compra.', 'erro');
+  }
+}
+
 <!-- Sincronizado com GitHub - Juliana -->

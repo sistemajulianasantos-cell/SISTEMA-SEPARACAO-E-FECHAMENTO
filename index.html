@@ -23,11 +23,41 @@
         </div>
       </div>
       <div class="header-right">
+        <button id="btn-menu" class="btn-menu hidden" onclick="abrirSidebar()">&#9776;</button>
         <span id="header-usuario" class="header-usuario"></span>
         <button class="btn-sair" onclick="logout()">Sair</button>
       </div>
     </div>
   </header>
+
+  <!-- SIDEBAR OVERLAY -->
+  <div id="sidebar-overlay" class="sidebar-overlay hidden" onclick="fecharSidebar()"></div>
+
+  <!-- SIDEBAR -->
+  <aside id="sidebar" class="sidebar">
+    <div class="sidebar-topo">
+      <span class="sidebar-logo">Romero Coquetéis</span>
+      <button class="sidebar-close" onclick="fecharSidebar()">&#10005;</button>
+    </div>
+    <div class="sidebar-corpo">
+      <!-- Stats rápidos -->
+      <div id="sidebar-stats" class="sidebar-stats"></div>
+
+      <!-- Agenda -->
+      <div class="sidebar-secao">
+        <div class="sidebar-secao-label">Agenda</div>
+        <div id="sidebar-agenda" class="sidebar-agenda-lista"></div>
+      </div>
+
+      <!-- Administração -->
+      <div class="sidebar-secao">
+        <div class="sidebar-secao-label">Administração</div>
+        <button class="sidebar-btn" onclick="fecharSidebar(); abrirSidebarNovoUsuario()">+ Novo Usuário</button>
+        <button class="sidebar-btn" onclick="fecharSidebar(); abrirUsuarios()">Gerenciar Usuários</button>
+        <button class="sidebar-btn sidebar-btn-destaque" onclick="fecharSidebar(); abrirEstoque()">Estoque &amp; Relatório</button>
+      </div>
+    </div>
+  </aside>
 
   <!-- ══════════ TELA: SELEÇÃO DE PAPEL ══════════ -->
   <div id="tela-roles" class="tela hidden">
@@ -94,7 +124,10 @@
   <!-- ══════════ TELA: CEO — HOME (só datas) ══════════ -->
   <div id="tela-ceo" class="tela hidden">
     <div class="container">
-      <div id="ceo-stats" class="stats-grid"></div>
+      <div class="ceo-home-header">
+        <h2>Agenda</h2>
+        <p>Selecione uma data ou veja todas as festas</p>
+      </div>
       <div id="tira-datas" class="tira-datas"></div>
     </div>
   </div>
@@ -409,6 +442,37 @@
   <div id="tela-detalhe" class="tela hidden">
     <div class="container">
       <div id="detalhe-content"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: ESTOQUE & RELATÓRIO (CEO) ══════════ -->
+  <div id="tela-estoque" class="tela hidden">
+    <div class="container">
+      <div class="secao-header">
+        <h2 class="titulo-tela">Estoque &amp; Relatório</h2>
+        <button class="btn-secundario btn-sm" onclick="recarregarEstoque()">Atualizar</button>
+      </div>
+      <div class="filtros-tabs" id="estoque-tabs">
+        <button class="tab ativo" data-aba="sintetico" onclick="trocarAbaEstoque('sintetico',this)">Sintético</button>
+        <button class="tab"       data-aba="analitico" onclick="trocarAbaEstoque('analitico',this)">Analítico</button>
+      </div>
+      <div id="estoque-conteudo"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: COMPRAR ITEM -->
+  <div id="modal-comprar" class="modal-overlay hidden" onclick="fecharModalComprar()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-titulo" id="modal-comprar-titulo">Registrar Compra</div>
+      <div class="form-group" style="margin-top:16px">
+        <label>Quantidade comprada</label>
+        <input type="number" id="modal-comprar-qty" min="1" placeholder="0"
+          onkeydown="if(event.key==='Enter') confirmarCompra()" />
+      </div>
+      <div class="modal-acoes">
+        <button class="btn-secundario" onclick="fecharModalComprar()">Cancelar</button>
+        <button class="btn-primario"   onclick="confirmarCompra()">Confirmar</button>
+      </div>
     </div>
   </div>
 
