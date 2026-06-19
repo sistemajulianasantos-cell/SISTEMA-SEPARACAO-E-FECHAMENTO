@@ -66,7 +66,8 @@
       <!-- Cadastro -->
       <div class="sidebar-secao">
         <div class="sidebar-secao-label">Cadastro</div>
-        <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroItens()">Grupos &amp; Itens</button>
+        <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroCategorias()">Categorias</button>
+        <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroItens()">Itens &amp; Configurações</button>
       </div>
 
       <!-- Stats rápidos -->
@@ -137,20 +138,35 @@
     </div>
   </div>
 
-  <!-- ══════════ TELA: CEO — HOME (Lista de Produção) ══════════ -->
+  <!-- ══════════ TELA: CEO — HOME (Agenda + Lista de Produção) ══════════ -->
   <div id="tela-ceo" class="tela hidden">
+
+    <!-- Cards de agenda para navegar para as festas do dia -->
+    <div class="producao-agenda-wrap">
+      <div id="producao-agenda-strip" class="producao-agenda-strip"></div>
+    </div>
+
     <div class="container">
       <div class="producao-header">
         <div>
           <h2 class="titulo-tela" style="margin-bottom:2px">Lista de Produção</h2>
-          <p class="producao-subtitulo">Totais de todas as festas ativas</p>
+          <p class="producao-subtitulo" id="producao-subtitulo">Totais de todas as festas ativas</p>
         </div>
         <button class="btn-secundario btn-sm" onclick="recarregarProducao()">&#8635; Atualizar</button>
       </div>
-      <div class="filtros-tabs" id="producao-tabs">
-        <button class="tab ativo" data-aba="sintetico" onclick="trocarAbaProducao('sintetico',this)">Sintético</button>
-        <button class="tab"       data-aba="analitico" onclick="trocarAbaProducao('analitico',this)">Analítico</button>
+
+      <!-- Aba Sintético / Analítico  +  Ordenar Por  -->
+      <div class="producao-controles">
+        <div class="filtros-tabs" id="producao-tabs">
+          <button class="tab ativo" data-aba="sintetico" onclick="trocarAbaProducao('sintetico',this)">Sintético</button>
+          <button class="tab"       data-aba="analitico" onclick="trocarAbaProducao('analitico',this)">Analítico</button>
+        </div>
+        <div class="filtros-tabs" id="producao-ordem-tabs">
+          <button class="tab ativo" data-ordem="categoria" onclick="trocarOrdemProducao('categoria',this)" title="Agrupar por categoria/setor">Categoria</button>
+          <button class="tab"       data-ordem="prioridade" onclick="trocarOrdemProducao('prioridade',this)" title="Agrupar por nível de prioridade">Prioridade</button>
+        </div>
       </div>
+
       <div id="producao-conteudo"></div>
     </div>
   </div>
@@ -502,10 +518,22 @@
           </div>
         </div>
         <div class="form-group">
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-row-titulo">É item de Produção?</div>
+              <div class="toggle-row-desc">Aparece na lista de produção da tela inicial</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="ic-producao">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
           <label>Prioridade</label>
           <div class="radio-grupo">
             <label class="radio-item"><input type="radio" name="ic-prioridade" value="alta"> Alta</label>
-            <label class="radio-item"><input type="radio" name="ic-prioridade" value="media" checked> Média</label>
+            <label class="radio-item"><input type="radio" name="ic-prioridade" value="media"> Média</label>
             <label class="radio-item"><input type="radio" name="ic-prioridade" value="baixa"> Baixa</label>
           </div>
         </div>
@@ -530,6 +558,40 @@
       <div class="rodape-form">
         <button class="btn-secundario" onclick="goBack()">Cancelar</button>
         <button class="btn-primario"   onclick="salvarItemConfig()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: CATEGORIAS (CEO) ══════════ -->
+  <div id="tela-cadastro-categorias" class="tela hidden">
+    <div class="container">
+      <div class="secao-header">
+        <h2 class="titulo-tela">Categorias</h2>
+        <button class="btn-primario" onclick="abrirFormCategoria()">&#43; Nova</button>
+      </div>
+      <p class="desc-tela">Defina os grupos/setores de separação e a ordem em que aparecem na lista de produção.</p>
+      <div id="categorias-lista"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: FORM CATEGORIA (CEO) ══════════ -->
+  <div id="tela-form-categoria" class="tela hidden">
+    <div class="container">
+      <h2 class="titulo-tela" id="form-cat-titulo">Nova Categoria</h2>
+      <div class="form-secao">
+        <div class="form-group">
+          <label>Nome da Categoria *</label>
+          <input type="text" id="cat-nome" placeholder="Ex: Bebidas" />
+        </div>
+        <div class="form-group">
+          <label>Ordem de Exibição</label>
+          <input type="number" id="cat-ordem" placeholder="1" min="1" style="width:100px" />
+          <p class="form-hint">Categorias com número menor aparecem primeiro na lista de produção.</p>
+        </div>
+      </div>
+      <div class="rodape-form">
+        <button class="btn-secundario" onclick="goBack()">Cancelar</button>
+        <button class="btn-primario"   onclick="salvarCategoria()">Salvar</button>
       </div>
     </div>
   </div>

@@ -17,13 +17,16 @@ let festaEditandoId   = null;   /* id da festa em edição */
 let timers    = {};
 let intervalos= {};
 
-let abaEstoqueAtual   = 'sintetico';
-let abaProducaoAtual  = 'sintetico';
-let estoqueCache      = {};
-let itemConfigsCache  = {};   /* nomeKey → config */
-let _comprarContext   = null;
-let _itemConfigEditId = null; /* id do item config em edição */
-let sidebarPinada     = false;
+let abaEstoqueAtual    = 'sintetico';
+let abaProducaoAtual   = 'sintetico';
+let ordemProducaoAtual = 'categoria';   /* 'categoria' | 'prioridade' */
+let estoqueCache       = {};
+let itemConfigsCache   = {};   /* nomeKey → config */
+let categoriasCache    = [];   /* [{id, nome, nomeKey, ordem}] */
+let _comprarContext    = null;
+let _itemConfigEditId  = null;
+let _categoriaEditId   = null;
+let sidebarPinada      = false;
 
 let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [] };
 
@@ -288,17 +291,20 @@ function logout() {
 async function carregarCEO() {
   pararListeners();
 
-  /* Carregar configs e estoque em paralelo */
   try {
-    const [configs, est] = await Promise.all([listarItemConfigs(), buscarEstoque()]);
+    const [configs, est, cats] = await Promise.all([
+      listarItemConfigs(), buscarEstoque(), listarCategorias(),
+    ]);
     itemConfigsCache = {};
     configs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
-    estoqueCache = est;
-  } catch(e) { console.error('Erro ao carregar configs/estoque:', e); }
+    estoqueCache    = est;
+    categoriasCache = cats;
+  } catch(e) { console.error('Erro ao carregar dados iniciais:', e); }
 
   unsubFestas = escutarFestas({}, festas => {
     todasFestasCache = festas;
     renderizarStatsCEO(festas);
+    renderizarAgendaStripCEO(festas);
     renderizarProducaoCEO();
   });
 }
@@ -322,6 +328,51 @@ function renderizarStatsCEO(festas) {
 
   renderizarTiraData(festas);
   renderizarSidebarAgenda(festas);
+}
+
+/* Cards de agenda compactos no topo da tela-ceo */
+function renderizarAgendaStripCEO(festas) {
+  const el = document.getElementById('producao-agenda-strip');
+  if (!el) return;
+
+  const ativas = festas.filter(f => f.status !== 'concluida');
+
+  /* Agrupar por dia */
+  const porDia = {};
+  ativas.forEach(f => {
+    const key = normalizarData(f.data);
+    if (!key) return;
+    if (!porDia[key]) porDia[key] = { key, festas: [] };
+    porDia[key].festas.push(f);
+  });
+
+  const dias = Object.keys(porDia).sort();
+  if (!dias.length) { el.innerHTML = ''; return; }
+
+  const hojeKey   = normalizarData(new Date());
+  const MESES     = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const DIAS_SEM  = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+  el.innerHTML = dias.map(d => {
+    const dt    = new Date(d + 'T12:00:00');
+    const num   = String(dt.getDate()).padStart(2,'0');
+    const mes   = MESES[dt.getMonth()];
+    const sem   = DIAS_SEM[dt.getDay()];
+    const qtd   = porDia[d].festas.length;
+    const isHj  = d === hojeKey;
+    const status= [...new Set(porDia[d].festas.map(f => f.status))];
+
+    return `
+      <button class="agenda-card${isHj ? ' agenda-card-hoje' : ''}"
+        onclick="navegarSidebar(); filtrarPorData('${d}', null)">
+        <div class="agenda-card-dia">${num}</div>
+        <div class="agenda-card-mes">${mes}</div>
+        <div class="agenda-card-sem">${sem}</div>
+        <div class="agenda-card-qtd">${qtd} festa${qtd !== 1 ? 's' : ''}</div>
+        ${isHj ? '<div class="agenda-card-hoje-label">Hoje</div>' : ''}
+      </button>
+    `;
+  }).join('');
 }
 
 /* Aplica filtro de status + filtro de data e re-renderiza a lista */
@@ -2013,6 +2064,13 @@ function trocarAbaProducao(aba, btn) {
   renderizarProducaoCEO();
 }
 
+function trocarOrdemProducao(ordem, btn) {
+  ordemProducaoAtual = ordem;
+  document.querySelectorAll('#producao-ordem-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  renderizarProducaoCEO();
+}
+
 function recarregarProducao() {
   carregarCEO();
 }
@@ -2022,52 +2080,109 @@ function renderizarProducaoCEO() {
   if (!el) return;
 
   const ativas = todasFestasCache.filter(f => f.status !== 'concluida');
-  const itens  = agregarItensFestas(ativas);
+  const todosItens = agregarItensFestas(ativas);
 
-  if (!itens.length) {
+  if (!todosItens.length) {
     el.innerHTML = estadoVazio('Nenhum item encontrado nas festas ativas.');
     return;
   }
 
-  /* Agrupar por grupo configurado ou "Sem Grupo" */
+  /* Separar em: produção ativa, e não classificados */
+  const itensProducao = todosItens.filter(item => {
+    const cfg = itemConfigsCache[item.nomeKey];
+    return cfg?.eProducao === true;
+  });
+  const naoClas = todosItens.filter(item => {
+    const cfg = itemConfigsCache[item.nomeKey];
+    return !cfg || cfg.eProducao !== true;
+  });
+
+  /* Construir grupos conforme modo de ordenação */
   const grupos = {};
-  itens.forEach(item => {
-    const cfg   = itemConfigsCache[item.nomeKey];
-    const grupo = cfg?.grupo || 'Sem Grupo';
-    const ordem = cfg?.ordemSeparacao != null ? cfg.ordemSeparacao : 999;
-    if (!grupos[grupo]) grupos[grupo] = { nome: grupo, ordemMin: ordem, itens: [] };
-    grupos[grupo].itens.push({ ...item, cfg });
-    if (ordem < grupos[grupo].ordemMin) grupos[grupo].ordemMin = ordem;
+
+  const PRIOR_LABEL = { alta: '🔴 Alta Prioridade', media: '🟡 Média Prioridade', baixa: '🟢 Baixa Prioridade' };
+  const PRIOR_ORD   = { alta: 0, media: 1, baixa: 2 };
+
+  /* Mapear ordens das categorias para exibição */
+  const catOrdem = {};
+  categoriasCache.forEach((c, i) => { catOrdem[c.nome] = c.ordem || (i + 1); });
+
+  itensProducao.forEach(item => {
+    const cfg = itemConfigsCache[item.nomeKey];
+    let chaveGrupo, nomeGrupo, ordemGrupo;
+
+    if (ordemProducaoAtual === 'prioridade') {
+      const p = cfg?.prioridade || 'baixa';
+      chaveGrupo = p;
+      nomeGrupo  = PRIOR_LABEL[p] || p;
+      ordemGrupo = PRIOR_ORD[p] ?? 9;
+    } else {
+      nomeGrupo  = cfg?.grupo || 'Sem Categoria';
+      chaveGrupo = nomeGrupo;
+      ordemGrupo = catOrdem[nomeGrupo] ?? 999;
+    }
+
+    if (!grupos[chaveGrupo]) grupos[chaveGrupo] = { nome: nomeGrupo, ordem: ordemGrupo, itens: [] };
+    grupos[chaveGrupo].itens.push({ ...item, cfg });
   });
 
   const gruposOrdenados = Object.values(grupos)
-    .sort((a, b) => a.ordemMin - b.ordemMin || a.nome.localeCompare(b.nome, 'pt-BR'));
+    .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
 
-  el.innerHTML = gruposOrdenados.map(g => {
-    const grupoKey = g.nome.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    const itensDomGrupo = g.itens.sort((a, b) => {
-      const oA = a.cfg?.ordemSeparacao != null ? a.cfg.ordemSeparacao : 999;
-      const oB = b.cfg?.ordemSeparacao != null ? b.cfg.ordemSeparacao : 999;
-      return oA - oB || a.nome.localeCompare(b.nome, 'pt-BR');
-    });
+  const htmlGrupos = gruposOrdenados.map(g => htmlGrupoProducao(g)).join('');
 
-    const htmlItens = abaProducaoAtual === 'sintetico'
-      ? htmlProducaoSintetico(itensDomGrupo)
-      : htmlProducaoAnalitico(itensDomGrupo);
-
-    return `
-      <div class="producao-grupo">
-        <div class="producao-grupo-header" onclick="toggleGrupo('${grupoKey}')">
-          <span class="producao-grupo-seta">&#9660;</span>
-          <span class="producao-grupo-nome">${g.nome}</span>
-          <span class="producao-grupo-qtd">${g.itens.length} item${g.itens.length !== 1 ? 's' : ''}</span>
-        </div>
-        <div class="producao-grupo-itens" id="grupo-${grupoKey}">
-          ${htmlItens}
-        </div>
+  /* Seção de não classificados */
+  const htmlNaoClas = naoClas.length ? `
+    <div class="producao-grupo producao-grupo-nao-clas">
+      <div class="producao-grupo-header" onclick="toggleGrupo('_nao_classificados')">
+        <span class="producao-grupo-seta">&#9660;</span>
+        <span class="producao-grupo-nome producao-nao-clas-label">&#9888; Não classificados</span>
+        <span class="producao-grupo-qtd">${naoClas.length} item${naoClas.length !== 1 ? 's' : ''}</span>
       </div>
-    `;
-  }).join('');
+      <div class="producao-grupo-itens" id="grupo-__nao_classificados">
+        <p class="producao-nao-clas-hint">Configure esses itens em <strong>Cadastro → Itens &amp; Configurações</strong> e marque "É item de Produção" para que apareçam aqui.</p>
+        ${naoClas.map(item => `
+          <div class="producao-item-row producao-item-nao-clas">
+            <div class="producao-item-info">
+              <div class="producao-item-nome">${item.nome}</div>
+              <div class="producao-item-total">Total: <strong>${item.total}</strong> ${item.unidade}</div>
+            </div>
+            <button class="btn-sm btn-secundario" onclick="abrirFormItemConfig(null,'${_esc(item.nome)}')">Configurar</button>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  ` : '';
+
+  el.innerHTML = (itensProducao.length === 0 && naoClas.length > 0)
+    ? estadoVazio('Nenhum item marcado como Produção. Configure os itens abaixo para que apareçam aqui.') + htmlNaoClas
+    : htmlGrupos + htmlNaoClas;
+}
+
+function htmlGrupoProducao(g) {
+  const grupoKey = g.nome.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+  const itensDomGrupo = g.itens.slice().sort((a, b) => {
+    const oA = a.cfg?.ordemSeparacao != null ? a.cfg.ordemSeparacao : 999;
+    const oB = b.cfg?.ordemSeparacao != null ? b.cfg.ordemSeparacao : 999;
+    return oA - oB || a.nome.localeCompare(b.nome, 'pt-BR');
+  });
+
+  const htmlItens = abaProducaoAtual === 'sintetico'
+    ? htmlProducaoSintetico(itensDomGrupo)
+    : htmlProducaoAnalitico(itensDomGrupo);
+
+  return `
+    <div class="producao-grupo">
+      <div class="producao-grupo-header" onclick="toggleGrupo('${grupoKey}')">
+        <span class="producao-grupo-seta">&#9660;</span>
+        <span class="producao-grupo-nome">${g.nome}</span>
+        <span class="producao-grupo-qtd">${g.itens.length} item${g.itens.length !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="producao-grupo-itens" id="grupo-${grupoKey}">
+        ${htmlItens}
+      </div>
+    </div>
+  `;
 }
 
 function htmlProducaoSintetico(itens) {
@@ -2456,85 +2571,117 @@ async function renderizarCadastroItens() {
   if (!el) return;
   el.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
   try {
-    const configs = await listarItemConfigs();
+    /* Carregar configs e itens de todas as festas em paralelo */
+    const [configs, festas] = await Promise.all([
+      listarItemConfigs(),
+      todasFestasCache.length ? Promise.resolve(todasFestasCache) : buscarTodasFestas(),
+    ]);
     itemConfigsCache = {};
     configs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
 
-    if (!configs.length) {
-      el.innerHTML = estadoVazio('Nenhum item configurado ainda. Clique em "+ Novo Item" para começar.');
-      return;
-    }
+    /* Itens únicos de todas as festas */
+    const nomesNasFestas = {};
+    festas.forEach(f => (f.itens || []).forEach(it => {
+      const key = normalizarNomeItem(it.nome);
+      if (!nomesNasFestas[key]) nomesNasFestas[key] = it.nome;
+    }));
 
-    /* Agrupar por grupo para exibição */
+    /* Agrupar por grupo para itens configurados */
     const grupos = {};
     configs.forEach(c => {
-      const g = c.grupo || 'Sem Grupo';
-      if (!grupos[g]) grupos[g] = [];
-      grupos[g].push(c);
+      const g = c.grupo || 'Sem Categoria';
+      if (!grupos[g]) grupos[g] = { ordem: 999, itens: [] };
+      const catInfo = categoriasCache.find(cat => cat.nome === g);
+      if (catInfo) grupos[g].ordem = catInfo.ordem || 999;
+      grupos[g].itens.push(c);
+      delete nomesNasFestas[c.nomeKey]; /* remover da lista de não configurados */
     });
 
-    el.innerHTML = Object.entries(grupos).sort(([a],[b]) => a.localeCompare(b, 'pt-BR')).map(([grupo, itens]) => `
+    /* Itens das festas que ainda não foram configurados */
+    const semConfig = Object.entries(nomesNasFestas).map(([key, nome]) => ({ nomeKey: key, nome }));
+
+    const htmlGrupos = Object.entries(grupos)
+      .sort(([, a], [, b]) => a.ordem - b.ordem || 0)
+      .map(([grupo, grpData]) => `
+        <div class="config-grupo-bloco">
+          <div class="config-grupo-titulo">${grupo}</div>
+          ${grpData.itens.sort((a,b) => (a.ordemSeparacao||999)-(b.ordemSeparacao||999)).map(c => htmlConfigItemRow(c)).join('')}
+        </div>
+      `).join('');
+
+    const htmlSemConfig = semConfig.length ? `
       <div class="config-grupo-bloco">
-        <div class="config-grupo-titulo">${grupo}</div>
-        ${itens.map(c => `
+        <div class="config-grupo-titulo producao-nao-clas-label">&#9888; Não configurados (${semConfig.length})</div>
+        <p class="producao-nao-clas-hint">Estes itens estão nas festas mas ainda não foram classificados.</p>
+        ${semConfig.sort((a,b) => a.nome.localeCompare(b.nome,'pt-BR')).map(it => `
           <div class="config-item-row">
             <div class="config-item-info">
-              <div class="config-item-nome">${c.nome}</div>
-              <div class="config-item-meta">
-                ${c.ordemSeparacao ? `<span class="badge-ordem">#${c.ordemSeparacao}</span>` : ''}
-                ${c.prioridade ? `<span class="badge-prioridade prior-${c.prioridade}">${c.prioridade}</span>` : ''}
-                ${c.refrigerado ? '<span class="badge-refrigerado">&#10052; Refrig.</span>' : ''}
-              </div>
+              <div class="config-item-nome">${it.nome}</div>
+              <div class="config-item-meta">Sem configuração</div>
             </div>
             <div class="config-item-acoes">
-              <button class="btn-icone" title="Editar" onclick="abrirFormItemConfig('${c.id}')">&#9998;</button>
-              <button class="btn-icone btn-icone-del" title="Remover" onclick="confirmarDeletarItemConfig('${_esc(c.id)}','${_esc(c.nome)}')">&#128465;</button>
+              <button class="btn-icone" title="Configurar" onclick="abrirFormItemConfig(null,'${_esc(it.nome)}')">+ Config.</button>
             </div>
           </div>
         `).join('')}
       </div>
-    `).join('');
+    ` : '';
+
+    el.innerHTML = htmlGrupos + htmlSemConfig || estadoVazio('Nenhum item encontrado. Cadastre uma festa para começar.');
   } catch(e) {
     console.error(e);
     el.innerHTML = estadoVazio('Erro ao carregar. Tente novamente.');
   }
 }
 
-async function abrirFormItemConfig(id) {
-  _itemConfigEditId = id || null;
+function htmlConfigItemRow(c) {
+  const badgeProd = c.eProducao ? '<span class="badge-producao">Produção</span>' : '';
+  return `
+    <div class="config-item-row">
+      <div class="config-item-info">
+        <div class="config-item-nome">${c.nome} ${badgeProd}</div>
+        <div class="config-item-meta">
+          ${c.ordemSeparacao && c.ordemSeparacao !== 999 ? `<span class="badge-ordem">#${c.ordemSeparacao}</span>` : ''}
+          ${c.prioridade ? `<span class="badge-prioridade prior-${c.prioridade}">${c.prioridade}</span>` : ''}
+          ${c.refrigerado ? '<span class="badge-refrigerado">&#10052; Refrig.</span>' : ''}
+        </div>
+      </div>
+      <div class="config-item-acoes">
+        <button class="btn-icone" title="Editar" onclick="abrirFormItemConfig('${c.id}')">&#9998;</button>
+        <button class="btn-icone btn-icone-del" title="Remover" onclick="confirmarDeletarItemConfig('${_esc(c.id)}','${_esc(c.nome)}')">&#128465;</button>
+      </div>
+    </div>
+  `;
+}
 
-  /* Preencher datalists com sugestões */
+async function abrirFormItemConfig(id, nomePreenchido) {
+  _itemConfigEditId = id || null;
   await preencherSugestoesItemConfig();
+
+  const resetForm = (cfg) => {
+    document.getElementById('ic-nome').value    = cfg?.nome  || nomePreenchido || '';
+    document.getElementById('ic-grupo').value   = cfg?.grupo || '';
+    document.getElementById('ic-ordem').value   = (cfg?.ordemSeparacao && cfg.ordemSeparacao !== 999) ? cfg.ordemSeparacao : '';
+    document.getElementById('ic-dias-antes').value = cfg?.diasAntesEvento || 1;
+    document.getElementById('ic-refrigerado').checked = !!cfg?.refrigerado;
+    document.getElementById('ic-producao').checked    = !!cfg?.eProducao;
+    toggleRefrigeradoForm(!!cfg?.refrigerado);
+    document.querySelectorAll('input[name="ic-prioridade"]').forEach(r => {
+      r.checked = r.value === (cfg?.prioridade || '');
+    });
+  };
 
   if (id) {
     const configs = await listarItemConfigs();
     const cfg = configs.find(c => c.id === id);
     if (!cfg) return toast('Item não encontrado.', 'erro');
-
-    document.getElementById('ic-nome').value  = cfg.nome || '';
-    document.getElementById('ic-grupo').value = cfg.grupo || '';
-    document.getElementById('ic-ordem').value = cfg.ordemSeparacao || '';
-    document.getElementById('ic-dias-antes').value  = cfg.diasAntesEvento || 1;
-    document.getElementById('ic-refrigerado').checked = !!cfg.refrigerado;
-    toggleRefrigeradoForm(!!cfg.refrigerado);
-
-    document.querySelectorAll('input[name="ic-prioridade"]').forEach(r => {
-      r.checked = r.value === (cfg.prioridade || '');
-    });
-
+    resetForm(cfg);
     historico.push('tela-form-item-config');
     mostrarTela('tela-form-item-config', 'Editar Item');
   } else {
-    document.getElementById('ic-nome').value  = '';
-    document.getElementById('ic-grupo').value = '';
-    document.getElementById('ic-ordem').value = '';
-    document.getElementById('ic-dias-antes').value  = '1';
-    document.getElementById('ic-refrigerado').checked = false;
-    toggleRefrigeradoForm(false);
-    document.querySelectorAll('input[name="ic-prioridade"]').forEach(r => { r.checked = false; });
-
+    resetForm(null);
     historico.push('tela-form-item-config');
-    mostrarTela('tela-form-item-config', 'Novo Item');
+    mostrarTela('tela-form-item-config', nomePreenchido ? `Configurar: ${nomePreenchido}` : 'Novo Item');
   }
 }
 
@@ -2547,9 +2694,9 @@ async function preencherSugestoesItemConfig() {
     festas.forEach(f => (f.itens || []).forEach(it => {
       if (it.nome) nomesSet.add(it.nome);
     }));
-    Object.values(itemConfigsCache).forEach(c => {
-      if (c.grupo) gruposSet.add(c.grupo);
-    });
+    /* Prioridade: categorias cadastradas, depois grupos dos configs */
+    categoriasCache.forEach(c => { if (c.nome) gruposSet.add(c.nome); });
+    Object.values(itemConfigsCache).forEach(c => { if (c.grupo) gruposSet.add(c.grupo); });
 
     const dlNomes = document.getElementById('ic-nomes-lista');
     if (dlNomes) dlNomes.innerHTML = [...nomesSet].sort().map(n => `<option value="${n}">`).join('');
@@ -2575,12 +2722,15 @@ async function salvarItemConfig() {
   const prioEl      = document.querySelector('input[name="ic-prioridade"]:checked');
   const prioridade  = prioEl ? prioEl.value : '';
 
+  const eProducao = document.getElementById('ic-producao').checked;
+
   const dados = {
     nome,
     nomeKey:         normalizarNomeItem(nome),
     grupo:           grupo || '',
     ordemSeparacao:  ordemStr ? parseInt(ordemStr) : 999,
     prioridade,
+    eProducao,
     refrigerado,
     diasAntesEvento: refrigerado ? (parseInt(diasStr) || 1) : 1,
   };
@@ -2613,6 +2763,101 @@ async function confirmarDeletarItemConfig(id, nome) {
   } catch(e) {
     console.error(e);
     toast('Erro ao remover item.', 'erro');
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   CATEGORIAS CRUD
+══════════════════════════════════════════════════ */
+
+async function abrirCadastroCategorias() {
+  navegarSidebar();
+  historico.push('tela-cadastro-categorias');
+  mostrarTela('tela-cadastro-categorias', 'Categorias');
+  await renderizarCategorias();
+}
+
+async function renderizarCategorias() {
+  const el = document.getElementById('categorias-lista');
+  if (!el) return;
+  el.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
+  try {
+    const cats = await listarCategorias();
+    categoriasCache = cats;
+    if (!cats.length) {
+      el.innerHTML = estadoVazio('Nenhuma categoria cadastrada. Clique em "+ Nova" para criar a primeira.');
+      return;
+    }
+    el.innerHTML = cats.map(c => `
+      <div class="config-item-row">
+        <div class="config-item-info">
+          <div class="config-item-nome">${c.nome}</div>
+          <div class="config-item-meta">${c.ordem ? `Ordem: #${c.ordem}` : 'Sem ordem definida'}</div>
+        </div>
+        <div class="config-item-acoes">
+          <button class="btn-icone" title="Editar" onclick="abrirFormCategoria('${c.id}')">&#9998;</button>
+          <button class="btn-icone btn-icone-del" title="Remover" onclick="confirmarDeletarCategoria('${_esc(c.id)}','${_esc(c.nome)}')">&#128465;</button>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    console.error(e);
+    el.innerHTML = estadoVazio('Erro ao carregar. Tente novamente.');
+  }
+}
+
+async function abrirFormCategoria(id) {
+  _categoriaEditId = id || null;
+  if (id) {
+    const cats = await listarCategorias();
+    const cat  = cats.find(c => c.id === id);
+    if (!cat) return toast('Categoria não encontrada.', 'erro');
+    document.getElementById('cat-nome').value  = cat.nome  || '';
+    document.getElementById('cat-ordem').value = cat.ordem || '';
+    historico.push('tela-form-categoria');
+    mostrarTela('tela-form-categoria', 'Editar Categoria');
+  } else {
+    document.getElementById('cat-nome').value  = '';
+    document.getElementById('cat-ordem').value = '';
+    historico.push('tela-form-categoria');
+    mostrarTela('tela-form-categoria', 'Nova Categoria');
+  }
+}
+
+async function salvarCategoria() {
+  const nome = document.getElementById('cat-nome').value.trim();
+  if (!nome) return toast('Informe o nome da categoria.', 'erro');
+  const ordemStr = document.getElementById('cat-ordem').value.trim();
+  const dados = {
+    nome,
+    nomeKey: normalizarNomeItem(nome),
+    ordem:   ordemStr ? parseInt(ordemStr) : 999,
+  };
+  try {
+    await salvarCategoriaDB(dados);
+    toast('Categoria salva.', 'sucesso');
+    goBack();
+    setTimeout(async () => {
+      if (historico[historico.length - 1] === 'tela-cadastro-categorias') {
+        await renderizarCategorias();
+      }
+    }, 100);
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao salvar categoria.', 'erro');
+  }
+}
+
+async function confirmarDeletarCategoria(id, nome) {
+  if (!confirm(`Remover a categoria "${nome}"?\n\nItens que usam essa categoria não serão afetados.`)) return;
+  try {
+    await deletarCategoriaDB(id);
+    categoriasCache = categoriasCache.filter(c => c.id !== id);
+    toast('Categoria removida.', 'sucesso');
+    await renderizarCategorias();
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao remover categoria.', 'erro');
   }
 }
 

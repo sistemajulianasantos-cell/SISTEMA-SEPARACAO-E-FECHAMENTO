@@ -170,6 +170,28 @@ async function editarFestaDados(id, { data, hora, itens }, alteracoes, usuarioNo
 }
 
 /* ════════════════════════════════════════
+   CATEGORIAS (grupos/setores de separação)
+════════════════════════════════════════ */
+
+async function listarCategorias() {
+  const snap = await db.collection('categorias').orderBy('ordem').get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function salvarCategoriaDB(dados) {
+  const snap = await db.collection('categorias')
+    .where('nomeKey', '==', dados.nomeKey).limit(1).get();
+  if (!snap.empty) {
+    return db.collection('categorias').doc(snap.docs[0].id).update({ ...dados, updatedAt: TS() });
+  }
+  return db.collection('categorias').add({ ...dados, criadoEm: TS(), updatedAt: TS() });
+}
+
+async function deletarCategoriaDB(id) {
+  return db.collection('categorias').doc(id).delete();
+}
+
+/* ════════════════════════════════════════
    CONFIGURAÇÕES DE ITENS (grupos, prioridade, stand-by)
 ════════════════════════════════════════ */
 
