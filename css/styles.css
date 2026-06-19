@@ -1608,6 +1608,10 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .modal-titulo { font-size: 16px; font-weight: 700; color: var(--cinza-900); }
 .modal-acoes  { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
 
+/* Badges de item config */
+.badge-oculto-sep  { background: #FEF3C7; color: #92400E; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 6px; display: inline-block; }
+.badge-variantes   { background: #E0E7FF; color: #3730A3; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 6px; display: inline-block; margin-left: 4px; }
+
 /* ══ ALERTA DE FESTA HOJE ════════════════════════════════════ */
 
 @keyframes pulso-alerta {

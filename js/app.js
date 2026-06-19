@@ -364,10 +364,11 @@ function renderizarAlertaHoje(festas, containerId) {
     return;
   }
 
-  /* Contar itens pendentes por festa */
+  /* Contar itens pendentes por festa — excluindo itens ocultos da separação */
   const itens = urgentes.map(f => {
-    const totalItens = (f.itens || []).length;
-    const pendentes  = (f.itens || []).filter(it => !it.separado).length;
+    const visiveis   = (f.itens || []).filter(it => deveExibirNaSeparacao(it));
+    const totalItens = visiveis.length;
+    const pendentes  = visiveis.filter(it => !it.separado).length;
     const atrasada   = normalizarData(f.data) !== hojeKey;
     return { f, totalItens, pendentes, atrasada };
   });
@@ -592,7 +593,7 @@ function carregarColab() {
   });
 }
 
-function abrirSeparacao(id) {
+async function abrirSeparacao(id) {
   pararListeners();
   fotosCache.separacao = [];
   document.getElementById('preview-sep').innerHTML = '';
@@ -601,6 +602,16 @@ function abrirSeparacao(id) {
 
   historico = ['tela-colaborador'];
   mostrarTela('tela-separacao', 'Separação');
+
+  /* Garantir que configs e categorias estejam carregados (necessário para filtro de separação e stand-by) */
+  if (!Object.keys(itemConfigsCache).length) {
+    try {
+      const [cfgs, cats] = await Promise.all([listarItemConfigs(), listarCategorias()]);
+      itemConfigsCache = {};
+      cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+      categoriasCache = cats;
+    } catch(e) { console.error('Erro ao carregar configs de item:', e); }
+  }
 
   unsubFesta = escutarFesta(id, festa => {
     festaAtual = festa;
@@ -679,7 +690,9 @@ function renderizarSeparacao(festa) {
   }
 
   const tab          = window._tabSep || 'pendente';
-  const comIdx       = itens.map((item, i) => ({ ...item, _i: i }));
+  const todos        = itens.map((item, i) => ({ ...item, _i: i }));
+  const ocultos      = todos.filter(it => !deveExibirNaSeparacao(it));
+  const comIdx       = todos.filter(it =>  deveExibirNaSeparacao(it));
   const separados    = comIdx.filter(it =>  it.separado);
   const naoSeparados = comIdx.filter(it => !it.separado);
   const standBy      = naoSeparados.filter(it => standByInfo(it, festa.data) !== null);
@@ -706,7 +719,13 @@ function renderizarSeparacao(festa) {
     </div>
   ` : '';
 
-  document.getElementById('sep-itens').innerHTML = avisoHTML + `
+  const avisoOcultos = ocultos.length
+    ? `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#6B7280;">
+        ${ocultos.length} item(s) oculto(s) da separação (Equipe / Coquetéis): ${ocultos.map(i=>i.nome).join(', ')}
+       </div>`
+    : '';
+
+  document.getElementById('sep-itens').innerHTML = avisoHTML + avisoOcultos + `
     <div class="busca-sep-wrap">
       <input type="search" id="busca-sep-input" class="busca-sep"
         placeholder="Pesquisar item..."
@@ -812,8 +831,12 @@ async function concluirSeparacao() {
   if (!festaAtual) return;
 
   const itens      = festaAtual.itens || [];
-  /* Itens em stand-by não bloqueiam a conclusão — serão separados no dia */
-  const pendentes  = itens.filter(it => !it.separado && standByInfo(it, festaAtual.data) === null);
+  /* Itens em stand-by e itens ocultos da separação (equipe/coquetéis) não bloqueiam a conclusão */
+  const pendentes  = itens.filter(it =>
+    !it.separado &&
+    standByInfo(it, festaAtual.data) === null &&
+    deveExibirNaSeparacao(it)
+  );
   if (pendentes.length > 0) {
     toast(`Ainda há ${pendentes.length} item(ns) pendente(s). Separe todos antes de finalizar.`, 'erro');
     window._tabSep = 'pendente';
@@ -2375,6 +2398,51 @@ function normalizarNomeItem(nome) {
     .replace(/^_+|_+$/g, '');
 }
 
+/* Sufixos que indicam TIPO DE FORNECIMENTO — mesmo produto, formas diferentes de obter */
+const SUFIXOS_FORNECIMENTO = [
+  'consignado','cliente','romero','proprio','propria','terceiro',
+  'cortesia','gratis','gratuito','locacao','doacao','empresa',
+];
+
+/* Retorna o nomeKey sem o sufixo de fornecimento (ex: "aperol_consignado" → "aperol") */
+function nomeBaseKey(nomeKey) {
+  const partes = (nomeKey || '').split('_');
+  if (partes.length > 1 && SUFIXOS_FORNECIMENTO.includes(partes[partes.length - 1])) {
+    return partes.slice(0, -1).join('_');
+  }
+  return nomeKey;
+}
+
+/* Retorna nome de exibição sem o sufixo (ex: "APEROL CONSIGNADO" → "APEROL") */
+function nomeBasDisplay(nome) {
+  const partes = (nome || '').trim().split(/\s+/);
+  if (partes.length > 1) {
+    const ultimoNorm = normalizarNomeItem(partes[partes.length - 1]);
+    if (SUFIXOS_FORNECIMENTO.includes(ultimoNorm)) {
+      return partes.slice(0, -1).join(' ');
+    }
+  }
+  return nome;
+}
+
+/* Busca config do item por nomeKey; com fallback para nome base (variante) */
+function buscarConfigItem(nomeKey) {
+  return itemConfigsCache[nomeKey] || itemConfigsCache[nomeBaseKey(nomeKey)] || null;
+}
+
+/* Verifica se um item de festa deve aparecer na tela de separação */
+function deveExibirNaSeparacao(item) {
+  const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+  if (!cfg) return true; // sem config → exibe por padrão
+  if (cfg.exibirSeparacao === false) return false;
+  // verificar nível de categoria
+  if (cfg.grupo) {
+    const cat = categoriasCache.find(c => c.nome === cfg.grupo);
+    if (cat && cat.exibirSeparacao === false) return false;
+  }
+  return true;
+}
+
 function agregarItensFestas(festas) {
   const mapa = {};
   festas.filter(f => f.status !== 'concluida').forEach(f => {
@@ -2689,11 +2757,25 @@ async function renderizarCadastroItens() {
       const catInfo = categoriasCache.find(cat => cat.nome === g);
       if (catInfo) grupos[g].ordem = catInfo.ordem || 999;
       grupos[g].itens.push(c);
-      delete nomesNasFestas[c.nomeKey]; /* remover da lista de não configurados */
+      delete nomesNasFestas[c.nomeKey]; /* remover da lista de não configurados (match exato) */
     });
 
-    /* Itens das festas que ainda não foram configurados */
-    const semConfig = Object.entries(nomesNasFestas).map(([key, nome]) => ({ nomeKey: key, nome }));
+    /* Remover também variantes cujo NOME BASE já está configurado */
+    Object.keys(nomesNasFestas).forEach(k => {
+      const base = nomeBaseKey(k);
+      if (base !== k && itemConfigsCache[base]) delete nomesNasFestas[k];
+    });
+
+    /* Agrupar itens não configurados por nome base (deduplicar variantes) */
+    const semConfigPorBase = {};
+    Object.entries(nomesNasFestas).forEach(([key, nome]) => {
+      const base = nomeBaseKey(key);
+      if (!semConfigPorBase[base]) {
+        semConfigPorBase[base] = { nomeKey: base, nomeDisplay: nomeBasDisplay(nome), variantes: [] };
+      }
+      if (key !== base) semConfigPorBase[base].variantes.push(nome);
+    });
+    const semConfig = Object.values(semConfigPorBase);
 
     const htmlGrupos = Object.entries(grupos)
       .sort(([, a], [, b]) => a.ordem - b.ordem || 0)
@@ -2708,14 +2790,17 @@ async function renderizarCadastroItens() {
       <div class="config-grupo-bloco">
         <div class="config-grupo-titulo producao-nao-clas-label">&#9888; Não configurados (${semConfig.length})</div>
         <p class="producao-nao-clas-hint">Estes itens estão nas festas mas ainda não foram classificados.</p>
-        ${semConfig.sort((a,b) => a.nome.localeCompare(b.nome,'pt-BR')).map(it => `
+        ${semConfig.sort((a,b) => a.nomeDisplay.localeCompare(b.nomeDisplay,'pt-BR')).map(it => `
           <div class="config-item-row">
             <div class="config-item-info">
-              <div class="config-item-nome">${it.nome}</div>
-              <div class="config-item-meta">Sem configuração</div>
+              <div class="config-item-nome">
+                ${it.nomeDisplay}
+                ${it.variantes.length ? `<span class="badge-variantes">${it.variantes.length} variante${it.variantes.length>1?'s':''}</span>` : ''}
+              </div>
+              <div class="config-item-meta">${it.variantes.length ? it.variantes.join(' · ') : 'Sem configuração'}</div>
             </div>
             <div class="config-item-acoes">
-              <button class="btn-icone" title="Configurar" onclick="abrirFormItemConfig(null,'${_esc(it.nome)}')">+ Config.</button>
+              <button class="btn-icone" title="Configurar" onclick="abrirFormItemConfig(null,'${_esc(it.nomeDisplay)}')">+ Config.</button>
             </div>
           </div>
         `).join('')}
@@ -2731,10 +2816,16 @@ async function renderizarCadastroItens() {
 
 function htmlConfigItemRow(c) {
   const badgeProd = c.eProducao ? '<span class="badge-producao">Produção</span>' : '';
+  const catOculta = (() => {
+    if (!c.grupo) return false;
+    const cat = categoriasCache.find(x => x.nome === c.grupo);
+    return cat && cat.exibirSeparacao === false;
+  })();
+  const badgeSep  = (c.exibirSeparacao === false || catOculta) ? '<span class="badge-oculto-sep">Oculto sep.</span>' : '';
   return `
     <div class="config-item-row">
       <div class="config-item-info">
-        <div class="config-item-nome">${c.nome} ${badgeProd}</div>
+        <div class="config-item-nome">${c.nome} ${badgeProd} ${badgeSep}</div>
         <div class="config-item-meta">
           ${c.ordemSeparacao && c.ordemSeparacao !== 999 ? `<span class="badge-ordem">#${c.ordemSeparacao}</span>` : ''}
           ${c.prioridade ? `<span class="badge-prioridade prior-${c.prioridade}">${c.prioridade}</span>` : ''}
@@ -2760,6 +2851,7 @@ async function abrirFormItemConfig(id, nomePreenchido) {
     document.getElementById('ic-dias-antes').value = cfg?.diasAntesEvento || 1;
     document.getElementById('ic-refrigerado').checked = !!cfg?.refrigerado;
     document.getElementById('ic-producao').checked    = !!cfg?.eProducao;
+    document.getElementById('ic-separacao').checked   = cfg?.exibirSeparacao !== false;
     toggleRefrigeradoForm(!!cfg?.refrigerado);
     document.querySelectorAll('input[name="ic-prioridade"]').forEach(r => {
       r.checked = r.value === (cfg?.prioridade || '');
@@ -2817,17 +2909,19 @@ async function salvarItemConfig() {
   const prioEl      = document.querySelector('input[name="ic-prioridade"]:checked');
   const prioridade  = prioEl ? prioEl.value : '';
 
-  const eProducao = document.getElementById('ic-producao').checked;
+  const eProducao      = document.getElementById('ic-producao').checked;
+  const exibirSeparacao = document.getElementById('ic-separacao').checked;
 
   const dados = {
     nome,
-    nomeKey:         normalizarNomeItem(nome),
-    grupo:           grupo || '',
-    ordemSeparacao:  ordemStr ? parseInt(ordemStr) : 999,
+    nomeKey:          normalizarNomeItem(nome),
+    grupo:            grupo || '',
+    ordemSeparacao:   ordemStr ? parseInt(ordemStr) : 999,
     prioridade,
     eProducao,
+    exibirSeparacao,
     refrigerado,
-    diasAntesEvento: refrigerado ? (parseInt(diasStr) || 1) : 1,
+    diasAntesEvento:  refrigerado ? (parseInt(diasStr) || 1) : 1,
   };
 
   try {
@@ -3240,13 +3334,15 @@ async function abrirFormCategoria(id) {
     const cats = await listarCategorias();
     const cat  = cats.find(c => c.id === id);
     if (!cat) return toast('Categoria não encontrada.', 'erro');
-    document.getElementById('cat-nome').value  = cat.nome  || '';
-    document.getElementById('cat-ordem').value = cat.ordem || '';
+    document.getElementById('cat-nome').value       = cat.nome  || '';
+    document.getElementById('cat-ordem').value      = cat.ordem || '';
+    document.getElementById('cat-separacao').checked = cat.exibirSeparacao !== false;
     historico.push('tela-form-categoria');
     mostrarTela('tela-form-categoria', 'Editar Categoria');
   } else {
-    document.getElementById('cat-nome').value  = '';
-    document.getElementById('cat-ordem').value = '';
+    document.getElementById('cat-nome').value       = '';
+    document.getElementById('cat-ordem').value      = '';
+    document.getElementById('cat-separacao').checked = true;
     historico.push('tela-form-categoria');
     mostrarTela('tela-form-categoria', 'Nova Categoria');
   }
@@ -3255,11 +3351,13 @@ async function abrirFormCategoria(id) {
 async function salvarCategoria() {
   const nome = document.getElementById('cat-nome').value.trim();
   if (!nome) return toast('Informe o nome da categoria.', 'erro');
-  const ordemStr = document.getElementById('cat-ordem').value.trim();
+  const ordemStr        = document.getElementById('cat-ordem').value.trim();
+  const exibirSeparacao = document.getElementById('cat-separacao').checked;
   const dados = {
     nome,
-    nomeKey: normalizarNomeItem(nome),
-    ordem:   ordemStr ? parseInt(ordemStr) : 999,
+    nomeKey:          normalizarNomeItem(nome),
+    ordem:            ordemStr ? parseInt(ordemStr) : 999,
+    exibirSeparacao,
   };
   try {
     await salvarCategoriaDB(dados);

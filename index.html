@@ -538,6 +538,18 @@
           </div>
         </div>
         <div class="form-group">
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-row-titulo">Aparece na Separação?</div>
+              <div class="toggle-row-desc">Desative para itens de equipe, coquetéis ou que não precisam ser separados fisicamente</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="ic-separacao" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
           <label>Prioridade</label>
           <div class="radio-grupo">
             <label class="radio-item"><input type="radio" name="ic-prioridade" value="alta"> Alta</label>
@@ -595,6 +607,18 @@
           <label>Ordem de Exibição</label>
           <input type="number" id="cat-ordem" placeholder="1" min="1" style="width:100px" />
           <p class="form-hint">Categorias com número menor aparecem primeiro na lista de produção.</p>
+        </div>
+        <div class="form-group">
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-row-titulo">Itens aparecem na Separação?</div>
+              <div class="toggle-row-desc">Desative para categorias como Equipe ou Coquetéis que não precisam de separação física</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="cat-separacao" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
         </div>
       </div>
       <div class="rodape-form">
