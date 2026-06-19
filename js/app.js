@@ -28,7 +28,7 @@ let _itemConfigEditId  = null;
 let _categoriaEditId   = null;
 let sidebarPinada      = false;
 
-let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [] };
+let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [], confItens: {} };
 
 /* ══════════════════════════════════════════════════
    INICIALIZAÇÃO
@@ -760,7 +760,10 @@ function htmlItemPendente(item, i) {
   return `
     <div class="item-pend-card">
       <div class="item-pend-info">
-        <div class="item-nome">${item.nome}</div>
+        <div class="item-nome">
+          ${item.nome}
+          <button class="btn-editar-nome" title="Substituir / editar nome" onclick="editarNomeItem(${i})">✏️</button>
+        </div>
         <div class="item-sub">${item.unidade || 'un'} &mdash; necessario: <strong>${item.qtdNecessaria}</strong></div>
       </div>
       <div class="item-pend-acoes">
@@ -965,14 +968,25 @@ function filtrarCoord(status, btn) {
 }
 
 /* ── CONFERÊNCIA ── */
-function abrirConferencia(id) {
+async function abrirConferencia(id) {
   pararListeners();
   fotosCache.conferencia = [];
+  fotosCache.confItens   = {};
   document.getElementById('preview-conf').innerHTML = '';
   document.getElementById('conf-obs').value = '';
 
   historico = ['tela-coordenador'];
   mostrarTela('tela-conferencia', 'Conferência de Chegada');
+
+  /* Carregar configs se necessário (para saber quais itens exigem foto) */
+  if (!Object.keys(itemConfigsCache).length) {
+    try {
+      const [cfgs, cats] = await Promise.all([listarItemConfigs(), listarCategorias()]);
+      itemConfigsCache = {};
+      cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+      categoriasCache = cats;
+    } catch(e) { console.error('Erro ao carregar configs:', e); }
+  }
 
   unsubFesta = escutarFesta(id, festa => {
     festaAtual = festa;
@@ -983,28 +997,96 @@ function abrirConferencia(id) {
 function renderizarConferencia(festa) {
   document.getElementById('conf-info').innerHTML = htmlInfoFesta(festa);
 
-  document.getElementById('conf-itens').innerHTML = (festa.itens || []).map((item, i) => `
-    <div class="item-row">
-      <div class="item-topo">
-        <div>
-          <div class="item-nome">${item.nome}</div>
-          <div class="item-sub">Separado: <strong>${item.qtdSeparada || 0}</strong> ${item.unidade || 'un'}</div>
+  document.getElementById('conf-itens').innerHTML = (festa.itens || []).map((item, i) => {
+    const cfg       = buscarConfigItem(normalizarNomeItem(item.nome));
+    const exigeFoto = !!cfg?.exigeFoto;
+    const temFoto   = !!(fotosCache.confItens[i] || item.fotoConferencia);
+    const fotoAreaHtml = exigeFoto ? `
+      <div class="item-foto-area${temFoto ? ' ok' : ''}" id="conf-foto-area-${i}">
+        <div class="item-foto-preview">
+          ${item.fotoConferencia
+            ? `<img src="${item.fotoConferencia}" alt="foto">`
+            : fotosCache.confItens[i]
+              ? `<img src="${URL.createObjectURL(fotosCache.confItens[i])}" alt="foto">`
+              : `<div class="item-foto-placeholder">📷</div>`}
         </div>
+        <div class="item-foto-label">
+          <div class="item-foto-label-titulo${temFoto ? ' ok' : ''}">${temFoto ? '✓ Foto anexada' : 'Foto obrigatória'}</div>
+          <div class="item-foto-label-desc">${temFoto ? 'Toque para trocar' : 'Este item exige registro fotográfico'}</div>
+        </div>
+        <input type="file" id="conf-foto-input-${i}" accept="image/*" capture="environment" style="display:none"
+          onchange="onFotoItemConf(${i}, this)" />
+        <button class="btn-foto-item${temFoto ? ' ok' : ''}"
+          onclick="document.getElementById('conf-foto-input-${i}').click()">
+          ${temFoto ? '✓ OK' : '📷 Anexar'}
+        </button>
       </div>
-      <div class="item-entrada">
-        <label>Conferido:</label>
-        <input type="number" class="qty-input" id="conf-qty-${i}"
-          value="${item.qtdConferida !== undefined ? item.qtdConferida : (item.qtdSeparada || '')}"
-          min="0" placeholder="0"
-          oninput="checarConf(${i}, ${item.qtdSeparada || 0})" />
-        <span class="item-unidade">${item.unidade || 'un'}</span>
+    ` : '';
+
+    return `
+      <div class="item-row">
+        <div class="item-topo">
+          <div>
+            <div class="item-nome">
+              ${item.nome}
+              <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${i})">✏️</button>
+            </div>
+            <div class="item-sub">Separado: <strong>${item.qtdSeparada || 0}</strong> ${item.unidade || 'un'}</div>
+          </div>
+        </div>
+        <div class="item-entrada">
+          <label>Conferido:</label>
+          <input type="number" class="qty-input" id="conf-qty-${i}"
+            value="${item.qtdConferida !== undefined ? item.qtdConferida : (item.qtdSeparada || '')}"
+            min="0" placeholder="0"
+            oninput="checarConf(${i}, ${item.qtdSeparada || 0})" />
+          <span class="item-unidade">${item.unidade || 'un'}</span>
+        </div>
+        <div id="conf-msg-${i}">
+          ${item.qtdConferida !== undefined && item.qtdConferida !== item.qtdSeparada
+            ? `<span class="msg-item msg-erro">Divergencia registrada</span>` : ''}
+        </div>
+        ${fotoAreaHtml}
       </div>
-      <div id="conf-msg-${i}">
-        ${item.qtdConferida !== undefined && item.qtdConferida !== item.qtdSeparada
-          ? `<span class="msg-item msg-erro">Divergencia registrada</span>` : ''}
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
+}
+
+/* Captura foto por item na conferência */
+function onFotoItemConf(idx, input) {
+  if (!input.files[0]) return;
+  fotosCache.confItens[idx] = input.files[0];
+  /* Atualizar a área de foto sem re-renderizar tudo */
+  const area = document.getElementById(`conf-foto-area-${idx}`);
+  if (!area) return;
+  area.classList.add('ok');
+  area.querySelector('.item-foto-preview').innerHTML =
+    `<img src="${URL.createObjectURL(input.files[0])}" alt="foto">`;
+  area.querySelector('.item-foto-label-titulo').className = 'item-foto-label-titulo ok';
+  area.querySelector('.item-foto-label-titulo').textContent = '✓ Foto anexada';
+  area.querySelector('.item-foto-label-desc').textContent = 'Toque para trocar';
+  const btn = area.querySelector('.btn-foto-item');
+  btn.className = 'btn-foto-item ok';
+  btn.textContent = '✓ OK';
+}
+
+/* Edição rápida de nome de item (coordenador e separador) */
+async function editarNomeItem(idx) {
+  if (!festaAtual) return;
+  const item = festaAtual.itens[idx];
+  if (!item) return;
+  const novoNome = prompt(`Alterar nome do item:\n"${item.nome}"\n\nNovo nome:`, item.nome);
+  if (!novoNome || novoNome.trim() === item.nome) return;
+  const novosItens = festaAtual.itens.map((it, i) =>
+    i === idx ? { ...it, nome: novoNome.trim() } : it
+  );
+  try {
+    await atualizarFesta(festaAtual.id, { itens: novosItens });
+    toast('Nome atualizado.', 'sucesso');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao atualizar nome.', 'erro');
+  }
 }
 
 function checarConf(i, separado) {
@@ -1042,13 +1124,31 @@ function atualizarBoxDivConf() {
 async function concluirConferencia() {
   if (!festaAtual) return;
   const btn = document.getElementById('btn-conf-concluir');
+
+  /* Validar fotos obrigatórias por item */
+  const semFoto = (festaAtual.itens || []).filter((item, i) => {
+    const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+    return cfg?.exigeFoto && !fotosCache.confItens[i] && !item.fotoConferencia;
+  });
+  if (semFoto.length) {
+    toast(`Foto obrigatória em: ${semFoto.map(i => i.nome).join(', ')}`, 'erro');
+    return;
+  }
+
   btn.disabled    = true;
   btn.textContent = 'Salvando...';
 
   try {
-    const itens = (festaAtual.itens || []).map((item, i) => ({
-      ...item,
-      qtdConferida: parseFloat(document.getElementById(`conf-qty-${i}`)?.value) || 0,
+    /* Montar itens com qtdConferida e upload de fotos por item */
+    const itens = await Promise.all((festaAtual.itens || []).map(async (item, i) => {
+      const qtdConferida = parseFloat(document.getElementById(`conf-qty-${i}`)?.value) || 0;
+      const fotoFile     = fotosCache.confItens[i];
+      let fotoConferencia = item.fotoConferencia || null;
+      if (fotoFile) {
+        const urls = await uploadFotos([fotoFile], festaAtual.id, `conf_item_${i}`);
+        fotoConferencia = urls[0] || fotoConferencia;
+      }
+      return { ...item, qtdConferida, ...(fotoConferencia ? { fotoConferencia } : {}) };
     }));
 
     const divergencias = itens
@@ -1057,7 +1157,7 @@ async function concluirConferencia() {
 
     let fotoUrls = [];
     if (fotosCache.conferencia.filter(Boolean).length) {
-      toast('Enviando fotos...', 'info');
+      toast('Enviando fotos gerais...', 'info');
       fotoUrls = await uploadFotos(fotosCache.conferencia, festaAtual.id, 'conferencia');
     }
 
@@ -2852,6 +2952,7 @@ async function abrirFormItemConfig(id, nomePreenchido) {
     document.getElementById('ic-refrigerado').checked = !!cfg?.refrigerado;
     document.getElementById('ic-producao').checked    = !!cfg?.eProducao;
     document.getElementById('ic-separacao').checked   = cfg?.exibirSeparacao !== false;
+    document.getElementById('ic-exige-foto').checked  = !!cfg?.exigeFoto;
     toggleRefrigeradoForm(!!cfg?.refrigerado);
     document.querySelectorAll('input[name="ic-prioridade"]').forEach(r => {
       r.checked = r.value === (cfg?.prioridade || '');
@@ -2909,8 +3010,9 @@ async function salvarItemConfig() {
   const prioEl      = document.querySelector('input[name="ic-prioridade"]:checked');
   const prioridade  = prioEl ? prioEl.value : '';
 
-  const eProducao      = document.getElementById('ic-producao').checked;
+  const eProducao       = document.getElementById('ic-producao').checked;
   const exibirSeparacao = document.getElementById('ic-separacao').checked;
+  const exigeFoto       = document.getElementById('ic-exige-foto').checked;
 
   const dados = {
     nome,
@@ -2920,6 +3022,7 @@ async function salvarItemConfig() {
     prioridade,
     eProducao,
     exibirSeparacao,
+    exigeFoto,
     refrigerado,
     diasAntesEvento:  refrigerado ? (parseInt(diasStr) || 1) : 1,
   };
@@ -3387,4 +3490,3 @@ async function confirmarDeletarCategoria(id, nome) {
   }
 }
 
-<!-- Sincronizado com GitHub - Juliana -->

@@ -1612,6 +1612,45 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .badge-oculto-sep  { background: #FEF3C7; color: #92400E; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 6px; display: inline-block; }
 .badge-variantes   { background: #E0E7FF; color: #3730A3; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 6px; display: inline-block; margin-left: 4px; }
 
+/* Botão inline de editar nome (separator + coordinator) */
+.btn-editar-nome {
+  background: none; border: none; cursor: pointer;
+  color: var(--cinza-400); font-size: 14px; padding: 2px 4px;
+  vertical-align: middle; line-height: 1;
+  transition: color .15s;
+}
+.btn-editar-nome:hover { color: var(--roxo); }
+
+/* Área de foto obrigatória por item na conferência */
+.item-foto-area {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: #FFF7ED;
+  border: 1px dashed #F59E0B;
+  border-radius: var(--raio);
+  display: flex; align-items: center; gap: 10px;
+}
+.item-foto-area.ok { background: #F0FDF4; border-color: #86EFAC; border-style: solid; }
+
+.item-foto-preview { flex-shrink: 0; }
+.item-foto-preview img { width: 56px; height: 56px; object-fit: cover; border-radius: 4px; display: block; }
+.item-foto-placeholder { width: 56px; height: 56px; border-radius: 4px; background: #FEF3C7; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+
+.item-foto-label { flex: 1; min-width: 0; }
+.item-foto-label-titulo { font-size: 12px; font-weight: 700; color: #92400E; }
+.item-foto-label-titulo.ok { color: #166534; }
+.item-foto-label-desc { font-size: 11px; color: var(--cinza-500); margin-top: 1px; }
+
+.btn-foto-item {
+  background: #F59E0B; color: #fff; border: none;
+  border-radius: var(--raio); padding: 6px 12px;
+  font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  transition: background .15s;
+}
+.btn-foto-item:hover  { background: #D97706; }
+.btn-foto-item.ok     { background: #16A34A; }
+.btn-foto-item.ok:hover { background: #15803D; }
+
 /* ══ ALERTA DE FESTA HOJE ════════════════════════════════════ */
 
 @keyframes pulso-alerta {
