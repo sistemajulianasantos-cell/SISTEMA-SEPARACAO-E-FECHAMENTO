@@ -23,7 +23,9 @@
         </div>
       </div>
       <div class="header-right">
-        <button id="btn-menu" class="btn-menu hidden" onclick="abrirSidebar()">&#9776;</button>
+        <button id="btn-menu" class="btn-menu hidden" onclick="abrirSidebar()">
+          &#9776;<span id="menu-badge" class="menu-badge hidden"></span>
+        </button>
         <span id="header-usuario" class="header-usuario"></span>
         <button class="btn-sair" onclick="logout()">Sair</button>
       </div>
@@ -141,6 +143,9 @@
 
   <!-- ══════════ TELA: CEO — HOME (Agenda + Lista de Produção) ══════════ -->
   <div id="tela-ceo" class="tela hidden">
+
+    <!-- Alerta de festas hoje com itens pendentes -->
+    <div id="alerta-hoje-ceo"></div>
 
     <!-- Cards de agenda para navegar para as festas do dia -->
     <div class="producao-agenda-wrap">
@@ -314,6 +319,8 @@
 
   <!-- ══════════ TELA: COLABORADOR — LISTA ══════════ -->
   <div id="tela-colaborador" class="tela hidden">
+    <!-- Alerta de festas hoje com itens pendentes -->
+    <div id="alerta-hoje-colab"></div>
     <div class="container">
       <h2 class="titulo-tela">Festas para Separar</h2>
       <div id="colab-lista" class="lista-festas"></div>

@@ -328,6 +328,100 @@ function renderizarStatsCEO(festas) {
 
   renderizarTiraData(festas);
   renderizarSidebarAgenda(festas);
+  renderizarAlertaHoje(festas, 'alerta-hoje-ceo');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ALERTA — Festas hoje com itens pendentes de separação
+═══════════════════════════════════════════════════════════ */
+
+function renderizarAlertaHoje(festas, containerId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+
+  const hojeKey = normalizarData(new Date());
+
+  /* Festas cuja data é HOJE e que ainda estão em separação pendente */
+  const festasHoje = festas.filter(f => {
+    const fKey = normalizarData(f.data);
+    return fKey === hojeKey && (f.status === 'agendada' || f.status === 'separando');
+  });
+
+  /* Festas atrasadas (data passada, ainda não separadas) */
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const festasAtrasadas = festas.filter(f => {
+    if (normalizarData(f.data) === hojeKey) return false;
+    const fd = toDate(f.data);
+    fd.setHours(0, 0, 0, 0);
+    return fd < hoje && (f.status === 'agendada' || f.status === 'separando');
+  });
+
+  const urgentes = [...festasHoje, ...festasAtrasadas];
+  if (!urgentes.length) {
+    el.innerHTML = '';
+    atualizarMenuBadge(0);
+    return;
+  }
+
+  /* Contar itens pendentes por festa */
+  const itens = urgentes.map(f => {
+    const totalItens = (f.itens || []).length;
+    const pendentes  = (f.itens || []).filter(it => !it.separado).length;
+    const atrasada   = normalizarData(f.data) !== hojeKey;
+    return { f, totalItens, pendentes, atrasada };
+  });
+
+  const totalPendentes = itens.reduce((s, x) => s + x.pendentes, 0);
+  atualizarMenuBadge(totalPendentes);
+
+  const titulo = festasHoje.length === 1
+    ? `1 Festa hoje — itens a separar!`
+    : festasHoje.length > 1
+      ? `${festasHoje.length} Festas hoje — itens a separar!`
+      : `${festasAtrasadas.length} Festa(s) atrasada(s) pendente(s)!`;
+
+  el.innerHTML = `
+    <div class="alerta-hoje">
+      <div class="alerta-hoje-titulo">
+        <span class="alerta-icone">🚨</span>
+        <span>${titulo}</span>
+      </div>
+      <div class="alerta-hoje-lista">
+        ${itens.map(({ f, totalItens, pendentes, atrasada }) => {
+          const dataFmt = formatarData(f.data);
+          const sub     = atrasada ? `Atrasada — ${dataFmt}` : formatarData(f.data);
+          const btnLabel = pendentes === 0 ? 'Ver Festa' : 'Ir Separar';
+          const btnClass = pendentes === 0 ? 'alerta-hoje-btn concluida' : 'alerta-hoje-btn';
+          const badgeClass = pendentes === 0 ? 'alerta-hoje-badge zero' : 'alerta-hoje-badge';
+          const badgeLabel = pendentes === 0
+            ? '✓ Separado'
+            : `${pendentes} de ${totalItens} pendente${pendentes !== 1 ? 's' : ''}`;
+          return `
+            <div class="alerta-hoje-item">
+              <div class="alerta-hoje-info">
+                <div class="alerta-hoje-nome">${f.nome || f.tipo || 'Festa'}</div>
+                <div class="alerta-hoje-sub">${sub}${f.hora ? ' · ' + f.hora : ''}</div>
+              </div>
+              <span class="${badgeClass}">${badgeLabel}</span>
+              <button class="${btnClass}" onclick="abrirSeparacao('${f.id}')">${btnLabel}</button>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function atualizarMenuBadge(total) {
+  const badge = document.getElementById('menu-badge');
+  if (!badge) return;
+  if (total > 0) {
+    badge.textContent = total > 99 ? '99+' : total;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
 }
 
 /* Cards de agenda compactos no topo da tela-ceo */
@@ -494,6 +588,7 @@ function carregarColab() {
     el.innerHTML = visiveis.length
       ? visiveis.map(f => htmlCardFesta(f, 'colaborador')).join('')
       : estadoVazio('Nenhuma festa aguardando separação no momento.');
+    renderizarAlertaHoje(festas, 'alerta-hoje-colab');
   });
 }
 

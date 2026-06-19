@@ -1607,3 +1607,74 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 }
 .modal-titulo { font-size: 16px; font-weight: 700; color: var(--cinza-900); }
 .modal-acoes  { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
+/* ══ ALERTA DE FESTA HOJE ════════════════════════════════════ */
+
+@keyframes pulso-alerta {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(185,28,28,.40); }
+  50%       { box-shadow: 0 0 0 8px rgba(185,28,28,.0); }
+}
+
+.alerta-hoje {
+  background: #FEF2F2;
+  border-left: 4px solid #B91C1C;
+  padding: 14px 16px;
+  animation: pulso-alerta 1.8s ease-in-out infinite;
+}
+
+.alerta-hoje-titulo {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 800; color: #B91C1C;
+  margin-bottom: 10px;
+}
+
+.alerta-hoje-titulo .alerta-icone { font-size: 18px; }
+
+.alerta-hoje-lista { display: flex; flex-direction: column; gap: 8px; }
+
+.alerta-hoje-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: #fff; border: 1px solid #FECACA;
+  border-radius: var(--raio); padding: 10px 12px;
+}
+
+.alerta-hoje-info { flex: 1; min-width: 0; }
+
+.alerta-hoje-nome {
+  font-size: 13px; font-weight: 700; color: var(--cinza-900);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.alerta-hoje-sub { font-size: 11px; color: var(--cinza-500); margin-top: 1px; }
+
+.alerta-hoje-badge {
+  background: #B91C1C; color: #fff;
+  font-size: 12px; font-weight: 800;
+  border-radius: 20px; padding: 2px 10px;
+  white-space: nowrap; flex-shrink: 0;
+}
+
+.alerta-hoje-badge.zero { background: #15803D; }
+
+.alerta-hoje-btn {
+  background: #B91C1C; color: #fff; border: none;
+  border-radius: var(--raio); padding: 6px 14px;
+  font-size: 12px; font-weight: 700; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
+  transition: background .15s;
+}
+.alerta-hoje-btn:hover { background: #991B1B; }
+.alerta-hoje-btn.concluida { background: #15803D; }
+.alerta-hoje-btn.concluida:hover { background: #166534; }
+
+/* Badge no botão de menu (hamburguer) */
+.menu-badge {
+  position: absolute; top: 4px; right: 4px;
+  background: #B91C1C; color: #fff;
+  font-size: 10px; font-weight: 800; line-height: 1;
+  border-radius: 10px; padding: 2px 5px;
+  pointer-events: none;
+}
+
+/* btn-menu precisa de position relative para o badge funcionar */
+.btn-menu { position: relative; }
