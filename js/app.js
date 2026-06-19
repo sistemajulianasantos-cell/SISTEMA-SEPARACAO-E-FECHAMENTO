@@ -2336,7 +2336,7 @@ function standByInfo(item, festaData) {
 
 async function abrirEstoque() {
   historico.push('tela-estoque');
-  mostrarTela('tela-estoque', 'Estoque & Relatório');
+  mostrarTela('tela-estoque', 'Controle de Estoque');
   abaEstoqueAtual = 'sintetico';
   document.querySelectorAll('#estoque-tabs .tab').forEach((b, i) => {
     b.classList.toggle('ativo', i === 0);
@@ -2764,6 +2764,339 @@ async function confirmarDeletarItemConfig(id, nome) {
     console.error(e);
     toast('Erro ao remover item.', 'erro');
   }
+}
+
+/* ══════════════════════════════════════════════════
+   RELATÓRIO POR PERÍODO
+══════════════════════════════════════════════════ */
+
+let relPeriodoAno = new Date().getFullYear();
+let relPeriodoMes = new Date().getMonth();
+let abaRelAtual   = 'item';
+
+async function abrirRelatorio() {
+  navegarSidebar();
+  historico.push('tela-relatorio');
+  mostrarTela('tela-relatorio', 'Relatório por Período');
+  relPeriodoAno = new Date().getFullYear();
+  relPeriodoMes = new Date().getMonth();
+  abaRelAtual   = 'item';
+  document.querySelectorAll('#rel-tabs .tab').forEach((b, i) => b.classList.toggle('ativo', i === 0));
+  await renderizarRelatorio();
+}
+
+async function renderizarRelatorio() {
+  atualizarLabelRelPeriodo();
+  const elC = document.getElementById('rel-conteudo');
+  if (elC) elC.innerHTML = '<div class="estado-vazio"><p>Calculando...</p></div>';
+
+  try {
+    const [estoqueMap, festas] = await Promise.all([
+      buscarEstoque(),
+      todasFestasCache.length ? Promise.resolve(todasFestasCache) : buscarTodasFestas(),
+    ]);
+    estoqueCache     = estoqueMap;
+    todasFestasCache = festas;
+
+    const inicio = new Date(relPeriodoAno, relPeriodoMes, 1);
+    const fim    = new Date(relPeriodoAno, relPeriodoMes + 1, 0, 23, 59, 59);
+    const festasNoPeriodo = festas.filter(f => {
+      const d = toDate(f.data);
+      return !isNaN(d) && d >= inicio && d <= fim;
+    });
+
+    renderizarSumarioRelatorio(festasNoPeriodo);
+    if (abaRelAtual === 'item') {
+      renderizarRelPorItem(festasNoPeriodo, festas, estoqueMap);
+    } else {
+      renderizarRelPorFesta(festasNoPeriodo);
+    }
+  } catch(e) {
+    console.error(e);
+    const elC = document.getElementById('rel-conteudo');
+    if (elC) elC.innerHTML = estadoVazio('Erro ao carregar. Tente novamente.');
+  }
+}
+
+function atualizarLabelRelPeriodo() {
+  const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const el = document.getElementById('rel-mes-label');
+  if (el) el.textContent = `${MESES[relPeriodoMes]} ${relPeriodoAno}`;
+}
+
+function navMesRelatorio(delta) {
+  relPeriodoMes += delta;
+  if (relPeriodoMes < 0)  { relPeriodoMes = 11; relPeriodoAno--; }
+  if (relPeriodoMes > 11) { relPeriodoMes = 0;  relPeriodoAno++; }
+  renderizarRelatorio();
+}
+
+function trocarAbaRelatorio(aba, btn) {
+  abaRelAtual = aba;
+  document.querySelectorAll('#rel-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  renderizarRelatorio();
+}
+
+function renderizarSumarioRelatorio(festas) {
+  const el = document.getElementById('rel-sumario');
+  if (!el) return;
+
+  const nomeKeys   = new Set(festas.flatMap(f => (f.itens||[]).map(it => normalizarNomeItem(it.nome))));
+  const totSaida   = festas.reduce((s,f) => s+(f.itens||[]).reduce((ss,it) => ss+(it.qtdConferida??it.qtdSeparada??0),0),0);
+  const totRetorno = festas.reduce((s,f) => s+(f.itens||[]).reduce((ss,it) => ss+(it.qtdRetorno||0),0),0);
+  const totAvarias = festas.reduce((s,f) => s+(f.itens||[]).reduce((ss,it) => ss+(it.qtdDanificada||0),0),0);
+
+  el.innerHTML = [
+    { num: festas.length,  lab: 'Festas' },
+    { num: nomeKeys.size,  lab: 'Itens únicos' },
+    { num: totSaida,       lab: 'Total Saída' },
+    { num: totRetorno,     lab: 'Total Retorno' },
+    { num: totAvarias||'—', lab: 'Avarias', red: totAvarias > 0 },
+  ].map(p => `
+    <div class="rel-pill">
+      <span class="rel-pill-num${p.red?' deficit-text':''}">${p.num}</span>
+      <span class="rel-pill-lab">${p.lab}</span>
+    </div>
+  `).join('');
+}
+
+function renderizarRelPorItem(festasNoPeriodo, todasFestas, estoqueMap) {
+  const el = document.getElementById('rel-conteudo');
+  if (!el) return;
+
+  if (!festasNoPeriodo.length) {
+    el.innerHTML = estadoVazio('Nenhuma festa neste período. Use as setas para navegar entre meses.');
+    return;
+  }
+
+  /* Agregar por nomeKey */
+  const mapa = {};
+  festasNoPeriodo.forEach(festa => {
+    (festa.itens || []).forEach(item => {
+      const key = normalizarNomeItem(item.nome);
+      if (!mapa[key]) mapa[key] = {
+        nomeKey: key, nome: item.nome, unidade: item.unidade||'un',
+        solicitado:0, saida:0, retorno:0, avarias:0, festasDetalhe:[],
+      };
+      const saida = item.qtdConferida ?? item.qtdSeparada ?? 0;
+      mapa[key].solicitado += item.qtdNecessaria || 0;
+      mapa[key].saida      += saida;
+      mapa[key].retorno    += item.qtdRetorno    || 0;
+      mapa[key].avarias    += item.qtdDanificada || 0;
+      mapa[key].festasDetalhe.push({
+        festaNome: festa.nome, festaData: festa.data, festaStatus: festa.status,
+        solicitado: item.qtdNecessaria||0, saida,
+        retorno: item.qtdRetorno||0, avarias: item.qtdDanificada||0,
+      });
+    });
+  });
+
+  /* Solicitado pendente para cálculo "Após Pendentes" */
+  const solPend = {};
+  todasFestas.filter(f => f.status !== 'concluida').forEach(f => {
+    (f.itens||[]).forEach(it => {
+      const k = normalizarNomeItem(it.nome);
+      solPend[k] = (solPend[k]||0) + (it.qtdNecessaria||0);
+    });
+  });
+
+  const itens = Object.values(mapa).map(it => ({
+    ...it,
+    extra:        Math.max(0, it.saida - it.solicitado),
+    estoqueAtual: estoqueMap[it.nomeKey]?.qtd || 0,
+    esperado:     (estoqueMap[it.nomeKey]?.qtd || 0) - (solPend[it.nomeKey] || 0),
+    cfg:          itemConfigsCache[it.nomeKey],
+  }));
+
+  /* Agrupar por categoria */
+  const grupos = {};
+  itens.forEach(it => {
+    const g = it.cfg?.grupo || 'Sem Categoria';
+    if (!grupos[g]) grupos[g] = { ordem: 999, itens: [] };
+    const cat = categoriasCache.find(c => c.nome === g);
+    if (cat) grupos[g].ordem = cat.ordem || 999;
+    grupos[g].itens.push(it);
+  });
+
+  el.innerHTML = Object.entries(grupos)
+    .sort(([,a],[,b]) => a.ordem - b.ordem)
+    .map(([grupo, gData]) => `
+      <div class="rel-grupo-bloco">
+        <div class="rel-grupo-titulo">${grupo}</div>
+        ${gData.itens.sort((a,b) => a.nome.localeCompare(b.nome,'pt-BR')).map(it => htmlRelItemCard(it)).join('')}
+      </div>
+    `).join('');
+}
+
+function htmlRelItemCard(it) {
+  const aproveit   = it.saida > 0 ? Math.round((it.retorno / it.saida) * 100) : null;
+  const espCls     = it.esperado < 0 ? 'deficit-text' : 'ok-text';
+  const badgeRefrig = it.cfg?.refrigerado ? '<span class="badge-refrigerado">&#10052;</span>' : '';
+
+  return `
+    <div class="rel-card">
+      <div class="rel-card-header">
+        <div class="rel-card-nome">${it.nome} ${badgeRefrig}</div>
+        <div class="rel-card-badges">
+          ${it.cfg?.prioridade ? `<span class="badge-prioridade prior-${it.cfg.prioridade}">${it.cfg.prioridade}</span>` : ''}
+        </div>
+      </div>
+      <div class="rel-grid">
+        <div class="rel-cell">
+          <div class="rel-cell-valor">${it.solicitado}</div>
+          <div class="rel-cell-label">Solicitado</div>
+        </div>
+        <div class="rel-cell">
+          <div class="rel-cell-valor">${it.saida}</div>
+          <div class="rel-cell-label">Saída</div>
+        </div>
+        <div class="rel-cell">
+          <div class="rel-cell-valor ${it.extra>0?'ok-text':'rel-cinza'}">${it.extra>0?'+'+it.extra:'—'}</div>
+          <div class="rel-cell-label">Extra</div>
+        </div>
+        <div class="rel-cell">
+          <div class="rel-cell-valor">${it.retorno}</div>
+          <div class="rel-cell-label">Retorno</div>
+        </div>
+        <div class="rel-cell">
+          <div class="rel-cell-valor ${it.avarias>0?'deficit-text':'rel-cinza'}">${it.avarias>0?it.avarias:'—'}</div>
+          <div class="rel-cell-label">Avarias</div>
+        </div>
+        <div class="rel-cell">
+          <div class="rel-cell-valor">${aproveit!==null?aproveit+'%':'—'}</div>
+          <div class="rel-cell-label">Aproveit.</div>
+        </div>
+        <div class="rel-cell">
+          <div class="rel-cell-valor">${it.estoqueAtual}</div>
+          <div class="rel-cell-label">Est. Atual</div>
+        </div>
+        <div class="rel-cell">
+          <div class="rel-cell-valor ${espCls}">${it.esperado}</div>
+          <div class="rel-cell-label">Após Pend.</div>
+        </div>
+      </div>
+      <details class="rel-card-detalhe">
+        <summary>Ver festas deste período (${it.festasDetalhe.length})</summary>
+        ${htmlRelDetalhesFestas(it.festasDetalhe, it.unidade)}
+      </details>
+    </div>
+  `;
+}
+
+function htmlRelDetalhesFestas(detalhes, unidade) {
+  const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return detalhes.map(d => {
+    let dataTxt = '';
+    if (d.festaData) {
+      const dt = toDate(d.festaData);
+      if (!isNaN(dt)) dataTxt = `${String(dt.getDate()).padStart(2,'0')} ${MESES_ABR[dt.getMonth()]}`;
+    }
+    return `
+      <div class="rel-detalhe-row">
+        <div class="rel-detalhe-festa">
+          ${d.festaNome}${dataTxt?' — '+dataTxt:''}
+          <span class="badge badge-${d.festaStatus}" style="font-size:9px;margin-left:4px">${STATUS_LABELS[d.festaStatus]||d.festaStatus}</span>
+        </div>
+        <div class="rel-detalhe-nums">
+          <span>Solicitado: <strong>${d.solicitado}</strong></span>
+          <span>Saída: <strong>${d.saida}</strong></span>
+          <span>Retorno: <strong>${d.retorno}</strong></span>
+          ${d.avarias?`<span class="deficit-text">Avarias: <strong>${d.avarias}</strong></span>`:''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderizarRelPorFesta(festasNoPeriodo) {
+  const el = document.getElementById('rel-conteudo');
+  if (!el) return;
+
+  if (!festasNoPeriodo.length) {
+    el.innerHTML = estadoVazio('Nenhuma festa neste período.');
+    return;
+  }
+
+  el.innerHTML = festasNoPeriodo.map(f => {
+    const itens  = f.itens || [];
+    const totSol = itens.reduce((s,it) => s+(it.qtdNecessaria||0), 0);
+    const totSai = itens.reduce((s,it) => s+(it.qtdConferida??it.qtdSeparada??0), 0);
+    const totRet = itens.reduce((s,it) => s+(it.qtdRetorno||0), 0);
+    const totAva = itens.reduce((s,it) => s+(it.qtdDanificada||0), 0);
+    const saldo  = totSai - totRet;
+    const apr    = totSai > 0 ? Math.round((totRet/totSai)*100) : null;
+
+    return `
+      <div class="rel-festa-card">
+        <div class="rel-festa-header">
+          <div>
+            <div class="rel-festa-nome">${f.nome}</div>
+            <div class="rel-festa-meta">${formatarData(f.data)}${f.cliente?' · '+f.cliente:''}</div>
+          </div>
+          <span class="badge badge-${f.status}">${STATUS_LABELS[f.status]||f.status}</span>
+        </div>
+        <div class="rel-grid" style="grid-template-columns:repeat(4,1fr)">
+          <div class="rel-cell"><div class="rel-cell-valor">${totSol}</div><div class="rel-cell-label">Solicitado</div></div>
+          <div class="rel-cell"><div class="rel-cell-valor">${totSai}</div><div class="rel-cell-label">Saída</div></div>
+          <div class="rel-cell"><div class="rel-cell-valor">${totRet}</div><div class="rel-cell-label">Retorno</div></div>
+          <div class="rel-cell">
+            <div class="rel-cell-valor ${totAva>0?'deficit-text':'rel-cinza'}">${totAva||'—'}</div>
+            <div class="rel-cell-label">Avarias</div>
+          </div>
+        </div>
+        <div class="rel-festa-saldo">
+          Saldo líquido: <strong class="${saldo>0?'deficit-text':'ok-text'}">${saldo} itens consumidos</strong>
+          ${apr!==null?`&nbsp;·&nbsp; Aproveit.: <strong>${apr}%</strong>`:''}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function exportarCSVRelatorio() {
+  const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const inicio = new Date(relPeriodoAno, relPeriodoMes, 1);
+  const fim    = new Date(relPeriodoAno, relPeriodoMes + 1, 0, 23, 59, 59);
+  const festas = todasFestasCache.filter(f => {
+    const d = toDate(f.data); return !isNaN(d) && d >= inicio && d <= fim;
+  });
+
+  const mapa = {};
+  festas.forEach(festa => {
+    (festa.itens||[]).forEach(item => {
+      const key = normalizarNomeItem(item.nome);
+      if (!mapa[key]) mapa[key] = { nome:item.nome, unidade:item.unidade||'un', solicitado:0, saida:0, retorno:0, avarias:0 };
+      mapa[key].solicitado += item.qtdNecessaria||0;
+      mapa[key].saida      += item.qtdConferida??item.qtdSeparada??0;
+      mapa[key].retorno    += item.qtdRetorno||0;
+      mapa[key].avarias    += item.qtdDanificada||0;
+    });
+  });
+
+  const solPend = {};
+  todasFestasCache.filter(f=>f.status!=='concluida').forEach(f=>{
+    (f.itens||[]).forEach(it=>{
+      const k=normalizarNomeItem(it.nome);
+      solPend[k]=(solPend[k]||0)+(it.qtdNecessaria||0);
+    });
+  });
+
+  const linhas = [['Item','Unidade','Categoria','Solicitado','Saída','Extra','Retorno','Avarias','Aproveit%','Est.Atual','AposPend']];
+  Object.entries(mapa).forEach(([key, it]) => {
+    const cfg  = itemConfigsCache[key];
+    const est  = estoqueCache[key]?.qtd || 0;
+    const apr  = it.saida>0 ? Math.round(it.retorno/it.saida*100) : 0;
+    const ext  = Math.max(0, it.saida-it.solicitado);
+    linhas.push([it.nome, it.unidade, cfg?.grupo||'', it.solicitado, it.saida, ext, it.retorno, it.avarias, apr+'%', est, est-(solPend[key]||0)]);
+  });
+
+  const csv  = linhas.map(r => r.join(';')).join('\n');
+  const blob = new Blob(['﻿'+csv], { type:'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), { href:url, download:`relatorio-${MESES_ABR[relPeriodoMes]}-${relPeriodoAno}.csv` });
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 /* ══════════════════════════════════════════════════

@@ -60,7 +60,8 @@
         <div class="sidebar-secao-label">Administração</div>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirSidebarNovoUsuario()">&#43; Novo Usuário</button>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirUsuarios()">Gerenciar Usuários</button>
-        <button class="sidebar-btn sidebar-btn-destaque" onclick="navegarSidebar(); abrirEstoque()">Estoque &amp; Relatório</button>
+        <button class="sidebar-btn sidebar-btn-destaque" onclick="navegarSidebar(); abrirEstoque()">Controle de Estoque</button>
+        <button class="sidebar-btn" onclick="navegarSidebar(); abrirRelatorio()">Relatório por Período</button>
       </div>
 
       <!-- Cadastro -->
@@ -596,19 +597,46 @@
     </div>
   </div>
 
-  <!-- ══════════ TELA: ESTOQUE & RELATÓRIO (CEO) ══════════ -->
+  <!-- ══════════ TELA: CONTROLE DE ESTOQUE (CEO) ══════════ -->
   <div id="tela-estoque" class="tela hidden">
     <div class="container">
       <div class="secao-header">
-        <h2 class="titulo-tela">Estoque &amp; Relatório</h2>
-        <button class="btn-secundario btn-sm" onclick="recarregarEstoque()">Atualizar</button>
+        <h2 class="titulo-tela">Controle de Estoque</h2>
+        <button class="btn-secundario btn-sm" onclick="recarregarEstoque()">&#8635; Atualizar</button>
       </div>
+      <p class="desc-tela">Edite as quantidades em estoque. O sistema calcula automaticamente o saldo em relação às festas ativas.</p>
       <div class="filtros-tabs" id="estoque-tabs">
         <button class="tab ativo" data-aba="sintetico" onclick="trocarAbaEstoque('sintetico',this)">Sintético</button>
-        <button class="tab"       data-aba="analitico" onclick="trocarAbaEstoque('analitico',this)">Analítico</button>
+        <button class="tab"       data-aba="analitico" onclick="trocarAbaEstoque('analitico',this)">Por Festa</button>
       </div>
       <div id="estoque-conteudo"></div>
     </div>
+  </div>
+
+  <!-- ══════════ TELA: RELATÓRIO POR PERÍODO (CEO) ══════════ -->
+  <div id="tela-relatorio" class="tela hidden">
+
+    <!-- Hero com seletor de período e sumário -->
+    <div class="rel-hero">
+      <div class="rel-periodo-nav">
+        <button class="rel-nav-btn" onclick="navMesRelatorio(-1)">&#8249;</button>
+        <span class="rel-mes-label" id="rel-mes-label">Junho 2026</span>
+        <button class="rel-nav-btn" onclick="navMesRelatorio(1)">&#8250;</button>
+      </div>
+      <div id="rel-sumario" class="rel-sumario"></div>
+    </div>
+
+    <div class="container">
+      <div class="rel-controles">
+        <div class="filtros-tabs" id="rel-tabs">
+          <button class="tab ativo" onclick="trocarAbaRelatorio('item',this)">Por Item</button>
+          <button class="tab"       onclick="trocarAbaRelatorio('festa',this)">Por Festa</button>
+        </div>
+        <button class="btn-secundario btn-sm" onclick="exportarCSVRelatorio()">&#8595; Exportar CSV</button>
+      </div>
+      <div id="rel-conteudo"></div>
+    </div>
+
   </div>
 
   <!-- MODAL: COMPRAR ITEM -->

@@ -1500,6 +1500,101 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .analitico-sub-nome { flex: 1; font-size: 13px; color: var(--cinza-600); }
 .analitico-sub-qty  { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
 
+/* ══ RELATÓRIO POR PERÍODO ═══════════════════════════ */
+.rel-hero {
+  background: linear-gradient(135deg, var(--roxo) 0%, #1E40AF 100%);
+  padding: 20px 16px 22px; color: #fff;
+}
+.rel-periodo-nav {
+  display: flex; align-items: center; gap: 14px; justify-content: center; margin-bottom: 16px;
+}
+.rel-nav-btn {
+  background: rgba(255,255,255,.2); border: none; border-radius: 50%;
+  width: 38px; height: 38px; color: #fff; font-size: 24px; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background .15s; flex-shrink: 0;
+}
+.rel-nav-btn:hover { background: rgba(255,255,255,.35); }
+.rel-mes-label { font-size: 20px; font-weight: 800; min-width: 190px; text-align: center; }
+.rel-sumario { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 4px; }
+.rel-pill {
+  display: flex; flex-direction: column; align-items: center;
+  background: rgba(255,255,255,.15); border-radius: 8px;
+  padding: 7px 12px; min-width: 64px; gap: 2px;
+}
+.rel-pill-num { font-size: 18px; font-weight: 800; line-height: 1; }
+.rel-pill-lab { font-size: 10px; opacity: .8; text-transform: uppercase; letter-spacing: .3px; }
+
+.rel-controles {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 14px 0 10px;
+}
+.rel-controles .filtros-tabs { flex: 1; }
+
+/* Grupos de itens */
+.rel-grupo-bloco { margin-bottom: 22px; }
+.rel-grupo-titulo {
+  font-size: 11px; font-weight: 800; color: var(--cinza-500);
+  text-transform: uppercase; letter-spacing: .5px;
+  padding: 4px 0 6px; border-bottom: 2px solid var(--cinza-200); margin-bottom: 8px;
+}
+
+/* Card de item */
+.rel-card {
+  background: var(--branco); border: var(--borda); border-radius: var(--raio);
+  margin-bottom: 10px; overflow: hidden;
+}
+.rel-card-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 8px; padding: 12px 16px 8px;
+}
+.rel-card-nome   { font-size: 15px; font-weight: 700; color: var(--cinza-900); flex: 1; }
+.rel-card-badges { display: flex; gap: 4px; flex-wrap: wrap; flex-shrink: 0; }
+
+/* Grade de métricas 4x2 */
+.rel-grid {
+  display: grid; grid-template-columns: repeat(4,1fr);
+  border-top: var(--borda);
+}
+.rel-cell {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 10px 4px; border-right: var(--borda); text-align: center;
+}
+.rel-cell:nth-child(4n)   { border-right: none; }
+.rel-cell:nth-child(n+5)  { border-top: var(--borda); }
+.rel-cell-valor { font-size: 16px; font-weight: 800; color: var(--cinza-900); line-height: 1; }
+.rel-cell-label { font-size: 10px; color: var(--cinza-500); margin-top: 3px; text-transform: uppercase; letter-spacing: .2px; }
+.rel-cinza      { color: var(--cinza-300) !important; }
+
+/* Detalhe expansível por festa */
+.rel-card-detalhe { border-top: var(--borda); background: #FAFAFA; }
+.rel-card-detalhe > summary {
+  padding: 8px 16px; font-size: 12px; color: var(--cinza-500);
+  cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px;
+  user-select: none;
+}
+.rel-card-detalhe > summary::before { content: '▶'; font-size: 9px; transition: transform .15s; }
+.rel-card-detalhe[open] > summary::before { transform: rotate(90deg); }
+.rel-detalhe-row { padding: 8px 16px; border-top: var(--borda); }
+.rel-detalhe-festa { font-size: 13px; font-weight: 600; color: var(--cinza-700); margin-bottom: 3px; }
+.rel-detalhe-nums { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--cinza-600); }
+
+/* Cards de festa (modo Por Festa) */
+.rel-festa-card {
+  background: var(--branco); border: var(--borda); border-radius: var(--raio);
+  margin-bottom: 10px; overflow: hidden;
+}
+.rel-festa-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 10px; padding: 12px 16px 10px;
+}
+.rel-festa-nome { font-size: 15px; font-weight: 700; color: var(--cinza-900); }
+.rel-festa-meta { font-size: 12px; color: var(--cinza-500); margin-top: 2px; }
+.rel-festa-saldo {
+  padding: 8px 16px; font-size: 12px; background: var(--cinza-50);
+  border-top: var(--borda); color: var(--cinza-600);
+}
+
 /* ══ MODAL ════════════════════════════════════════════ */
 .modal-overlay {
   position: fixed; inset: 0;
