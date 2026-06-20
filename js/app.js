@@ -967,6 +967,12 @@ function filtrarCoord(status, btn) {
   carregarCoord(status);
 }
 
+/* Retorna a tela-lista do papel ativo (CEO → tela-ceo, coord → tela-coordenador) */
+function telaListaAtual() {
+  const roles = usuarioAtual?.roles || [usuarioAtual?.role || ''];
+  return roles.includes('ceo') ? 'tela-ceo' : 'tela-coordenador';
+}
+
 /* ── CONFERÊNCIA ── */
 async function abrirConferencia(id) {
   pararListeners();
@@ -975,7 +981,7 @@ async function abrirConferencia(id) {
   document.getElementById('preview-conf').innerHTML = '';
   document.getElementById('conf-obs').value = '';
 
-  historico = ['tela-coordenador'];
+  historico = [telaListaAtual()];
   mostrarTela('tela-conferencia', 'Conferência de Chegada');
 
   /* Carregar configs se necessário (para saber quais itens exigem foto) */
@@ -1190,7 +1196,7 @@ function abrirRetorno(id) {
   document.getElementById('preview-ret').innerHTML = '';
   document.getElementById('ret-obs').value = '';
 
-  historico = ['tela-coordenador'];
+  historico = [telaListaAtual()];
   mostrarTela('tela-retorno', 'Registro de Retorno');
 
   unsubFesta = escutarFesta(id, festa => {
@@ -1271,7 +1277,7 @@ function abrirGalpao(id) {
   document.getElementById('preview-gal').innerHTML = '';
   document.getElementById('gal-obs').value = '';
 
-  historico = ['tela-coordenador'];
+  historico = [telaListaAtual()];
   mostrarTela('tela-galpao', 'Conferência do Galpão');
 
   unsubFesta = escutarFesta(id, festa => {
@@ -2074,9 +2080,15 @@ const STATUS_LABELS = {
 
 function htmlCardFesta(f, contexto) {
   let onclick = '';
-  if (contexto === 'ceo')          onclick = `abrirDetalheFesta('${f.id}')`;
-  else if (contexto === 'colaborador') onclick = `abrirSeparacao('${f.id}')`;
-  else if (contexto === 'coordenador') {
+  if (contexto === 'ceo') {
+    /* CEO acessa conferência, retorno e galpão diretamente — igual ao coordenador */
+    if      (f.status === 'conferencia') onclick = `abrirConferencia('${f.id}')`;
+    else if (f.status === 'retorno')     onclick = `abrirRetorno('${f.id}')`;
+    else if (f.status === 'galpao')      onclick = `abrirGalpao('${f.id}')`;
+    else                                 onclick = `abrirDetalheFesta('${f.id}')`;
+  } else if (contexto === 'colaborador') {
+    onclick = `abrirSeparacao('${f.id}')`;
+  } else if (contexto === 'coordenador') {
     if      (f.status === 'conferencia') onclick = `abrirConferencia('${f.id}')`;
     else if (f.status === 'retorno')     onclick = `abrirRetorno('${f.id}')`;
     else if (f.status === 'galpao')      onclick = `abrirGalpao('${f.id}')`;
