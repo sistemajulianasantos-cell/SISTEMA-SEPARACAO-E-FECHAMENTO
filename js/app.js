@@ -833,7 +833,9 @@ function htmlItensPorGrupo(itens, tipo) {
   const gruposMap   = {};
   itens.forEach(it => {
     const cfg = buscarConfigItem(normalizarNomeItem(it.nome));
-    let nome  = (cfg && cfg[campo]) || (campo === 'grupo' ? 'Sem Categoria' : 'Sem Setor');
+    /* Prioridade: 1) config.grupo/setor  2) item.categoria (backfill/PDF)  3) fallback */
+    let nome = (cfg && cfg[campo])
+      || (campo === 'grupo' ? (it.categoria || 'Sem Categoria') : 'Sem Setor');
     if (!gruposMap[nome]) {
       gruposMap[nome] = [];
       gruposOrdem.push(nome);
@@ -2511,7 +2513,7 @@ function renderizarProducaoCEO() {
         <span class="producao-grupo-qtd">${naoClas.length} item${naoClas.length !== 1 ? 's' : ''}</span>
       </div>
       <div class="producao-grupo-itens" id="grupo-__nao_classificados">
-        <p class="producao-nao-clas-hint">Configure esses itens em <strong>Cadastro → Itens &amp; Configurações</strong> e marque "É item de Produção" para que apareçam aqui.</p>
+        <p class="producao-nao-clas-hint">Configure esses itens em <strong>Cadastro</strong> e marque "É item de Produção" para que apareçam aqui.</p>
         ${naoClas.map(item => `
           <div class="producao-item-row producao-item-nao-clas">
             <div class="producao-item-info">
@@ -2978,7 +2980,7 @@ async function confirmarCompra() {
 async function abrirCadastroItens(aba) {
   navegarSidebar();
   historico.push('tela-cadastro-itens');
-  mostrarTela('tela-cadastro-itens', 'Itens & Configurações');
+  mostrarTela('tela-cadastro-itens', 'Cadastro');
   /* Garantir que a aba correta esteja ativa */
   const abaAlvo = aba || 'config';
   const btnAlvo = document.getElementById(abaAlvo === 'localizacoes' ? 'tab-itens-loc' : 'tab-itens-config');
