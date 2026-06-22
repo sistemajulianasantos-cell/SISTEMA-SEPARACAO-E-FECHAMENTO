@@ -29,6 +29,7 @@ let _categoriaEditId   = null;
 let sidebarPinada      = false;
 
 let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [], confItens: {} };
+let modoGrupoSep = 'categoria'; /* 'nenhum' | 'categoria' | 'setor' */
 
 /* ══════════════════════════════════════════════════
    INICIALIZAÇÃO
@@ -742,13 +743,13 @@ function renderizarSeparacao(festa) {
     </div>
     <div id="sep-lista-pendente" ${tab !== 'pendente' ? 'class="hidden"' : ''}>
       ${pendentes.length
-        ? pendentes.map(it => htmlItemPendente(it, it._i)).join('')
+        ? htmlItensPorGrupo(pendentes, 'pendente')
         : '<p class="vazio-sep">Todos os itens foram separados.</p>'}
       ${tab === 'pendente' ? htmlStandBy : ''}
     </div>
     <div id="sep-lista-separado" ${tab !== 'separado' ? 'class="hidden"' : ''}>
       ${separados.length
-        ? separados.map(it => htmlItemSeparado(it, it._i)).join('')
+        ? htmlItensPorGrupo(separados, 'separado')
         : '<p class="vazio-sep">Nenhum item separado ainda.</p>'}
     </div>
   `;
@@ -756,15 +757,28 @@ function renderizarSeparacao(festa) {
   if (buscaAtual) filtrarItensSep(buscaAtual);
 }
 
+function htmlBadgeForn(item) {
+  if (!item.fornecimento) return '';
+  const cls = ['consignado','cliente','romero','proprio','terceiro'].includes(item.fornecimento)
+    ? `badge-forn-${item.fornecimento}` : 'badge-forn-default';
+  return `<span class="badge-fornecimento ${cls}">${item.fornecimento}</span>`;
+}
+
 function htmlItemPendente(item, i) {
+  const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+  const locParts = [cfg?.setor, cfg?.prateleira].filter(Boolean);
+  const locHtml  = locParts.length
+    ? `<div class="item-localizacao"><span class="item-localizacao-icone">📍</span>${locParts.join(' / ')}</div>`
+    : '';
   return `
     <div class="item-pend-card">
       <div class="item-pend-info">
         <div class="item-nome">
-          ${item.nome}
+          ${item.nome} ${htmlBadgeForn(item)}
           <button class="btn-editar-nome" title="Substituir / editar nome" onclick="editarNomeItem(${i})">✏️</button>
         </div>
         <div class="item-sub">${item.unidade || 'un'} &mdash; necessario: <strong>${item.qtdNecessaria}</strong></div>
+        ${locHtml}
       </div>
       <div class="item-pend-acoes">
         <div class="qty-ajuste-wrap">
@@ -794,6 +808,62 @@ function htmlItemSeparado(item, i) {
 function mudarTabSep(tab) {
   window._tabSep = tab;
   if (festaAtual) renderizarSeparacao(festaAtual);
+}
+
+function trocarModoGrupoSep(modo, btn) {
+  modoGrupoSep = modo;
+  document.querySelectorAll('.sep-agrup-tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  if (festaAtual) renderizarSeparacao(festaAtual);
+}
+
+/* Agrupa array de itens por campo de config (grupo ou setor); preserva ordem das categorias */
+function htmlItensPorGrupo(itens, tipo) {
+  if (modoGrupoSep === 'nenhum') {
+    return itens.map(it => tipo === 'pendente'
+      ? htmlItemPendente(it, it._i)
+      : htmlItemSeparado(it, it._i)
+    ).join('');
+  }
+
+  const campo = modoGrupoSep === 'setor' ? 'setor' : 'grupo';
+
+  /* Montar grupos preservando a ordem das categorias */
+  const gruposOrdem = [];
+  const gruposMap   = {};
+  itens.forEach(it => {
+    const cfg = buscarConfigItem(normalizarNomeItem(it.nome));
+    let nome  = (cfg && cfg[campo]) || (campo === 'grupo' ? 'Sem Categoria' : 'Sem Setor');
+    if (!gruposMap[nome]) {
+      gruposMap[nome] = [];
+      gruposOrdem.push(nome);
+    }
+    gruposMap[nome].push(it);
+  });
+
+  /* Ordenar pelo índice de categoria (se modo categoria) */
+  if (modoGrupoSep === 'categoria') {
+    gruposOrdem.sort((a, b) => {
+      const oa = categoriasCache.find(c => c.nome === a)?.ordem ?? 999;
+      const ob = categoriasCache.find(c => c.nome === b)?.ordem ?? 999;
+      return oa - ob;
+    });
+  }
+
+  return gruposOrdem.map(nome => {
+    const lista = gruposMap[nome];
+    const html  = lista.map(it => tipo === 'pendente'
+      ? htmlItemPendente(it, it._i)
+      : htmlItemSeparado(it, it._i)
+    ).join('');
+    return `
+      <div class="sep-grupo-header">
+        <span class="sep-grupo-nome">${nome}</span>
+        <span class="sep-grupo-badge">${lista.length} item${lista.length !== 1 ? 'ns' : ''}</span>
+      </div>
+      ${html}
+    `;
+  }).join('');
 }
 
 function ajustarQty(i, delta) {
@@ -1034,7 +1104,7 @@ function renderizarConferencia(festa) {
         <div class="item-topo">
           <div>
             <div class="item-nome">
-              ${item.nome}
+              ${item.nome} ${htmlBadgeForn(item)}
               <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${i})">✏️</button>
             </div>
             <div class="item-sub">Separado: <strong>${item.qtdSeparada || 0}</strong> ${item.unidade || 'un'}</div>
@@ -1451,7 +1521,7 @@ async function submitCriarFesta() {
     const inputs = row.querySelectorAll('input');
     const nomeItem = inputs[0]?.value.trim();
     if (nomeItem) {
-      itens.push({
+      const item = {
         id:            `item-${idx}`,
         nome:          nomeItem,
         qtdNecessaria: parseFloat(inputs[1]?.value) || 0,
@@ -1461,7 +1531,11 @@ async function submitCriarFesta() {
         qtdRetorno:    0,
         qtdGalpao:     0,
         qtdDanificada: 0,
-      });
+      };
+      /* Preservar categoria e fornecimento detectados no import de PDF */
+      if (row.dataset.categoria)    item.categoria    = row.dataset.categoria;
+      if (row.dataset.fornecimento) item.fornecimento = row.dataset.fornecimento;
+      itens.push(item);
     }
   });
 
@@ -1481,6 +1555,29 @@ async function submitCriarFesta() {
     });
 
     toast(`Festa "${nome}" criada com sucesso.`, 'sucesso');
+
+    /* Auto-criar configs de item para itens com categoria do PDF (silencioso, sem bloquear) */
+    itens.filter(it => it.categoria).forEach(it => {
+      const key = normalizarNomeItem(it.nome);
+      if (!itemConfigsCache[key] && !itemConfigsCache[nomeBaseKey(key)]) {
+        const dados = {
+          nome:            it.nome,
+          nomeKey:         key,
+          grupo:           it.categoria,
+          ordemSeparacao:  999,
+          prioridade:      '',
+          eProducao:       false,
+          exibirSeparacao: true,
+          exigeFoto:       false,
+          refrigerado:     false,
+          diasAntesEvento: 1,
+        };
+        salvarItemConfigDB(dados)
+          .then(() => { itemConfigsCache[key] = dados; })
+          .catch(() => {});
+      }
+    });
+
     setTimeout(() => irParaPrincipal(), 1200);
 
   } catch (e) {
@@ -1967,10 +2064,18 @@ function parsearOR(linhas) {
         .trim();
 
       if (nome.length > 1) {
+        /* Detectar sufixo de fornecimento (consignado, cliente, romero…) */
+        let fornecimento = '';
+        const nomeNorm = normalizarNomeItem(nome);
+        for (const suf of SUFIXOS_FORNECIMENTO) {
+          if (nomeNorm.endsWith('_' + suf)) { fornecimento = suf; break; }
+        }
+
         resultado.itens.push({
           id:            `item-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
           nome,
           categoria:     categoriaAtual,
+          fornecimento,
           qtdNecessaria: parseFloat(qtdStr.replace(',', '.')),
           unidade:       unidade.toUpperCase(),
           qtdSeparada:   0,
@@ -2023,10 +2128,19 @@ function preencherFormularioImport(dados) {
 
     const row = document.createElement('div');
     row.className = 'item-criar-row';
+    /* Guardar categoria e fornecimento no dataset para uso ao salvar */
+    row.dataset.categoria    = item.categoria || '';
+    row.dataset.fornecimento = item.fornecimento || '';
+
+    const badgeForn = item.fornecimento
+      ? `<span class="badge-fornecimento badge-forn-${item.fornecimento}">${item.fornecimento}</span>`
+      : '';
+
     row.innerHTML = `
       <input type="text"   value="${item.nome.replace(/"/g, '&quot;')}" placeholder="Nome do item" />
       <input type="number" value="${item.qtdNecessaria}" placeholder="0" />
       <input type="text"   value="${item.unidade}" placeholder="un" />
+      ${badgeForn}
       <button class="btn-del-item" onclick="this.closest('.item-criar-row').remove()">x</button>
     `;
     lista.appendChild(row);
@@ -2965,6 +3079,8 @@ async function abrirFormItemConfig(id, nomePreenchido) {
     document.getElementById('ic-producao').checked    = !!cfg?.eProducao;
     document.getElementById('ic-separacao').checked   = cfg?.exibirSeparacao !== false;
     document.getElementById('ic-exige-foto').checked  = !!cfg?.exigeFoto;
+    document.getElementById('ic-setor').value      = cfg?.setor      || '';
+    document.getElementById('ic-prateleira').value = cfg?.prateleira || '';
     toggleRefrigeradoForm(!!cfg?.refrigerado);
     document.querySelectorAll('input[name="ic-prioridade"]').forEach(r => {
       r.checked = r.value === (cfg?.prioridade || '');
@@ -3025,6 +3141,8 @@ async function salvarItemConfig() {
   const eProducao       = document.getElementById('ic-producao').checked;
   const exibirSeparacao = document.getElementById('ic-separacao').checked;
   const exigeFoto       = document.getElementById('ic-exige-foto').checked;
+  const setor           = document.getElementById('ic-setor').value.trim();
+  const prateleira      = document.getElementById('ic-prateleira').value.trim();
 
   const dados = {
     nome,
@@ -3035,6 +3153,8 @@ async function salvarItemConfig() {
     eProducao,
     exibirSeparacao,
     exigeFoto,
+    setor,
+    prateleira,
     refrigerado,
     diasAntesEvento:  refrigerado ? (parseInt(diasStr) || 1) : 1,
   };
@@ -3401,6 +3521,84 @@ function exportarCSVRelatorio() {
   const a    = Object.assign(document.createElement('a'), { href:url, download:`relatorio-${MESES_ABR[relPeriodoMes]}-${relPeriodoAno}.csv` });
   a.click();
   URL.revokeObjectURL(url);
+}
+
+/* ══════════════════════════════════════════════════
+   LOCALIZAÇÕES (Setor / Prateleira por item)
+══════════════════════════════════════════════════ */
+
+async function abrirCadastroLocalizacoes() {
+  historico.push('tela-cadastro-localizacoes');
+  mostrarTela('tela-cadastro-localizacoes', 'Localizações');
+  await renderizarLocalizacoes();
+}
+
+async function renderizarLocalizacoes() {
+  const el = document.getElementById('localizacoes-lista');
+  if (!el) return;
+  el.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
+  try {
+    const configs = await listarItemConfigs();
+    if (!configs.length) {
+      el.innerHTML = '<div class="estado-vazio"><p>Nenhum item configurado. Cadastre itens primeiro.</p></div>';
+      return;
+    }
+    /* Agrupar por categoria */
+    const grupos = {};
+    configs.forEach(c => {
+      const g = c.grupo || 'Sem Categoria';
+      if (!grupos[g]) grupos[g] = [];
+      grupos[g].push(c);
+    });
+
+    el.innerHTML = Object.entries(grupos)
+      .sort(([a], [b]) => {
+        const oa = categoriasCache.find(cat => cat.nome === a)?.ordem ?? 999;
+        const ob = categoriasCache.find(cat => cat.nome === b)?.ordem ?? 999;
+        return oa - ob;
+      })
+      .map(([grupo, itens]) => `
+        <div class="config-grupo-bloco">
+          <div class="config-grupo-titulo">${grupo}</div>
+          ${itens.sort((a,b) => a.nome.localeCompare(b.nome,'pt-BR')).map(c => `
+            <div class="loc-item-row">
+              <div class="loc-item-info">
+                <div class="loc-item-nome">${c.nome}</div>
+                <div class="loc-item-grupo">${c.grupo || '—'}</div>
+              </div>
+              <div class="loc-campos">
+                <input class="loc-input" id="loc-setor-${c.id}"
+                  placeholder="Setor / Ambiente" value="${c.setor || ''}" />
+                <input class="loc-input" id="loc-prat-${c.id}"
+                  placeholder="Prateleira" value="${c.prateleira || ''}" style="width:90px" />
+                <button class="btn-loc-salvar" onclick="salvarLocalizacaoItem('${c.id}','${_esc(c.nomeKey)}')">
+                  Salvar
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `).join('');
+  } catch(e) {
+    console.error(e);
+    el.innerHTML = '<div class="estado-vazio"><p>Erro ao carregar. Tente novamente.</p></div>';
+  }
+}
+
+async function salvarLocalizacaoItem(configId, nomeKey) {
+  const setor      = document.getElementById(`loc-setor-${configId}`)?.value.trim() || '';
+  const prateleira = document.getElementById(`loc-prat-${configId}`)?.value.trim() || '';
+  try {
+    await db.collection('item_config').doc(configId).update({ setor, prateleira });
+    if (itemConfigsCache[nomeKey]) {
+      itemConfigsCache[nomeKey].setor      = setor;
+      itemConfigsCache[nomeKey].prateleira = prateleira;
+    }
+    toast('Localização salva.', 'sucesso');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao salvar localização.', 'erro');
+  }
 }
 
 /* ══════════════════════════════════════════════════

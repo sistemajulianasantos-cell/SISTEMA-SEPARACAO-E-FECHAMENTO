@@ -71,6 +71,7 @@
         <div class="sidebar-secao-label">Cadastro</div>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroCategorias()">Categorias</button>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroItens()">Itens &amp; Configurações</button>
+        <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroLocalizacoes()">Localizações</button>
       </div>
 
       <!-- Stats rápidos -->
@@ -331,7 +332,14 @@
   <div id="tela-separacao" class="tela hidden">
     <div class="container">
       <div id="sep-info" class="card-festa-info"></div>
-      <h3 class="titulo-secao">Itens para Separar</h3>
+      <div class="sep-agrupamento-bar">
+        <span class="sep-agrupamento-label">Agrupar por:</span>
+        <div class="sep-agrupamento-tabs">
+          <button class="sep-agrup-tab" onclick="trocarModoGrupoSep('nenhum',this)">Nenhum</button>
+          <button class="sep-agrup-tab ativo" onclick="trocarModoGrupoSep('categoria',this)">Categoria</button>
+          <button class="sep-agrup-tab" onclick="trocarModoGrupoSep('setor',this)">Setor</button>
+        </div>
+      </div>
       <div id="sep-itens"></div>
 
       <div class="form-group mt-lg">
@@ -586,6 +594,17 @@
           <input type="number" id="ic-dias-antes" value="0" min="0" max="30" style="width:80px" />
           <p class="form-hint">0 = somente no dia do evento &nbsp;|&nbsp; 1 = a partir do dia anterior</p>
         </div>
+        <div class="form-secao-titulo">Localização no Estoque</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Setor / Ambiente</label>
+            <input type="text" id="ic-setor" placeholder="Ex: Câmara Fria, Galpão A" />
+          </div>
+          <div class="form-group" style="flex:0 0 120px">
+            <label>Prateleira / Posição</label>
+            <input type="text" id="ic-prateleira" placeholder="Ex: B2" style="width:100%" />
+          </div>
+        </div>
       </div>
       <div class="rodape-form">
         <button class="btn-secundario" onclick="goBack()">Cancelar</button>
@@ -637,6 +656,18 @@
         <button class="btn-secundario" onclick="goBack()">Cancelar</button>
         <button class="btn-primario"   onclick="salvarCategoria()">Salvar</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: LOCALIZAÇÕES (CEO) ══════════ -->
+  <div id="tela-cadastro-localizacoes" class="tela hidden">
+    <div class="container">
+      <div class="secao-header">
+        <h2 class="titulo-tela">Localizações</h2>
+        <button class="btn-secundario btn-sm" onclick="renderizarLocalizacoes()">&#8635; Atualizar</button>
+      </div>
+      <p class="desc-tela">Cadastre onde cada produto fica armazenado (setor, prateleira). Essas informações aparecem para o separador na hora de separar.</p>
+      <div id="localizacoes-lista"></div>
     </div>
   </div>
 
