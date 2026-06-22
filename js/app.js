@@ -1623,11 +1623,11 @@ function renderizarDetalhe(festa) {
     : '';
 
   const excluirHTML = `
-    <div style="margin-top:28px;padding-top:16px;border-top:var(--borda)">
+    <div style="padding-top:12px;border-top:var(--borda);margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <button class="btn-perigo" onclick="confirmarExcluirFesta('${festa.id}','${_esc(festa.nome)}','${festa.status}')">
-        &#128465; Excluir Festa
+        🗑 Excluir Festa
       </button>
-      <p style="font-size:11px;color:var(--cinza-400);margin-top:6px">Esta ação é irreversível. Use apenas para re-importar.</p>
+      <span style="font-size:11px;color:var(--cinza-400)">Irreversível — use apenas para re-importar.</span>
     </div>
   `;
 
@@ -1664,6 +1664,7 @@ function renderizarDetalhe(festa) {
       ${sepTimingHTML}
     </div>
 
+    ${excluirHTML}
     ${avancarHTML}
     ${editarHTML}
 
@@ -1720,7 +1721,6 @@ function renderizarDetalhe(festa) {
         <div class="grade-fotos">${festa.fotosRetorno.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
       </div>` : ''}
 
-    ${excluirHTML}
   `;
 }
 
