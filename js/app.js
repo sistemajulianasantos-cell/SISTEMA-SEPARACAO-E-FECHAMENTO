@@ -2948,11 +2948,35 @@ async function confirmarCompra() {
    CADASTRO DE ITENS (grupos, prioridade, refrigerado)
 ══════════════════════════════════════════════════ */
 
-async function abrirCadastroItens() {
+async function abrirCadastroItens(aba) {
   navegarSidebar();
   historico.push('tela-cadastro-itens');
-  mostrarTela('tela-cadastro-itens', 'Cadastro de Itens');
-  await renderizarCadastroItens();
+  mostrarTela('tela-cadastro-itens', 'Itens & Configurações');
+  /* Garantir que a aba correta esteja ativa */
+  const abaAlvo = aba || 'config';
+  const btnAlvo = document.getElementById(abaAlvo === 'localizacoes' ? 'tab-itens-loc' : 'tab-itens-config');
+  trocarAbaItens(abaAlvo, btnAlvo);
+}
+
+function trocarAbaItens(aba, btn) {
+  document.querySelectorAll('#tela-cadastro-itens .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+
+  const elConf = document.getElementById('cadastro-itens-lista');
+  const elLoc  = document.getElementById('cadastro-itens-loc');
+  const btnNovo = document.getElementById('btn-novo-item-config');
+
+  if (aba === 'localizacoes') {
+    elConf?.classList.add('hidden');
+    elLoc?.classList.remove('hidden');
+    if (btnNovo) btnNovo.style.display = 'none';
+    renderizarLocalizacoes();
+  } else {
+    elConf?.classList.remove('hidden');
+    elLoc?.classList.add('hidden');
+    if (btnNovo) btnNovo.style.display = '';
+    renderizarCadastroItens();
+  }
 }
 
 async function renderizarCadastroItens() {
@@ -3528,13 +3552,12 @@ function exportarCSVRelatorio() {
 ══════════════════════════════════════════════════ */
 
 async function abrirCadastroLocalizacoes() {
-  historico.push('tela-cadastro-localizacoes');
-  mostrarTela('tela-cadastro-localizacoes', 'Localizações');
-  await renderizarLocalizacoes();
+  /* Abre Itens & Configurações já na aba de Localizações */
+  await abrirCadastroItens('localizacoes');
 }
 
 async function renderizarLocalizacoes() {
-  const el = document.getElementById('localizacoes-lista');
+  const el = document.getElementById('cadastro-itens-loc');
   if (!el) return;
   el.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
   try {

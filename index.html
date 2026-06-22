@@ -71,7 +71,6 @@
         <div class="sidebar-secao-label">Cadastro</div>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroCategorias()">Categorias</button>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroItens()">Itens &amp; Configurações</button>
-        <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroLocalizacoes()">Localizações</button>
       </div>
 
       <!-- Stats rápidos -->
@@ -504,11 +503,15 @@
   <div id="tela-cadastro-itens" class="tela hidden">
     <div class="container">
       <div class="secao-header">
-        <h2 class="titulo-tela">Cadastro de Itens</h2>
-        <button class="btn-primario" onclick="abrirFormItemConfig()">&#43; Novo Item</button>
+        <h2 class="titulo-tela">Itens &amp; Configurações</h2>
+        <button class="btn-primario" id="btn-novo-item-config" onclick="abrirFormItemConfig()">&#43; Novo Item</button>
       </div>
-      <p class="desc-tela">Configure grupos, ordem de separação, prioridade e stand-by para os itens.</p>
+      <div class="filtros-tabs" style="margin-bottom:12px">
+        <button class="tab ativo" id="tab-itens-config" onclick="trocarAbaItens('config',this)">Configurações</button>
+        <button class="tab"       id="tab-itens-loc"    onclick="trocarAbaItens('localizacoes',this)">Localizações</button>
+      </div>
       <div id="cadastro-itens-lista"></div>
+      <div id="cadastro-itens-loc" class="hidden"></div>
     </div>
   </div>
 
@@ -656,18 +659,6 @@
         <button class="btn-secundario" onclick="goBack()">Cancelar</button>
         <button class="btn-primario"   onclick="salvarCategoria()">Salvar</button>
       </div>
-    </div>
-  </div>
-
-  <!-- ══════════ TELA: LOCALIZAÇÕES (CEO) ══════════ -->
-  <div id="tela-cadastro-localizacoes" class="tela hidden">
-    <div class="container">
-      <div class="secao-header">
-        <h2 class="titulo-tela">Localizações</h2>
-        <button class="btn-secundario btn-sm" onclick="renderizarLocalizacoes()">&#8635; Atualizar</button>
-      </div>
-      <p class="desc-tela">Cadastre onde cada produto fica armazenado (setor, prateleira). Essas informações aparecem para o separador na hora de separar.</p>
-      <div id="localizacoes-lista"></div>
     </div>
   </div>
 
