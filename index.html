@@ -506,9 +506,14 @@
         <h2 class="titulo-tela">Itens &amp; Configurações</h2>
         <button class="btn-primario" id="btn-novo-item-config" onclick="abrirFormItemConfig()">&#43; Novo Item</button>
       </div>
-      <div class="filtros-tabs" style="margin-bottom:12px">
-        <button class="tab ativo" id="tab-itens-config" onclick="trocarAbaItens('config',this)">Configurações</button>
-        <button class="tab"       id="tab-itens-loc"    onclick="trocarAbaItens('localizacoes',this)">Localizações</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <div class="filtros-tabs" style="margin-bottom:0">
+          <button class="tab ativo" id="tab-itens-config" onclick="trocarAbaItens('config',this)">Configurações</button>
+          <button class="tab"       id="tab-itens-loc"    onclick="trocarAbaItens('localizacoes',this)">Localizações</button>
+        </div>
+        <button class="btn-secundario btn-sm" onclick="backfillCategoriasNasFestas()" title="Aplicar categorias cadastradas nos itens das festas já importadas">
+          &#9881; Aplicar Classificações nas Festas
+        </button>
       </div>
       <div id="cadastro-itens-lista"></div>
       <div id="cadastro-itens-loc" class="hidden"></div>

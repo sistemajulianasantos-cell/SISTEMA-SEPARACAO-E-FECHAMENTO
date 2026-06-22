@@ -1620,6 +1620,15 @@ function renderizarDetalhe(festa) {
        </div>`
     : '';
 
+  const excluirHTML = `
+    <div style="margin-top:28px;padding-top:16px;border-top:var(--borda)">
+      <button class="btn-perigo" onclick="confirmarExcluirFesta('${festa.id}','${_esc(festa.nome)}','${festa.status}')">
+        &#128465; Excluir Festa
+      </button>
+      <p style="font-size:11px;color:var(--cinza-400);margin-top:6px">Esta ação é irreversível. Use apenas para re-importar.</p>
+    </div>
+  `;
+
   const sepTimingHTML = festa.separacaoInicio ? (() => {
     const concluida = !!festa.separacaoFim;
     const dur = formatarDuracao(festa.separacaoInicio, festa.separacaoFim || null);
@@ -1708,7 +1717,25 @@ function renderizarDetalhe(festa) {
       <div class="detalhe-card"><h3>Fotos do Retorno</h3>
         <div class="grade-fotos">${festa.fotosRetorno.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
       </div>` : ''}
+
+    ${excluirHTML}
   `;
+}
+
+async function confirmarExcluirFesta(id, nome, status) {
+  const emAndamento = !['agendada','concluida'].includes(status);
+  const aviso = emAndamento
+    ? `\n\n⚠ ATENÇÃO: Esta festa está "${STATUS_LABELS[status] || status}". Excluir perderá todo o histórico de separação.`
+    : '';
+  if (!confirm(`Excluir a festa "${nome}"?${aviso}\n\nEsta ação não pode ser desfeita.`)) return;
+  try {
+    await deletarFesta(id);
+    toast('Festa excluída.', 'sucesso');
+    setTimeout(() => irParaPrincipal(), 800);
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao excluir festa.', 'erro');
+  }
 }
 
 /* CEO usa a tela de separacao como se fosse colaborador */
@@ -3550,6 +3577,73 @@ function exportarCSVRelatorio() {
 /* ══════════════════════════════════════════════════
    LOCALIZAÇÕES (Setor / Prateleira por item)
 ══════════════════════════════════════════════════ */
+
+/* Aplica categorias e fornecimento do item_config nos itens das festas já existentes */
+async function backfillCategoriasNasFestas() {
+  if (!confirm(
+    'Aplicar classificações nas festas já importadas?\n\n' +
+    'O sistema vai ler os cadastros de itens e preencher a categoria nos itens de todas as festas que ainda não têm categoria. ' +
+    'Itens que já têm categoria não serão alterados.\n\nDeseja continuar?'
+  )) return;
+
+  toast('Carregando festas e configurações...', 'info');
+  try {
+    const [configs, festas] = await Promise.all([
+      listarItemConfigs(),
+      buscarTodasFestas(),
+    ]);
+
+    const cfgMap = {};
+    configs.forEach(c => { cfgMap[c.nomeKey] = c; });
+
+    let festasAtualizadas = 0;
+    let itensAtualizados  = 0;
+
+    for (const festa of festas) {
+      const itens = festa.itens || [];
+      let modificado = false;
+
+      const novosItens = itens.map(item => {
+        const key = normalizarNomeItem(item.nome);
+        const cfg = cfgMap[key] || cfgMap[nomeBaseKey(key)];
+
+        const novoItem = { ...item };
+        /* Aplicar categoria se o item não tiver */
+        if (!novoItem.categoria && cfg?.grupo) {
+          novoItem.categoria = cfg.grupo;
+          modificado = true;
+          itensAtualizados++;
+        }
+        /* Detectar fornecimento se não tiver */
+        if (!novoItem.fornecimento) {
+          for (const suf of SUFIXOS_FORNECIMENTO) {
+            if (key.endsWith('_' + suf)) {
+              novoItem.fornecimento = suf;
+              modificado = true;
+              break;
+            }
+          }
+        }
+        return novoItem;
+      });
+
+      if (modificado) {
+        await atualizarFesta(festa.id, { itens: novosItens });
+        festasAtualizadas++;
+      }
+    }
+
+    toast(
+      itensAtualizados
+        ? `Concluído: ${itensAtualizados} item(ns) em ${festasAtualizadas} festa(s) atualizados.`
+        : 'Nenhum item precisou de atualização.',
+      'sucesso'
+    );
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao aplicar classificações. Tente novamente.', 'erro');
+  }
+}
 
 async function abrirCadastroLocalizacoes() {
   /* Abre Itens & Configurações já na aba de Localizações */

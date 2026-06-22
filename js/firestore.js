@@ -121,6 +121,10 @@ async function atualizarFesta(id, dados) {
   return db.collection('festas').doc(id).update(dados);
 }
 
+async function deletarFesta(id) {
+  return db.collection('festas').doc(id).delete();
+}
+
 /* Colaborador inicia a separação: agendada → separando */
 async function iniciarSeparacao(id, colaborador) {
   return db.collection('festas').doc(id).update({
