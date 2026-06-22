@@ -1735,8 +1735,11 @@ async function confirmarExcluirFesta(id, nome, status) {
     toast('Festa excluída.', 'sucesso');
     setTimeout(() => irParaPrincipal(), 800);
   } catch(e) {
-    console.error(e);
-    toast('Erro ao excluir festa.', 'erro');
+    console.error('Excluir festa:', e);
+    const msg = e?.code === 'permission-denied'
+      ? 'Sem permissão no banco de dados. Verifique as regras do Firestore.'
+      : (e?.message || 'Erro desconhecido');
+    toast('Erro ao excluir: ' + msg, 'erro');
   }
 }
 
@@ -2276,12 +2279,22 @@ function htmlCardFesta(f, contexto) {
 }
 
 function htmlInfoFesta(f) {
+  const ehCEO = !!(usuarioAtual?.roles?.includes('ceo') || usuarioAtual?.role === 'ceo');
+  const btnExcluir = ehCEO
+    ? `<div style="margin-top:10px">
+        <button class="btn-perigo" style="font-size:12px;padding:5px 12px"
+          onclick="confirmarExcluirFesta('${f.id}','${_esc(f.nome)}','${f.status}')">
+          🗑 Excluir Festa
+        </button>
+       </div>`
+    : '';
   return `
     <h2>${f.nome}</h2>
     <div class="info-linha">${f.cliente}${f.data ? ' — ' + formatarData(f.data) : ''}</div>
     ${f.hora  ? `<div class="info-linha">${f.hora}</div>` : ''}
     ${f.local ? `<div class="info-linha">${f.local}</div>` : ''}
     ${f.obs   ? `<div class="info-linha" style="opacity:.75;font-size:12px;margin-top:6px">${f.obs}</div>` : ''}
+    ${btnExcluir}
   `;
 }
 
