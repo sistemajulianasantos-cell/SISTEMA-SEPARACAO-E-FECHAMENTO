@@ -786,7 +786,7 @@ function htmlItemPendente(item, i) {
           <button class="btn-editar-nome" title="Substituir / editar nome" onclick="editarNomeItem(${i})">✏️</button>
         </div>
         ${badgeForn || ''}
-        <div class="item-sub">${item.unidade || 'un'} &mdash; necessario: <strong>${item.qtdNecessaria}</strong></div>
+        <div class="item-sub">${item.unidade || 'un'} &mdash; total: <strong>${item.qtdNecessaria}</strong></div>
         ${locHtml}
       </div>
       <div class="item-pend-acoes">
@@ -796,7 +796,11 @@ function htmlItemPendente(item, i) {
             value="${item.qtdNecessaria}" min="0" />
           <button class="btn-qty" onclick="ajustarQty(${i},1)">&#43;</button>
         </div>
-        <button class="btn-separar" onclick="separarItem(${i})">Separar</button>
+        <button class="btn-separar"
+          onpointerdown="iniciarHoldSepara(this,${i})"
+          onpointerup="cancelarHoldSepara(this)"
+          onpointercancel="cancelarHoldSepara(this)"
+          onpointerleave="cancelarHoldSepara(this)">Separar</button>
       </div>
     </div>
   `;
@@ -804,12 +808,16 @@ function htmlItemPendente(item, i) {
 
 function htmlItemSeparado(item, i) {
   const badgeForn = htmlBadgeForn(item);
+  const parcial   = (item.qtdSeparada ?? 0) < (item.qtdNecessaria ?? 0);
   return `
-    <div class="item-sep-card">
+    <div class="item-sep-card${parcial ? ' item-sep-parcial' : ''}">
       <div class="item-pend-info">
         <div class="item-nome">${nomeBasDisplay(item.nome)}</div>
         ${badgeForn || ''}
-        <div class="item-sub">Separado: <strong>${item.qtdSeparada}</strong> ${item.unidade || 'un'}</div>
+        <div class="item-sub">
+          Separado: <strong>${item.qtdSeparada}</strong> de <strong>${item.qtdNecessaria}</strong> ${item.unidade || 'un'}
+          ${parcial ? '<span class="badge-parcial">⚠ Parcial</span>' : ''}
+        </div>
       </div>
       <button class="btn-desfazer" onclick="desfazerItem(${i})">Desfazer</button>
     </div>
@@ -885,6 +893,23 @@ function ajustarQty(i, delta) {
   input.value = Math.max(0, (parseFloat(input.value) || 0) + delta);
 }
 
+/* ── Hold-to-confirm no botão Separar ── */
+let _holdTimer = null;
+
+function iniciarHoldSepara(btn, i) {
+  btn.classList.add('hold-progress');
+  _holdTimer = setTimeout(() => {
+    _holdTimer = null;
+    btn.classList.remove('hold-progress');
+    separarItem(i);
+  }, 1000);
+}
+
+function cancelarHoldSepara(btn) {
+  if (_holdTimer) { clearTimeout(_holdTimer); _holdTimer = null; }
+  btn.classList.remove('hold-progress');
+}
+
 async function separarItem(i) {
   if (!festaAtual) return;
   const itens = (festaAtual.itens || []).map(it => ({ ...it }));
@@ -928,6 +953,17 @@ async function concluirSeparacao() {
     window._tabSep = 'pendente';
     renderizarSeparacao(festaAtual);
     return;
+  }
+
+  /* Aviso de separações parciais */
+  const parciais = itens.filter(it =>
+    it.separado && (it.qtdSeparada ?? 0) < (it.qtdNecessaria ?? 0)
+  );
+  if (parciais.length > 0) {
+    const lista = parciais.map(it =>
+      `• ${nomeBasDisplay(it.nome)}: ${it.qtdSeparada}/${it.qtdNecessaria} ${it.unidade || 'un'}`
+    ).join('\n');
+    if (!confirm(`${parciais.length} item(ns) com separação parcial:\n\n${lista}\n\nDeseja finalizar mesmo assim?`)) return;
   }
 
   const btn = document.querySelector('#sep-itens .btn-confirmar');

@@ -632,6 +632,7 @@ body {
 }
 .btn-qty:active { background: var(--cinza-200); }
 .btn-separar {
+  position: relative; overflow: hidden;
   background: var(--verde);
   color: var(--branco);
   border: none;
@@ -644,6 +645,24 @@ body {
   letter-spacing: .3px;
 }
 .btn-separar:active { opacity: .82; }
+.btn-separar::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: rgba(255,255,255,.3);
+  width: 0%; transition: none;
+}
+.btn-separar.hold-progress::after {
+  width: 100%;
+  transition: width 1s linear;
+}
+
+/* Separação parcial */
+.item-sep-parcial { background: #FFFBEB; border-color: #FDE68A; }
+.badge-parcial {
+  display: inline-block; font-size: 11px; font-weight: 700;
+  background: #FEF3C7; color: #92400E;
+  border-radius: 4px; padding: 1px 6px; margin-left: 6px;
+}
 
 .item-sep-card {
   background: #F0FDF4;
