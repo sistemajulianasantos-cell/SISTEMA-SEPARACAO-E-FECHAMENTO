@@ -763,8 +763,8 @@ function htmlBadgeForn(item) {
   const forn = item.fornecimento || extrairFornDoNome(item.nome);
   if (!forn) return '';
   const cls = ['consignado','cliente','romero','reserva','proprio','terceiro'].includes(forn)
-    ? `badge-forn-${forn}` : 'badge-forn-default';
-  return `<span class="badge-fornecimento ${cls}">${forn}</span>`;
+    ? `forn-card-${forn}` : 'forn-card-default';
+  return `<div class="forn-card ${cls}"><span class="forn-card-label">Fornecimento</span><span class="forn-card-valor">${forn}</span></div>`;
 }
 
 function htmlItemPendente(item, i) {
@@ -781,7 +781,7 @@ function htmlItemPendente(item, i) {
           ${nomeBasDisplay(item.nome)}
           <button class="btn-editar-nome" title="Substituir / editar nome" onclick="editarNomeItem(${i})">✏️</button>
         </div>
-        ${badgeForn ? `<div class="item-forn-tag">${badgeForn}</div>` : ''}
+        ${badgeForn || ''}
         <div class="item-sub">${item.unidade || 'un'} &mdash; necessario: <strong>${item.qtdNecessaria}</strong></div>
         ${locHtml}
       </div>
@@ -804,7 +804,7 @@ function htmlItemSeparado(item, i) {
     <div class="item-sep-card">
       <div class="item-pend-info">
         <div class="item-nome">${nomeBasDisplay(item.nome)}</div>
-        ${badgeForn ? `<div class="item-forn-tag">${badgeForn}</div>` : ''}
+        ${badgeForn || ''}
         <div class="item-sub">Separado: <strong>${item.qtdSeparada}</strong> ${item.unidade || 'un'}</div>
       </div>
       <button class="btn-desfazer" onclick="desfazerItem(${i})">Desfazer</button>
@@ -1116,7 +1116,7 @@ function renderizarConferencia(festa) {
               ${nomeBasDisplay(item.nome)}
               <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${i})">✏️</button>
             </div>
-            ${htmlBadgeForn(item) ? `<div class="item-forn-tag">${htmlBadgeForn(item)}</div>` : ''}
+            ${htmlBadgeForn(item) || ''}
             <div class="item-sub">Separado: <strong>${item.qtdSeparada || 0}</strong> ${item.unidade || 'un'}</div>
           </div>
         </div>
@@ -1295,7 +1295,7 @@ function renderizarRetorno(festa) {
       <div class="item-topo">
         <div>
           <div class="item-nome">${nomeBasDisplay(item.nome)}</div>
-          ${badgeForn ? `<div class="item-forn-tag">${badgeForn}</div>` : ''}
+          ${badgeForn || ''}
           <div class="item-sub">Enviado: <strong>${item.qtdConferida || item.qtdSeparada || 0}</strong> ${item.unidade || 'un'}</div>
         </div>
       </div>
@@ -1380,7 +1380,7 @@ function renderizarGalpao(festa) {
       <div class="item-topo">
         <div>
           <div class="item-nome">${nomeBasDisplay(item.nome)}</div>
-          ${badgeForn ? `<div class="item-forn-tag">${badgeForn}</div>` : ''}
+          ${badgeForn || ''}
           <div class="item-sub">
             Retornou: <strong>${item.qtdRetorno || 0}</strong>
             ${item.qtdDanificada ? ` — Danificado: <strong>${item.qtdDanificada}</strong>` : ''}

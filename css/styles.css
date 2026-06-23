@@ -1655,19 +1655,23 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .sep-grupo-nome  { font-size: 13px; font-weight: 800; color: var(--cinza-700); text-transform: uppercase; letter-spacing: .3px; }
 .sep-grupo-badge { font-size: 11px; font-weight: 600; color: var(--cinza-500); }
 
-/* Badge de fornecimento (consignado / cliente / romero) */
-.badge-fornecimento {
-  display: inline-block; font-size: 10px; font-weight: 700;
-  border-radius: 4px; padding: 1px 6px; margin-left: 4px;
-  vertical-align: middle; text-transform: capitalize;
+/* Card de fornecimento (consignado / cliente / romero / reserva) */
+.forn-card {
+  display: inline-flex; align-items: center; gap: 6px;
+  border-radius: 6px; padding: 4px 10px; margin-top: 6px;
+  border-left: 3px solid currentColor; font-size: 12px;
 }
-.badge-forn-consignado { background: #EDE9FE; color: #5B21B6; }
-.badge-forn-cliente    { background: #DBEAFE; color: #1E40AF; }
-.badge-forn-romero     { background: #D1FAE5; color: #065F46; }
-.badge-forn-proprio    { background: #FEF3C7; color: #92400E; }
-.badge-forn-terceiro   { background: #FCE7F3; color: #9D174D; }
-.badge-forn-reserva    { background: #FFF7ED; color: #C2410C; }
-.badge-forn-default    { background: var(--cinza-100); color: var(--cinza-600); }
+.forn-card-label {
+  font-size: 10px; font-weight: 600; opacity: .65; text-transform: uppercase; letter-spacing: .5px;
+}
+.forn-card-valor { font-weight: 700; text-transform: capitalize; }
+.forn-card-consignado { background: #EDE9FE; color: #5B21B6; }
+.forn-card-cliente    { background: #DBEAFE; color: #1E40AF; }
+.forn-card-romero     { background: #D1FAE5; color: #065F46; }
+.forn-card-proprio    { background: #FEF3C7; color: #92400E; }
+.forn-card-terceiro   { background: #FCE7F3; color: #9D174D; }
+.forn-card-reserva    { background: #FFF7ED; color: #C2410C; }
+.forn-card-default    { background: var(--cinza-100); color: var(--cinza-600); }
 
 /* Localização do item na separação */
 .item-localizacao {
