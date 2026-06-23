@@ -3154,46 +3154,37 @@ async function renderizarCadastroItens() {
 }
 
 function htmlConfigItemRow(c) {
-  const badgeProd = c.eProducao ? '<span class="badge-producao">Produção</span>' : '';
-  const catOculta = (() => {
+  const badgeProd   = c.eProducao ? '<span class="badge-producao">Produção</span>' : '';
+  const catOculta   = (() => {
     if (!c.grupo) return false;
     const cat = categoriasCache.find(x => x.nome === c.grupo);
     return cat && cat.exibirSeparacao === false;
   })();
-  const badgeSep     = (c.exibirSeparacao === false || catOculta) ? '<span class="badge-oculto-sep">Oculto sep.</span>' : '';
-  const selecionado  = _itensSelecionados.has(c.id);
-  const metaHtml     = `
+  const badgeSep    = (c.exibirSeparacao === false || catOculta) ? '<span class="badge-oculto-sep">Oculto sep.</span>' : '';
+  const nomeExibido = nomeBasDisplay(c.nome);
+  const metaHtml    = `
     ${c.ordemSeparacao && c.ordemSeparacao !== 999 ? `<span class="badge-ordem">#${c.ordemSeparacao}</span>` : ''}
     ${c.prioridade ? `<span class="badge-prioridade prior-${c.prioridade}">${c.prioridade}</span>` : ''}
     ${c.refrigerado ? '<span class="badge-refrigerado">&#10052; Refrig.</span>' : ''}
   `;
 
-  const nomeExibido = nomeBasDisplay(c.nome);
-
-  if (_modoSelecaoCadastro) {
-    return `
-      <div class="config-item-row config-item-selecao${selecionado ? ' selecionado' : ''}" onclick="toggleSelecaoItemCadastro('${_esc(c.id)}')">
-        <input type="checkbox" class="chk-item-cadastro" ${selecionado ? 'checked' : ''} onclick="event.stopPropagation();toggleSelecaoItemCadastro('${_esc(c.id)}')">
-        <div class="config-item-info">
-          <div class="config-item-nome">${nomeExibido} ${badgeProd} ${badgeSep}</div>
-          <div class="config-item-meta">${metaHtml}</div>
-        </div>
-      </div>
-    `;
-  }
-
   return `
-    <div class="config-item-row">
+    <div class="config-item-row" data-item-id="${_esc(c.id)}" onclick="onClickItemCadastro('${_esc(c.id)}')">
+      <input type="checkbox" class="chk-item-cadastro" onclick="event.stopPropagation();toggleSelecaoItemCadastro('${_esc(c.id)}')">
       <div class="config-item-info">
         <div class="config-item-nome">${nomeExibido} ${badgeProd} ${badgeSep}</div>
         <div class="config-item-meta">${metaHtml}</div>
       </div>
       <div class="config-item-acoes">
-        <button class="btn-icone" title="Editar" onclick="abrirFormItemConfig('${c.id}')">&#9998;</button>
-        <button class="btn-icone btn-icone-del" title="Remover" onclick="confirmarDeletarItemConfig('${_esc(c.id)}','${_esc(c.nome)}')">&#128465;</button>
+        <button class="btn-icone" title="Editar" onclick="event.stopPropagation();abrirFormItemConfig('${c.id}')">&#9998;</button>
+        <button class="btn-icone btn-icone-del" title="Remover" onclick="event.stopPropagation();confirmarDeletarItemConfig('${_esc(c.id)}','${_esc(c.nome)}')">&#128465;</button>
       </div>
     </div>
   `;
+}
+
+function onClickItemCadastro(id) {
+  if (_modoSelecaoCadastro) toggleSelecaoItemCadastro(id);
 }
 
 async function abrirFormItemConfig(id, nomePreenchido) {
@@ -3324,21 +3315,27 @@ async function confirmarDeletarItemConfig(id, nome) {
 function toggleModoSelecaoCadastro() {
   _modoSelecaoCadastro = !_modoSelecaoCadastro;
   _itensSelecionados.clear();
-  const barra  = document.getElementById('barra-selecao-cadastro');
-  const btnSel = document.getElementById('btn-selecionar-itens');
+
+  const lista   = document.getElementById('cadastro-itens-lista');
+  const barra   = document.getElementById('barra-selecao-cadastro');
+  const btnSel  = document.getElementById('btn-selecionar-itens');
   const btnNovo = document.getElementById('btn-novo-item-config');
+
   if (_modoSelecaoCadastro) {
-    barra.classList.remove('hidden');
-    barra.style.display = 'flex';
-    btnSel.textContent  = '✕ Cancelar';
+    lista?.classList.add('modo-selecao');
+    barra?.classList.remove('hidden');
+    if (btnSel)  btnSel.textContent = '✕ Cancelar';
     if (btnNovo) btnNovo.classList.add('hidden');
   } else {
-    barra.classList.add('hidden');
-    barra.style.display = '';
-    btnSel.textContent  = '☐ Selecionar';
+    lista?.classList.remove('modo-selecao');
+    barra?.classList.add('hidden');
+    if (btnSel)  btnSel.textContent = '☐ Selecionar';
     if (btnNovo) btnNovo.classList.remove('hidden');
+    /* Limpa checkboxes visualmente */
+    lista?.querySelectorAll('.chk-item-cadastro').forEach(c => c.checked = false);
+    lista?.querySelectorAll('.config-item-row').forEach(r => r.classList.remove('selecionado'));
   }
-  renderizarCadastroItens();
+  _atualizarBarraSelecao();
 }
 
 function toggleSelecaoItemCadastro(id) {
@@ -3347,44 +3344,41 @@ function toggleSelecaoItemCadastro(id) {
   } else {
     _itensSelecionados.add(id);
   }
-  _atualizarBarraSelecao();
-  /* Atualiza só a linha, sem re-renderizar tudo */
-  const row = document.querySelector(`.config-item-selecao[onclick*="${id}"]`);
+  const sel = _itensSelecionados.has(id);
+  const row = document.querySelector(`.config-item-row[data-item-id="${id}"]`);
   if (row) {
-    const chk = row.querySelector('.chk-item-cadastro');
-    const sel = _itensSelecionados.has(id);
     row.classList.toggle('selecionado', sel);
+    const chk = row.querySelector('.chk-item-cadastro');
     if (chk) chk.checked = sel;
   }
+  _atualizarBarraSelecao();
 }
 
 function toggleSelecionarTudoCadastro(marcar) {
-  document.querySelectorAll('.config-item-selecao').forEach(row => {
-    const onclick = row.getAttribute('onclick') || '';
-    const match   = onclick.match(/toggleSelecaoItemCadastro\('([^']+)'\)/);
-    if (!match) return;
-    const id = match[1];
+  document.querySelectorAll('#cadastro-itens-lista .config-item-row[data-item-id]').forEach(row => {
+    const id = row.dataset.itemId;
+    if (!id) return;
     if (marcar) {
       _itensSelecionados.add(id);
     } else {
       _itensSelecionados.delete(id);
     }
-    const chk = row.querySelector('.chk-item-cadastro');
     row.classList.toggle('selecionado', marcar);
+    const chk = row.querySelector('.chk-item-cadastro');
     if (chk) chk.checked = marcar;
   });
   _atualizarBarraSelecao();
 }
 
 function _atualizarBarraSelecao() {
-  const n      = _itensSelecionados.size;
-  const cont   = document.getElementById('selecao-contagem');
-  const btnDel = document.getElementById('btn-excluir-selecionados');
+  const n       = _itensSelecionados.size;
+  const cont    = document.getElementById('selecao-contagem');
+  const btnDel  = document.getElementById('btn-excluir-selecionados');
   const chkTudo = document.getElementById('chk-selecionar-tudo');
-  if (cont)    cont.textContent = `${n} selecionado${n !== 1 ? 's' : ''}`;
-  if (btnDel)  btnDel.disabled  = n === 0;
+  if (cont)   cont.textContent = `${n} selecionado${n !== 1 ? 's' : ''}`;
+  if (btnDel) btnDel.disabled  = n === 0;
   if (chkTudo) {
-    const total = document.querySelectorAll('.config-item-selecao').length;
+    const total = document.querySelectorAll('#cadastro-itens-lista .config-item-row[data-item-id]').length;
     chkTudo.indeterminate = n > 0 && n < total;
     chkTudo.checked       = total > 0 && n === total;
   }

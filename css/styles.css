@@ -1441,14 +1441,16 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .config-item-acoes { display: flex; gap: 6px; flex-shrink: 0; }
 
 /* Modo seleção em massa */
-.config-item-selecao { user-select: none; }
-.config-item-selecao.selecionado {
-  background: #EFF6FF; border-color: #93C5FD;
+.barra-selecao-cadastro {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; background: var(--cinza-100); border: 1px solid var(--cinza-300);
+  border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;
 }
-.chk-item-cadastro {
-  width: 18px; height: 18px; flex-shrink: 0;
-  accent-color: var(--azul, #2563EB); cursor: pointer;
-}
+.chk-item-cadastro { display: none; flex-shrink: 0; width: 18px; height: 18px; accent-color: #2563EB; cursor: pointer; }
+.modo-selecao .chk-item-cadastro { display: inline-block; }
+.modo-selecao .config-item-acoes { display: none; }
+.modo-selecao .config-item-row   { cursor: pointer; user-select: none; }
+.config-item-row.selecionado      { background: #EFF6FF; border-color: #93C5FD; }
 .badge-prioridade {
   display: inline-block; padding: 2px 8px;
   border-radius: 4px; font-size: 11px; font-weight: 700;
