@@ -636,7 +636,6 @@ function renderizarIniciarSeparacao(festa) {
   `;
   /* Ocultar tudo que não deve aparecer antes de iniciar */
   document.querySelector('.sep-agrupamento-bar').style.display = 'none';
-  document.getElementById('btn-sep-concluir').style.display    = 'none';
   document.getElementById('sep-fotos-section').style.display  = 'none';
   document.getElementById('sep-obs-section').style.display    = 'none';
 }
@@ -647,7 +646,6 @@ async function confirmarInicioSeparacao() {
     await iniciarSeparacao(festaAtual.id, usuarioAtual.nome);
     /* Reexibir seções ocultadas */
     document.querySelector('.sep-agrupamento-bar').style.display = '';
-    document.getElementById('btn-sep-concluir').style.display    = '';
     document.getElementById('sep-fotos-section').style.display  = '';
     document.getElementById('sep-obs-section').style.display    = '';
     /* O listener do escutarFesta vai re-renderizar automaticamente com status 'separando' */
@@ -658,7 +656,6 @@ async function confirmarInicioSeparacao() {
 }
 
 function renderizarSeparacao(festa) {
-  document.getElementById('btn-sep-concluir').style.display = '';
   document.getElementById('sep-info').innerHTML = htmlInfoFesta(festa);
 
   /* Bloquear separador enquanto admin edita quantidades */
@@ -670,7 +667,6 @@ function renderizarSeparacao(festa) {
         <p>Aguarde enquanto o administrador finaliza as alterações. A tela será atualizada automaticamente.</p>
       </div>
     `;
-    document.getElementById('btn-sep-concluir').style.display = 'none';
     return;
   }
 
@@ -742,6 +738,7 @@ function renderizarSeparacao(festa) {
         oninput="filtrarItensSep(this.value)"
         value="${buscaAtual.replace(/"/g, '&quot;')}" />
     </div>
+    <button class="btn-confirmar btn-full" style="margin:10px 0" onclick="concluirSeparacao()">Finalizar Separação</button>
     <div class="sep-tabs">
       <button class="sep-tab ${tab === 'pendente' ? 'ativo' : ''}" onclick="mudarTabSep('pendente')">
         Pendente <span class="sep-badge">${pendentes.length}</span>
@@ -933,9 +930,8 @@ async function concluirSeparacao() {
     return;
   }
 
-  const btn = document.getElementById('btn-sep-concluir');
-  btn.disabled    = true;
-  btn.textContent = 'Salvando...';
+  const btn = document.querySelector('#sep-itens .btn-confirmar');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
 
   try {
     let fotoUrls = [];
@@ -958,8 +954,7 @@ async function concluirSeparacao() {
   } catch (e) {
     console.error(e);
     toast('Erro ao salvar. Tente novamente.', 'erro');
-    btn.disabled    = false;
-    btn.textContent = 'Finalizar Separação';
+    if (btn) { btn.disabled = false; btn.textContent = 'Finalizar Separação'; }
   }
 }
 
