@@ -1439,6 +1439,16 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .config-item-nome { font-size: 14px; font-weight: 700; }
 .config-item-meta { font-size: 12px; color: var(--cinza-500); margin-top: 2px; }
 .config-item-acoes { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* Modo seleção em massa */
+.config-item-selecao { user-select: none; }
+.config-item-selecao.selecionado {
+  background: #EFF6FF; border-color: #93C5FD;
+}
+.chk-item-cadastro {
+  width: 18px; height: 18px; flex-shrink: 0;
+  accent-color: var(--azul, #2563EB); cursor: pointer;
+}
 .badge-prioridade {
   display: inline-block; padding: 2px 8px;
   border-radius: 4px; font-size: 11px; font-weight: 700;

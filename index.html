@@ -504,7 +504,21 @@
     <div class="container">
       <div class="secao-header">
         <h2 class="titulo-tela">Cadastro</h2>
-        <button class="btn-primario" id="btn-novo-item-config" onclick="abrirFormItemConfig()">&#43; Novo Item</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn-secundario btn-sm" id="btn-selecionar-itens" onclick="toggleModoSelecaoCadastro()">&#9744; Selecionar</button>
+          <button class="btn-primario" id="btn-novo-item-config" onclick="abrirFormItemConfig()">&#43; Novo Item</button>
+        </div>
+      </div>
+      <div id="barra-selecao-cadastro" class="hidden" style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--cinza-100);border:1px solid var(--cinza-300);border-radius:8px;padding:10px 14px;margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:600">
+          <input type="checkbox" id="chk-selecionar-tudo" onchange="toggleSelecionarTudoCadastro(this.checked)">
+          Selecionar tudo
+        </label>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span id="selecao-contagem" style="font-size:13px;color:var(--cinza-600)">0 selecionados</span>
+          <button class="btn-primario btn-sm" id="btn-excluir-selecionados" onclick="excluirSelecionadosCadastro()" disabled style="background:var(--vermelho)">&#128465; Excluir</button>
+          <button class="btn-secundario btn-sm" onclick="toggleModoSelecaoCadastro()">Cancelar</button>
+        </div>
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
         <div class="filtros-tabs" style="margin-bottom:0">

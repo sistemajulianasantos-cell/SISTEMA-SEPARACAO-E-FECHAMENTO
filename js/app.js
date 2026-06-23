@@ -27,6 +27,8 @@ let _comprarContext    = null;
 let _itemConfigEditId  = null;
 let _categoriaEditId   = null;
 let sidebarPinada      = false;
+let _modoSelecaoCadastro = false;
+let _itensSelecionados   = new Set();
 
 let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [], confItens: {} };
 let modoGrupoSep = 'categoria'; /* 'nenhum' | 'categoria' | 'setor' */
@@ -3134,16 +3136,31 @@ function htmlConfigItemRow(c) {
     const cat = categoriasCache.find(x => x.nome === c.grupo);
     return cat && cat.exibirSeparacao === false;
   })();
-  const badgeSep  = (c.exibirSeparacao === false || catOculta) ? '<span class="badge-oculto-sep">Oculto sep.</span>' : '';
+  const badgeSep     = (c.exibirSeparacao === false || catOculta) ? '<span class="badge-oculto-sep">Oculto sep.</span>' : '';
+  const selecionado  = _itensSelecionados.has(c.id);
+  const metaHtml     = `
+    ${c.ordemSeparacao && c.ordemSeparacao !== 999 ? `<span class="badge-ordem">#${c.ordemSeparacao}</span>` : ''}
+    ${c.prioridade ? `<span class="badge-prioridade prior-${c.prioridade}">${c.prioridade}</span>` : ''}
+    ${c.refrigerado ? '<span class="badge-refrigerado">&#10052; Refrig.</span>' : ''}
+  `;
+
+  if (_modoSelecaoCadastro) {
+    return `
+      <div class="config-item-row config-item-selecao${selecionado ? ' selecionado' : ''}" onclick="toggleSelecaoItemCadastro('${_esc(c.id)}')">
+        <input type="checkbox" class="chk-item-cadastro" ${selecionado ? 'checked' : ''} onclick="event.stopPropagation();toggleSelecaoItemCadastro('${_esc(c.id)}')">
+        <div class="config-item-info">
+          <div class="config-item-nome">${c.nome} ${badgeProd} ${badgeSep}</div>
+          <div class="config-item-meta">${metaHtml}</div>
+        </div>
+      </div>
+    `;
+  }
+
   return `
     <div class="config-item-row">
       <div class="config-item-info">
         <div class="config-item-nome">${c.nome} ${badgeProd} ${badgeSep}</div>
-        <div class="config-item-meta">
-          ${c.ordemSeparacao && c.ordemSeparacao !== 999 ? `<span class="badge-ordem">#${c.ordemSeparacao}</span>` : ''}
-          ${c.prioridade ? `<span class="badge-prioridade prior-${c.prioridade}">${c.prioridade}</span>` : ''}
-          ${c.refrigerado ? '<span class="badge-refrigerado">&#10052; Refrig.</span>' : ''}
-        </div>
+        <div class="config-item-meta">${metaHtml}</div>
       </div>
       <div class="config-item-acoes">
         <button class="btn-icone" title="Editar" onclick="abrirFormItemConfig('${c.id}')">&#9998;</button>
@@ -3274,6 +3291,98 @@ async function confirmarDeletarItemConfig(id, nome) {
   } catch(e) {
     console.error(e);
     toast('Erro ao remover item.', 'erro');
+  }
+}
+
+/* ── Seleção em massa no Cadastro ── */
+function toggleModoSelecaoCadastro() {
+  _modoSelecaoCadastro = !_modoSelecaoCadastro;
+  _itensSelecionados.clear();
+  const barra  = document.getElementById('barra-selecao-cadastro');
+  const btnSel = document.getElementById('btn-selecionar-itens');
+  const btnNovo = document.getElementById('btn-novo-item-config');
+  if (_modoSelecaoCadastro) {
+    barra.classList.remove('hidden');
+    barra.style.display = 'flex';
+    btnSel.textContent  = '✕ Cancelar';
+    if (btnNovo) btnNovo.classList.add('hidden');
+  } else {
+    barra.classList.add('hidden');
+    barra.style.display = '';
+    btnSel.textContent  = '☐ Selecionar';
+    if (btnNovo) btnNovo.classList.remove('hidden');
+  }
+  renderizarCadastroItens();
+}
+
+function toggleSelecaoItemCadastro(id) {
+  if (_itensSelecionados.has(id)) {
+    _itensSelecionados.delete(id);
+  } else {
+    _itensSelecionados.add(id);
+  }
+  _atualizarBarraSelecao();
+  /* Atualiza só a linha, sem re-renderizar tudo */
+  const row = document.querySelector(`.config-item-selecao[onclick*="${id}"]`);
+  if (row) {
+    const chk = row.querySelector('.chk-item-cadastro');
+    const sel = _itensSelecionados.has(id);
+    row.classList.toggle('selecionado', sel);
+    if (chk) chk.checked = sel;
+  }
+}
+
+function toggleSelecionarTudoCadastro(marcar) {
+  document.querySelectorAll('.config-item-selecao').forEach(row => {
+    const onclick = row.getAttribute('onclick') || '';
+    const match   = onclick.match(/toggleSelecaoItemCadastro\('([^']+)'\)/);
+    if (!match) return;
+    const id = match[1];
+    if (marcar) {
+      _itensSelecionados.add(id);
+    } else {
+      _itensSelecionados.delete(id);
+    }
+    const chk = row.querySelector('.chk-item-cadastro');
+    row.classList.toggle('selecionado', marcar);
+    if (chk) chk.checked = marcar;
+  });
+  _atualizarBarraSelecao();
+}
+
+function _atualizarBarraSelecao() {
+  const n      = _itensSelecionados.size;
+  const cont   = document.getElementById('selecao-contagem');
+  const btnDel = document.getElementById('btn-excluir-selecionados');
+  const chkTudo = document.getElementById('chk-selecionar-tudo');
+  if (cont)    cont.textContent = `${n} selecionado${n !== 1 ? 's' : ''}`;
+  if (btnDel)  btnDel.disabled  = n === 0;
+  if (chkTudo) {
+    const total = document.querySelectorAll('.config-item-selecao').length;
+    chkTudo.indeterminate = n > 0 && n < total;
+    chkTudo.checked       = total > 0 && n === total;
+  }
+}
+
+async function excluirSelecionadosCadastro() {
+  const ids = [..._itensSelecionados];
+  if (!ids.length) return;
+  if (!confirm(`Remover ${ids.length} item${ids.length !== 1 ? 's' : ''} do cadastro?\n\nIsso não afeta as festas já cadastradas.`)) return;
+  const btnDel = document.getElementById('btn-excluir-selecionados');
+  if (btnDel) { btnDel.disabled = true; btnDel.textContent = 'Removendo...'; }
+  try {
+    await Promise.all(ids.map(id => deletarItemConfigDB(id)));
+    ids.forEach(id => {
+      const nomeKey = Object.keys(itemConfigsCache).find(k => itemConfigsCache[k].id === id);
+      if (nomeKey) delete itemConfigsCache[nomeKey];
+    });
+    _itensSelecionados.clear();
+    toast(`${ids.length} item${ids.length !== 1 ? 's' : ''} removido${ids.length !== 1 ? 's' : ''}.`, 'sucesso');
+    toggleModoSelecaoCadastro();
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao remover itens. Tente novamente.', 'erro');
+    if (btnDel) { btnDel.disabled = false; btnDel.textContent = '🗑 Excluir'; }
   }
 }
 
