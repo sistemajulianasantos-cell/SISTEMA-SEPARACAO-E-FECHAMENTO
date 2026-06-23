@@ -2688,33 +2688,57 @@ const SUFIXOS_FORNECIMENTO = [
   'cortesia','gratis','gratuito','locacao','doacao','empresa',
 ];
 
-/* Retorna o nomeKey sem o sufixo de fornecimento (ex: "aperol_consignado" → "aperol") */
+/* Retorna o nomeKey sem o sufixo de fornecimento.
+   Trata tanto sufixo separado ("aperol_consignado") quanto colado ("aperol_1000mlromero"). */
 function nomeBaseKey(nomeKey) {
-  const partes = (nomeKey || '').split('_');
-  if (partes.length > 1 && SUFIXOS_FORNECIMENTO.includes(partes[partes.length - 1])) {
-    return partes.slice(0, -1).join('_');
+  const s = nomeKey || '';
+  const partes = s.split('_').filter(Boolean);
+  if (partes.length < 1) return s;
+  const ultimo = partes[partes.length - 1];
+  /* Sufixo exato */
+  if (partes.length > 1 && SUFIXOS_FORNECIMENTO.includes(ultimo)) {
+    const idx = s.lastIndexOf('_' + ultimo);
+    if (idx !== -1) return s.slice(0, idx).replace(/_+$/, '');
   }
-  return nomeKey;
-}
-
-/* Retorna nome de exibição sem o sufixo (ex: "APEROL CONSIGNADO" → "APEROL") */
-function nomeBasDisplay(nome) {
-  const partes = (nome || '').trim().split(/\s+/);
-  if (partes.length > 1) {
-    const ultimoNorm = normalizarNomeItem(partes[partes.length - 1]);
-    if (SUFIXOS_FORNECIMENTO.includes(ultimoNorm)) {
-      return partes.slice(0, -1).join(' ');
+  /* Sufixo colado no final da última palavra (ex: "1000mlromero" → strip "romero") */
+  for (const suf of SUFIXOS_FORNECIMENTO) {
+    if (ultimo.endsWith(suf) && ultimo.length > suf.length) {
+      return s.slice(0, s.length - suf.length);
     }
   }
-  return nome;
+  return s;
+}
+
+/* Retorna nome de exibição sem o sufixo.
+   Trata sufixo separado ("APEROL CONSIGNADO") e colado ("APEROL - 750MLROMERO"). */
+function nomeBasDisplay(nome) {
+  const s = (nome || '').trim();
+  if (!s) return s;
+  const partes = s.split(/\s+/);
+  const ultimo  = partes[partes.length - 1];
+  const ultimoN = normalizarNomeItem(ultimo);
+  /* Sufixo exato como palavra separada */
+  if (partes.length > 1 && SUFIXOS_FORNECIMENTO.includes(ultimoN)) {
+    return partes.slice(0, -1).join(' ');
+  }
+  /* Sufixo colado no final da última palavra (ex: "750MLROMERO" → "750ML") */
+  for (const suf of SUFIXOS_FORNECIMENTO) {
+    if (ultimoN.endsWith(suf) && ultimoN.length > suf.length) {
+      const semSuf = ultimo.slice(0, ultimo.length - suf.length);
+      return (partes.length > 1 ? partes.slice(0, -1).join(' ') + ' ' : '') + semSuf;
+    }
+  }
+  return s;
 }
 
 /* Extrai o sufixo de fornecimento embutido no nome (ex: "APEROL CONSIGNADO" → "consignado") */
 function extrairFornDoNome(nome) {
   const partes = (nome || '').trim().split(/\s+/);
-  if (partes.length > 1) {
-    const ultimo = normalizarNomeItem(partes[partes.length - 1]);
-    if (SUFIXOS_FORNECIMENTO.includes(ultimo)) return ultimo;
+  const ultimo  = normalizarNomeItem(partes[partes.length - 1]);
+  if (partes.length > 1 && SUFIXOS_FORNECIMENTO.includes(ultimo)) return ultimo;
+  /* Colado no final */
+  for (const suf of SUFIXOS_FORNECIMENTO) {
+    if (ultimo.endsWith(suf) && ultimo.length > suf.length) return suf;
   }
   return null;
 }
@@ -3144,12 +3168,14 @@ function htmlConfigItemRow(c) {
     ${c.refrigerado ? '<span class="badge-refrigerado">&#10052; Refrig.</span>' : ''}
   `;
 
+  const nomeExibido = nomeBasDisplay(c.nome);
+
   if (_modoSelecaoCadastro) {
     return `
       <div class="config-item-row config-item-selecao${selecionado ? ' selecionado' : ''}" onclick="toggleSelecaoItemCadastro('${_esc(c.id)}')">
         <input type="checkbox" class="chk-item-cadastro" ${selecionado ? 'checked' : ''} onclick="event.stopPropagation();toggleSelecaoItemCadastro('${_esc(c.id)}')">
         <div class="config-item-info">
-          <div class="config-item-nome">${c.nome} ${badgeProd} ${badgeSep}</div>
+          <div class="config-item-nome">${nomeExibido} ${badgeProd} ${badgeSep}</div>
           <div class="config-item-meta">${metaHtml}</div>
         </div>
       </div>
@@ -3159,7 +3185,7 @@ function htmlConfigItemRow(c) {
   return `
     <div class="config-item-row">
       <div class="config-item-info">
-        <div class="config-item-nome">${c.nome} ${badgeProd} ${badgeSep}</div>
+        <div class="config-item-nome">${nomeExibido} ${badgeProd} ${badgeSep}</div>
         <div class="config-item-meta">${metaHtml}</div>
       </div>
       <div class="config-item-acoes">
