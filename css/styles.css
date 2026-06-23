@@ -1654,6 +1654,7 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .badge-forn-romero     { background: #D1FAE5; color: #065F46; }
 .badge-forn-proprio    { background: #FEF3C7; color: #92400E; }
 .badge-forn-terceiro   { background: #FCE7F3; color: #9D174D; }
+.badge-forn-reserva    { background: #FFF7ED; color: #C2410C; }
 .badge-forn-default    { background: var(--cinza-100); color: var(--cinza-600); }
 
 /* Localização do item na separação */

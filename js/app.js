@@ -758,10 +758,11 @@ function renderizarSeparacao(festa) {
 }
 
 function htmlBadgeForn(item) {
-  if (!item.fornecimento) return '';
-  const cls = ['consignado','cliente','romero','proprio','terceiro'].includes(item.fornecimento)
-    ? `badge-forn-${item.fornecimento}` : 'badge-forn-default';
-  return `<span class="badge-fornecimento ${cls}">${item.fornecimento}</span>`;
+  const forn = item.fornecimento || extrairFornDoNome(item.nome);
+  if (!forn) return '';
+  const cls = ['consignado','cliente','romero','reserva','proprio','terceiro'].includes(forn)
+    ? `badge-forn-${forn}` : 'badge-forn-default';
+  return `<span class="badge-fornecimento ${cls}">${forn}</span>`;
 }
 
 function htmlItemPendente(item, i) {
@@ -770,13 +771,15 @@ function htmlItemPendente(item, i) {
   const locHtml  = locParts.length
     ? `<div class="item-localizacao"><span class="item-localizacao-icone">📍</span>${locParts.join(' / ')}</div>`
     : '';
+  const badgeForn = htmlBadgeForn(item);
   return `
     <div class="item-pend-card">
       <div class="item-pend-info">
         <div class="item-nome">
-          ${item.nome} ${htmlBadgeForn(item)}
+          ${nomeBasDisplay(item.nome)}
           <button class="btn-editar-nome" title="Substituir / editar nome" onclick="editarNomeItem(${i})">✏️</button>
         </div>
+        ${badgeForn ? `<div class="item-forn-tag">${badgeForn}</div>` : ''}
         <div class="item-sub">${item.unidade || 'un'} &mdash; necessario: <strong>${item.qtdNecessaria}</strong></div>
         ${locHtml}
       </div>
@@ -794,10 +797,12 @@ function htmlItemPendente(item, i) {
 }
 
 function htmlItemSeparado(item, i) {
+  const badgeForn = htmlBadgeForn(item);
   return `
     <div class="item-sep-card">
       <div class="item-pend-info">
-        <div class="item-nome">${item.nome}</div>
+        <div class="item-nome">${nomeBasDisplay(item.nome)}</div>
+        ${badgeForn ? `<div class="item-forn-tag">${badgeForn}</div>` : ''}
         <div class="item-sub">Separado: <strong>${item.qtdSeparada}</strong> ${item.unidade || 'un'}</div>
       </div>
       <button class="btn-desfazer" onclick="desfazerItem(${i})">Desfazer</button>
@@ -1106,9 +1111,10 @@ function renderizarConferencia(festa) {
         <div class="item-topo">
           <div>
             <div class="item-nome">
-              ${item.nome} ${htmlBadgeForn(item)}
+              ${nomeBasDisplay(item.nome)}
               <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${i})">✏️</button>
             </div>
+            ${htmlBadgeForn(item) ? `<div class="item-forn-tag">${htmlBadgeForn(item)}</div>` : ''}
             <div class="item-sub">Separado: <strong>${item.qtdSeparada || 0}</strong> ${item.unidade || 'un'}</div>
           </div>
         </div>
@@ -1280,11 +1286,14 @@ function abrirRetorno(id) {
 function renderizarRetorno(festa) {
   document.getElementById('ret-info').innerHTML = htmlInfoFesta(festa);
 
-  document.getElementById('ret-itens').innerHTML = (festa.itens || []).map((item, i) => `
+  document.getElementById('ret-itens').innerHTML = (festa.itens || []).map((item, i) => {
+    const badgeForn = htmlBadgeForn(item);
+    return `
     <div class="item-row">
       <div class="item-topo">
         <div>
-          <div class="item-nome">${item.nome}</div>
+          <div class="item-nome">${nomeBasDisplay(item.nome)}</div>
+          ${badgeForn ? `<div class="item-forn-tag">${badgeForn}</div>` : ''}
           <div class="item-sub">Enviado: <strong>${item.qtdConferida || item.qtdSeparada || 0}</strong> ${item.unidade || 'un'}</div>
         </div>
       </div>
@@ -1303,7 +1312,8 @@ function renderizarRetorno(festa) {
         <span class="item-unidade">${item.unidade || 'un'}</span>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 async function concluirRetorno() {
@@ -1361,11 +1371,14 @@ function abrirGalpao(id) {
 function renderizarGalpao(festa) {
   document.getElementById('gal-info').innerHTML = htmlInfoFesta(festa);
 
-  document.getElementById('gal-itens').innerHTML = (festa.itens || []).map((item, i) => `
+  document.getElementById('gal-itens').innerHTML = (festa.itens || []).map((item, i) => {
+    const badgeForn = htmlBadgeForn(item);
+    return `
     <div class="item-row">
       <div class="item-topo">
         <div>
-          <div class="item-nome">${item.nome}</div>
+          <div class="item-nome">${nomeBasDisplay(item.nome)}</div>
+          ${badgeForn ? `<div class="item-forn-tag">${badgeForn}</div>` : ''}
           <div class="item-sub">
             Retornou: <strong>${item.qtdRetorno || 0}</strong>
             ${item.qtdDanificada ? ` — Danificado: <strong>${item.qtdDanificada}</strong>` : ''}
@@ -1383,7 +1396,8 @@ function renderizarGalpao(festa) {
       </div>
       <div id="gal-msg-${i}"></div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function checarGal(i, retorno) {
@@ -2530,7 +2544,7 @@ function renderizarProducaoCEO() {
         ${naoClas.map(item => `
           <div class="producao-item-row producao-item-nao-clas">
             <div class="producao-item-info">
-              <div class="producao-item-nome">${item.nome}</div>
+              <div class="producao-item-nome">${nomeBasDisplay(item.nome)}</div>
               <div class="producao-item-total">Total: <strong>${item.total}</strong> ${item.unidade}</div>
             </div>
             <button class="btn-sm btn-secundario" onclick="abrirFormItemConfig(null,'${_esc(item.nome)}')">Configurar</button>
@@ -2586,7 +2600,7 @@ function htmlProducaoSintetico(itens) {
     return `
       <div class="producao-item-row">
         <div class="producao-item-info">
-          <div class="producao-item-nome">${item.nome}</div>
+          <div class="producao-item-nome">${nomeBasDisplay(item.nome)}</div>
           ${badgeRefrig || badgePrior ? `<div class="producao-item-badges">${badgeRefrig}${badgePrior}</div>` : ''}
           <div class="producao-item-total">Necessário: <strong>${item.total}</strong> ${item.unidade}</div>
         </div>
@@ -2632,7 +2646,7 @@ function htmlProducaoAnalitico(itens) {
       <div class="producao-item-row">
         <div class="producao-item-info" style="width:100%">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <div class="producao-item-nome">${item.nome} ${badgeRefrig}</div>
+            <div class="producao-item-nome">${nomeBasDisplay(item.nome)} ${badgeRefrig}</div>
             <div class="producao-item-nums" style="flex-direction:row;gap:10px;align-items:center">
               <span class="producao-item-total">Total: <strong>${item.total}</strong> ${item.unidade}</span>
               <span class="${diff < 0 ? 'producao-diff-falta' : 'producao-diff-ok'}">
@@ -2668,7 +2682,7 @@ function normalizarNomeItem(nome) {
 
 /* Sufixos que indicam TIPO DE FORNECIMENTO — mesmo produto, formas diferentes de obter */
 const SUFIXOS_FORNECIMENTO = [
-  'consignado','cliente','romero','proprio','propria','terceiro',
+  'consignado','cliente','romero','reserva','proprio','propria','terceiro',
   'cortesia','gratis','gratuito','locacao','doacao','empresa',
 ];
 
@@ -2691,6 +2705,16 @@ function nomeBasDisplay(nome) {
     }
   }
   return nome;
+}
+
+/* Extrai o sufixo de fornecimento embutido no nome (ex: "APEROL CONSIGNADO" → "consignado") */
+function extrairFornDoNome(nome) {
+  const partes = (nome || '').trim().split(/\s+/);
+  if (partes.length > 1) {
+    const ultimo = normalizarNomeItem(partes[partes.length - 1]);
+    if (SUFIXOS_FORNECIMENTO.includes(ultimo)) return ultimo;
+  }
+  return null;
 }
 
 /* Busca config do item por nomeKey; com fallback para nome base (variante) */
@@ -3085,11 +3109,8 @@ async function renderizarCadastroItens() {
         ${semConfig.sort((a,b) => a.nomeDisplay.localeCompare(b.nomeDisplay,'pt-BR')).map(it => `
           <div class="config-item-row">
             <div class="config-item-info">
-              <div class="config-item-nome">
-                ${it.nomeDisplay}
-                ${it.variantes.length ? `<span class="badge-variantes">${it.variantes.length} variante${it.variantes.length>1?'s':''}</span>` : ''}
-              </div>
-              <div class="config-item-meta">${it.variantes.length ? it.variantes.join(' · ') : 'Sem configuração'}</div>
+              <div class="config-item-nome">${it.nomeDisplay}</div>
+              <div class="config-item-meta">Sem configuração</div>
             </div>
             <div class="config-item-acoes">
               <button class="btn-icone" title="Configurar" onclick="abrirFormItemConfig(null,'${_esc(it.nomeDisplay)}')">+ Config.</button>
@@ -3174,7 +3195,7 @@ async function preencherSugestoesItemConfig() {
     const gruposSet = new Set();
 
     festas.forEach(f => (f.itens || []).forEach(it => {
-      if (it.nome) nomesSet.add(it.nome);
+      if (it.nome) nomesSet.add(nomeBasDisplay(it.nome));
     }));
     /* Prioridade: categorias cadastradas, depois grupos dos configs */
     categoriasCache.forEach(c => { if (c.nome) gruposSet.add(c.nome); });
