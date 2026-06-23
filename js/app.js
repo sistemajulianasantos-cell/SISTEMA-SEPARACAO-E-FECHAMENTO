@@ -629,21 +629,28 @@ async function abrirSeparacao(id) {
 function renderizarIniciarSeparacao(festa) {
   document.getElementById('sep-info').innerHTML = htmlInfoFesta(festa);
   document.getElementById('sep-itens').innerHTML = `
-    <div class="box-iniciar">
-      <p>Esta festa ainda nao foi iniciada. Clique abaixo para comecar a separacao dos itens.</p>
-      <button class="btn-iniciar-sep" onclick="confirmarInicioSeparacao()">Iniciar Separacao</button>
+    <div class="card-iniciar-sep" onclick="confirmarInicioSeparacao()">
+      <div class="card-iniciar-sep-icone">▶</div>
+      <div class="card-iniciar-sep-texto">Iniciar Separação</div>
     </div>
   `;
-  /* Ocultar campos de fotos e obs até iniciar */
-  document.getElementById('btn-sep-concluir').style.display = 'none';
+  /* Ocultar tudo que não deve aparecer antes de iniciar */
+  document.querySelector('.sep-agrupamento-bar').style.display  = 'none';
+  document.getElementById('btn-sep-concluir').style.display     = 'none';
+  document.querySelector('#tela-separacao .form-group.mt-lg').style.display = 'none';
+  document.querySelector('#tela-separacao .form-group:not(.mt-lg)').style.display = 'none';
 }
 
 async function confirmarInicioSeparacao() {
   if (!festaAtual) return;
   try {
     await iniciarSeparacao(festaAtual.id, usuarioAtual.nome);
+    /* Reexibir seções ocultadas */
+    document.querySelector('.sep-agrupamento-bar').style.display  = '';
+    document.getElementById('btn-sep-concluir').style.display     = '';
+    document.querySelector('#tela-separacao .form-group.mt-lg').style.display = '';
+    document.querySelector('#tela-separacao .form-group:not(.mt-lg)').style.display = '';
     /* O listener do escutarFesta vai re-renderizar automaticamente com status 'separando' */
-    document.getElementById('btn-sep-concluir').style.display = '';
   } catch (e) {
     console.error(e);
     toast('Erro ao iniciar separacao.', 'erro');

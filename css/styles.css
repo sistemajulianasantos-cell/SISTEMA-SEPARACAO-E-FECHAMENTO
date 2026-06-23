@@ -950,26 +950,19 @@ body {
 .sep-timing strong { color: var(--cinza-700); }
 
 /* ══ INICIAR SEPARAÇÃO ════════════════════════════════ */
-.box-iniciar {
-  text-align: center;
-  background: var(--branco);
-  border: var(--borda);
-  border-radius: var(--raio);
-  padding: 32px 20px;
-  margin: 20px 0;
+.card-iniciar-sep {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; background: var(--roxo); color: var(--branco);
+  border-radius: 16px; padding: 48px 24px; margin: 24px auto;
+  max-width: 280px; cursor: pointer;
+  box-shadow: 0 4px 20px rgba(91,33,182,.35);
+  transition: transform .12s, box-shadow .12s;
+  user-select: none;
 }
-.box-iniciar p    { color: var(--cinza-500); font-size: 14px; margin-bottom: 20px; }
-.btn-iniciar-sep  {
-  background: var(--roxo);
-  color: var(--branco);
-  border: none;
-  padding: 14px 32px;
-  border-radius: var(--raio);
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.btn-iniciar-sep:hover { background: var(--roxo-escuro); }
+.card-iniciar-sep:hover  { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(91,33,182,.45); }
+.card-iniciar-sep:active { transform: translateY(0);    box-shadow: 0 2px 10px rgba(91,33,182,.3);  }
+.card-iniciar-sep-icone  { font-size: 40px; line-height: 1; }
+.card-iniciar-sep-texto  { font-size: 18px; font-weight: 800; letter-spacing: .3px; }
 
 /* ══ IMPORTAR OR ═════════════════════════════════════ */
 .importar-or-box {
