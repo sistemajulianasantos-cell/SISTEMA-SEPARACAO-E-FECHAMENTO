@@ -635,10 +635,10 @@ function renderizarIniciarSeparacao(festa) {
     </div>
   `;
   /* Ocultar tudo que não deve aparecer antes de iniciar */
-  document.querySelector('.sep-agrupamento-bar').style.display  = 'none';
-  document.getElementById('btn-sep-concluir').style.display     = 'none';
-  document.querySelector('#tela-separacao .form-group.mt-lg').style.display = 'none';
-  document.querySelector('#tela-separacao .form-group:not(.mt-lg)').style.display = 'none';
+  document.querySelector('.sep-agrupamento-bar').style.display = 'none';
+  document.getElementById('btn-sep-concluir').style.display    = 'none';
+  document.getElementById('sep-fotos-section').style.display  = 'none';
+  document.getElementById('sep-obs-section').style.display    = 'none';
 }
 
 async function confirmarInicioSeparacao() {
@@ -646,10 +646,10 @@ async function confirmarInicioSeparacao() {
   try {
     await iniciarSeparacao(festaAtual.id, usuarioAtual.nome);
     /* Reexibir seções ocultadas */
-    document.querySelector('.sep-agrupamento-bar').style.display  = '';
-    document.getElementById('btn-sep-concluir').style.display     = '';
-    document.querySelector('#tela-separacao .form-group.mt-lg').style.display = '';
-    document.querySelector('#tela-separacao .form-group:not(.mt-lg)').style.display = '';
+    document.querySelector('.sep-agrupamento-bar').style.display = '';
+    document.getElementById('btn-sep-concluir').style.display    = '';
+    document.getElementById('sep-fotos-section').style.display  = '';
+    document.getElementById('sep-obs-section').style.display    = '';
     /* O listener do escutarFesta vai re-renderizar automaticamente com status 'separando' */
   } catch (e) {
     console.error(e);
