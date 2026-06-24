@@ -2837,15 +2837,13 @@ function renderizarProducaoCEO() {
     return;
   }
 
-  /* Separar em: produção ativa, e não classificados */
+  /* Separar em: produção ativa, e não classificados (sem nenhum cadastro) */
   const itensProducao = todosItens.filter(item => {
     const cfg = buscarConfigItem(item.nomeKey);
     return cfg?.eProducao === true;
   });
-  const naoClas = todosItens.filter(item => {
-    const cfg = buscarConfigItem(item.nomeKey);
-    return !cfg || cfg.eProducao !== true;
-  });
+  /* Só aparecem como "Não Classificados" itens que não têm NENHUM cadastro */
+  const naoClas = todosItens.filter(item => !buscarConfigItem(item.nomeKey));
 
   /* Construir grupos conforme modo de ordenação */
   const grupos = {};
