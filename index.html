@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#2B3B2A">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=4">
+  <link rel="stylesheet" href="css/styles.css?v=5">
 </head>
 <body>
 
@@ -756,7 +756,16 @@
       <!-- Grid de 3 colunas -->
       <div class="tv-grid">
 
-        <!-- Col 1: Em separação -->
+        <!-- Col 1: Agenda -->
+        <div class="tv-col">
+          <div class="tv-col-header tv-col-header-agenda">
+            <span>📅</span>
+            <span>AGENDA</span>
+          </div>
+          <div id="tv-agenda" class="tv-col-conteudo"></div>
+        </div>
+
+        <!-- Col 2: Em separação -->
         <div class="tv-col">
           <div class="tv-col-header tv-col-header-sep">
             <span>⚡</span>
@@ -765,22 +774,13 @@
           <div id="tv-separando" class="tv-col-conteudo"></div>
         </div>
 
-        <!-- Col 2: Produção -->
+        <!-- Col 3: Produção -->
         <div class="tv-col">
           <div class="tv-col-header tv-col-header-prod">
             <span>🧪</span>
             <span>PRODUÇÃO — QTD TOTAL</span>
           </div>
           <div id="tv-producao" class="tv-col-conteudo"></div>
-        </div>
-
-        <!-- Col 3: Agenda -->
-        <div class="tv-col">
-          <div class="tv-col-header tv-col-header-agenda">
-            <span>📅</span>
-            <span>AGENDA</span>
-          </div>
-          <div id="tv-agenda" class="tv-col-conteudo"></div>
         </div>
 
       </div>
