@@ -32,6 +32,213 @@ let _itensSelecionados   = new Set();
 
 let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [], confItens: {} };
 let modoGrupoSep = 'categoria'; /* 'nenhum' | 'categoria' | 'setor' */
+let _tvClockTimer = null;
+
+/* ══════════════════════════════════════════════════
+   PAINEL TV
+══════════════════════════════════════════════════ */
+
+function carregarTV() {
+  pararListeners();
+
+  if (_tvClockTimer) clearInterval(_tvClockTimer);
+  _tvAtualizarRelogio();
+  _tvClockTimer = setInterval(_tvAtualizarRelogio, 1000);
+
+  Promise.all([listarItemConfigs(), listarCategorias()]).then(([cfgs, cats]) => {
+    itemConfigsCache = {};
+    cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    categoriasCache = cats;
+  }).catch(e => console.error('TV configs:', e));
+
+  unsubFestas = escutarFestas({}, festas => {
+    todasFestasCache = festas;
+    renderizarPainelTV(festas);
+  });
+}
+
+function _tvAtualizarRelogio() {
+  const rel = document.getElementById('tv-relogio');
+  const dat = document.getElementById('tv-data');
+  if (!rel) return;
+  const DIAS  = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+  const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+  const agora = new Date();
+  rel.textContent = agora.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  if (dat) dat.textContent = `${DIAS[agora.getDay()]}, ${agora.getDate()} de ${MESES[agora.getMonth()]}`;
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+document.addEventListener('fullscreenchange', () => {
+  const btn = document.getElementById('tv-btn-fs');
+  if (!btn) return;
+  btn.textContent = document.fullscreenElement ? '✕ Sair da Tela Cheia' : '⛶ Tela Cheia';
+});
+
+function renderizarPainelTV(festas) {
+  const hojeKey  = normalizarData(new Date());
+  const hojeDate = new Date(); hojeDate.setHours(0, 0, 0, 0);
+
+  const separando     = festas.filter(f => f.status === 'separando');
+  const agendadasHoje = festas.filter(f => f.status === 'agendada' && normalizarData(f.data) === hojeKey);
+  const atrasadas     = festas.filter(f => {
+    if (!['agendada', 'separando'].includes(f.status)) return false;
+    const fd = toDate(f.data); fd.setHours(0, 0, 0, 0);
+    return fd < hojeDate && normalizarData(f.data) !== hojeKey;
+  });
+  const proximas = festas
+    .filter(f => {
+      if (f.status !== 'agendada') return false;
+      const fd = toDate(f.data); fd.setHours(0, 0, 0, 0);
+      return fd > hojeDate;
+    })
+    .sort((a, b) => toDate(a.data) - toDate(b.data))
+    .slice(0, 6);
+
+  /* Produção: agregar itens eProducao de todas as festas ativas */
+  const mapaProd = {};
+  festas.filter(f => f.status !== 'concluida').forEach(f => {
+    (f.itens || []).forEach(item => {
+      const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+      if (!cfg?.eProducao) return;
+      const key = normalizarNomeItem(item.nome);
+      if (!mapaProd[key]) mapaProd[key] = { nome: nomeBasDisplay(item.nome), total: 0, unidade: item.unidade || 'un' };
+      mapaProd[key].total += (item.qtdNecessaria || 0);
+    });
+  });
+  const producao = Object.values(mapaProd).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  _tvRenderSeparando(separando);
+  _tvRenderProducao(producao);
+  _tvRenderAgenda(agendadasHoje, atrasadas, proximas, hojeKey);
+}
+
+function _tvRenderSeparando(separando) {
+  const titulo = document.getElementById('tv-sep-titulo');
+  if (titulo) titulo.textContent = `EM SEPARAÇÃO (${separando.length})`;
+
+  const el = document.getElementById('tv-separando');
+  if (!el) return;
+
+  if (!separando.length) {
+    el.innerHTML = '<div class="tv-vazio">Nenhuma festa em separação agora</div>';
+    return;
+  }
+
+  el.innerHTML = separando.map(f => {
+    const todosItens = (f.itens || []).filter(it => deveExibirNaSeparacao(it));
+    const total      = todosItens.length;
+    const sepCount   = todosItens.filter(it => it.separado).length;
+    const pendentes  = todosItens.filter(it => !it.separado && standByInfo(it, f.data) === null);
+    const pct        = total > 0 ? Math.round((sepCount / total) * 100) : 0;
+    const completo   = pct === 100;
+
+    const MAX_SHOW = 8;
+    const mostrar  = pendentes.slice(0, MAX_SHOW);
+    const resto    = pendentes.length - MAX_SHOW;
+
+    return `
+      <div class="tv-festa-card">
+        <div class="tv-festa-nome">${f.nome}</div>
+        <div class="tv-festa-meta">${f.cliente}${f.hora ? ' · ' + f.hora : ''}</div>
+        ${f.colaborador ? `<div><span class="tv-separador-badge">👤 ${f.colaborador}</span></div>` : ''}
+        <div class="tv-progresso-barra-wrap">
+          <div class="tv-progresso-barra${completo ? ' completo' : ''}" style="width:${pct}%"></div>
+        </div>
+        <div class="tv-progresso-label">${sepCount} de ${total} itens separados — ${pct}%</div>
+        ${pendentes.length > 0 ? `
+          <div class="tv-pendentes-titulo">Pendentes (${pendentes.length}):</div>
+          <ul class="tv-pendentes-lista">
+            ${mostrar.map(it => `<li>${nomeBasDisplay(it.nome)} — ${it.qtdNecessaria} ${it.unidade || 'un'}</li>`).join('')}
+            ${resto > 0 ? `<li style="color:#475569;font-size:11px">... e mais ${resto} itens</li>` : ''}
+          </ul>
+        ` : `<div class="tv-tudo-separado">✓ Todos os itens separados!</div>`}
+      </div>
+    `;
+  }).join('');
+}
+
+function _tvRenderProducao(producao) {
+  const el = document.getElementById('tv-producao');
+  if (!el) return;
+
+  if (!producao.length) {
+    el.innerHTML = '<div class="tv-vazio">Sem itens de produção cadastrados</div>';
+    return;
+  }
+
+  el.innerHTML = producao.map(p => `
+    <div class="tv-prod-item">
+      <div class="tv-prod-nome">${p.nome}</div>
+      <div>
+        <span class="tv-prod-qty">${p.total}</span>
+        <span class="tv-prod-un">${p.unidade}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function _tvRenderAgenda(agendadasHoje, atrasadas, proximas, hojeKey) {
+  const el = document.getElementById('tv-agenda');
+  if (!el) return;
+
+  let html = '';
+
+  if (atrasadas.length) {
+    html += `<div class="tv-secao-titulo">⚠ Atrasadas (${atrasadas.length})</div>`;
+    html += atrasadas.map(f => {
+      const pend = (f.itens || []).filter(it => deveExibirNaSeparacao(it) && !it.separado).length;
+      return `
+        <div class="tv-agenda-item urgente">
+          <span class="tv-agenda-badge urgente">ATRASADA · ${formatarData(f.data)}</span>
+          <div class="tv-agenda-nome">${f.nome}</div>
+          <div class="tv-agenda-meta">${f.cliente}${f.hora ? ' · ' + f.hora : ''} · ${pend} pendentes</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  if (agendadasHoje.length) {
+    html += `<div class="tv-secao-titulo">Hoje (${agendadasHoje.length})</div>`;
+    html += agendadasHoje.map(f => {
+      const total = (f.itens || []).filter(it => deveExibirNaSeparacao(it)).length;
+      return `
+        <div class="tv-agenda-item hoje">
+          <span class="tv-agenda-badge hoje">HOJE${f.hora ? ' · ' + f.hora : ''}</span>
+          <div class="tv-agenda-nome">${f.nome}</div>
+          <div class="tv-agenda-meta">${f.cliente} · ${total} itens</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  if (proximas.length) {
+    const amanhaDate = new Date(); amanhaDate.setDate(amanhaDate.getDate() + 1);
+    const amanhaKey  = normalizarData(amanhaDate);
+    html += `<div class="tv-secao-titulo">Próximas</div>`;
+    html += proximas.map(f => {
+      const fKey     = normalizarData(f.data);
+      const isAmanha = fKey === amanhaKey;
+      return `
+        <div class="tv-agenda-item">
+          <span class="tv-agenda-badge ${isAmanha ? 'amanha' : 'futuro'}">${isAmanha ? 'AMANHÃ' : formatarData(f.data)}</span>
+          <div class="tv-agenda-nome">${f.nome}</div>
+          <div class="tv-agenda-meta">${f.cliente}${f.hora ? ' · ' + f.hora : ''}</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  if (!html) html = '<div class="tv-vazio">Nenhuma festa agendada</div>';
+  el.innerHTML = html;
+}
 
 /* ══════════════════════════════════════════════════
    INICIALIZAÇÃO
@@ -74,7 +281,7 @@ function mostrarTela(id, subtitulo = '') {
   const btnBack = document.getElementById('btn-back');
   const sub     = document.getElementById('header-subtitulo');
 
-  const telasAuth      = ['tela-setup', 'tela-login'];
+  const telasAuth      = ['tela-setup', 'tela-login', 'tela-tv'];
   const telasPrincipais= ['tela-ceo', 'tela-colaborador', 'tela-coordenador'];
 
   if (telasAuth.includes(id)) {
@@ -149,6 +356,9 @@ function irParaPrincipal() {
   } else if (papel === 'coordenador') {
     mostrarTela('tela-coordenador');
     carregarCoord(filtroAtualCoord);
+  } else if (papel === 'tv') {
+    mostrarTela('tela-tv');
+    carregarTV();
   } else {
     /* separador, colaborador ou qualquer outro papel */
     mostrarTela('tela-colaborador');
@@ -250,7 +460,7 @@ async function doLogin() {
   }
 }
 
-const ROLE_NOMES = { separador: 'Separador', coordenador: 'Coordenador', ceo: 'CEO / Administrador' };
+const ROLE_NOMES = { separador: 'Separador', coordenador: 'Coordenador', ceo: 'CEO / Administrador', tv: 'Painel TV' };
 
 function renderizarRolePicker(roles) {
   document.getElementById('roles-opcoes').innerHTML = roles.map(r => `
@@ -269,6 +479,7 @@ function escolherRole(role) {
 function logout() {
   pararListeners();
   pararTimers();
+  if (_tvClockTimer) { clearInterval(_tvClockTimer); _tvClockTimer = null; }
   usuarioAtual = null;
   festaAtual   = null;
   fotosCache   = { separacao: [], conferencia: [], retorno: [], galpao: [] };
