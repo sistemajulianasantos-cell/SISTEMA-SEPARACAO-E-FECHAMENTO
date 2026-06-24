@@ -1187,6 +1187,16 @@ function renderizarConferencia(festa) {
       </div>
     ` : '';
 
+    const confVal  = item.qtdConferida;
+    const sepVal   = item.qtdSeparada || 0;
+    const msgInicial = confVal !== undefined
+      ? (confVal > sepVal
+          ? `<span class="msg-item msg-alerta">⚠ Quantidade acima do separado</span>`
+          : confVal < sepVal
+            ? `<span class="msg-item msg-erro">⚠ Quantidade abaixo do separado</span>`
+            : '')
+      : '';
+
     return `
       <div class="item-row">
         <div class="item-topo">
@@ -1196,21 +1206,17 @@ function renderizarConferencia(festa) {
               <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${ri})">✏️</button>
             </div>
             ${htmlBadgeForn(item) || ''}
-            <div class="item-sub">Separado: <strong>${item.qtdSeparada || 0}</strong> ${item.unidade || 'un'}</div>
           </div>
         </div>
         <div class="item-entrada">
-          <label>Conferido:</label>
+          <label>Quantidade:</label>
           <input type="number" class="qty-input" id="conf-qty-${ri}"
-            value="${item.qtdConferida !== undefined ? item.qtdConferida : (item.qtdSeparada || '')}"
+            value="${confVal !== undefined ? confVal : ''}"
             min="0" placeholder="0"
-            oninput="checarConf(${ri}, ${item.qtdSeparada || 0})" />
+            oninput="checarConf(${ri}, ${sepVal})" />
           <span class="item-unidade">${item.unidade || 'un'}</span>
         </div>
-        <div id="conf-msg-${ri}">
-          ${item.qtdConferida !== undefined && item.qtdConferida !== item.qtdSeparada
-            ? `<span class="msg-item msg-erro">Divergencia registrada</span>` : ''}
-        </div>
+        <div id="conf-msg-${ri}">${msgInicial}</div>
         ${fotoAreaHtml}
       </div>
     `;
@@ -1258,9 +1264,11 @@ function checarConf(i, separado) {
   const val = parseFloat(document.getElementById(`conf-qty-${i}`).value) || 0;
   const el  = document.getElementById(`conf-msg-${i}`);
   if (val === separado) {
-    el.innerHTML = `<span class="msg-item msg-ok">Confere</span>`;
+    el.innerHTML = '';
+  } else if (val > separado) {
+    el.innerHTML = `<span class="msg-item msg-alerta">⚠ Quantidade acima do separado</span>`;
   } else {
-    el.innerHTML = `<span class="msg-item msg-erro">Divergencia: esperado ${separado}, conferido ${val}</span>`;
+    el.innerHTML = `<span class="msg-item msg-erro">⚠ Quantidade abaixo do separado</span>`;
   }
   atualizarBoxDivConf();
 }
@@ -2412,6 +2420,7 @@ function htmlCardFesta(f, contexto) {
           <div class="card-festa-rodape">
             <span>${(f.itens || []).length} itens</span>
             ${f.colaborador ? `<span>${f.colaborador}</span>` : ''}
+            ${(f.divergencias?.length > 0) ? `<span class="badge-divergencia-card">⚠ ${f.divergencias.length} divergência${f.divergencias.length !== 1 ? 's' : ''}</span>` : ''}
           </div>
         </div>
       </div>
