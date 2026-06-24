@@ -2839,11 +2839,11 @@ function renderizarProducaoCEO() {
 
   /* Separar em: produção ativa, e não classificados */
   const itensProducao = todosItens.filter(item => {
-    const cfg = itemConfigsCache[item.nomeKey];
+    const cfg = buscarConfigItem(item.nomeKey);
     return cfg?.eProducao === true;
   });
   const naoClas = todosItens.filter(item => {
-    const cfg = itemConfigsCache[item.nomeKey];
+    const cfg = buscarConfigItem(item.nomeKey);
     return !cfg || cfg.eProducao !== true;
   });
 
@@ -2858,7 +2858,7 @@ function renderizarProducaoCEO() {
   categoriasCache.forEach((c, i) => { catOrdem[c.nome] = c.ordem || (i + 1); });
 
   itensProducao.forEach(item => {
-    const cfg = itemConfigsCache[item.nomeKey];
+    const cfg = buscarConfigItem(item.nomeKey);
     let chaveGrupo, nomeGrupo, ordemGrupo;
 
     if (ordemProducaoAtual === 'prioridade') {
@@ -3113,11 +3113,12 @@ function agregarItensFestas(festas) {
   const mapa = {};
   festas.filter(f => f.status !== 'concluida').forEach(f => {
     (f.itens || []).forEach((item, itemIdx) => {
-      const key = normalizarNomeItem(item.nome);
+      /* Usa a chave BASE (sem sufixo de fornecimento) para agregar variantes */
+      const key = nomeBaseKey(normalizarNomeItem(item.nome));
       if (!mapa[key]) {
         mapa[key] = {
           nomeKey: key,
-          nome:    item.nome,
+          nome:    nomeBasDisplay(item.nome),
           unidade: item.unidade || 'un',
           total:   0,
           festas:  [],
