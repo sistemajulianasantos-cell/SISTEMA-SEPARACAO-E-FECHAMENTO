@@ -29,6 +29,7 @@ let _categoriaEditId   = null;
 let sidebarPinada      = false;
 let _modoSelecaoCadastro = false;
 let _itensSelecionados   = new Set();
+let _buscaCadastro       = '';
 
 let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [], confItens: {} };
 let modoGrupoSep = 'categoria'; /* 'nenhum' | 'categoria' | 'setor' */
@@ -49,6 +50,8 @@ function carregarTV() {
     itemConfigsCache = {};
     cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
     categoriasCache = cats;
+    /* Re-renderizar após configs carregarem (garante que produção apareça) */
+    if (todasFestasCache.length) renderizarPainelTV(todasFestasCache);
   }).catch(e => console.error('TV configs:', e));
 
   unsubFestas = escutarFestas({}, festas => {
@@ -3389,10 +3392,18 @@ async function abrirCadastroItens(aba) {
   navegarSidebar();
   historico.push('tela-cadastro-itens');
   mostrarTela('tela-cadastro-itens', 'Cadastro');
+  _buscaCadastro = '';
+  const inputBusca = document.getElementById('busca-cadastro');
+  if (inputBusca) inputBusca.value = '';
   /* Garantir que a aba correta esteja ativa */
   const abaAlvo = aba || 'config';
   const btnAlvo = document.getElementById(abaAlvo === 'localizacoes' ? 'tab-itens-loc' : 'tab-itens-config');
   trocarAbaItens(abaAlvo, btnAlvo);
+}
+
+function filtrarCadastro(termo) {
+  _buscaCadastro = (termo || '').toLowerCase().trim();
+  renderizarCadastroItens();
 }
 
 function trocarAbaItens(aba, btn) {
@@ -3420,6 +3431,8 @@ async function renderizarCadastroItens() {
   const el = document.getElementById('cadastro-itens-lista');
   if (!el) return;
   el.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
+  const busca = _buscaCadastro;
+  const buscaWrap = document.getElementById('busca-cadastro-wrap');
   try {
     /* Carregar configs e itens de todas as festas em paralelo */
     const [configs, festas] = await Promise.all([
@@ -3464,20 +3477,42 @@ async function renderizarCadastroItens() {
     });
     const semConfig = Object.values(semConfigPorBase);
 
+    /* Detectar nomeKeys duplicados entre configs */
+    const keyCount = {};
+    configs.forEach(c => { keyCount[c.nomeKey] = (keyCount[c.nomeKey] || 0) + 1; });
+    const duplicados = new Set(Object.keys(keyCount).filter(k => keyCount[k] > 1));
+
+    const htmlDuplicados = duplicados.size ? `
+      <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:13px;">
+        <strong style="color:#92400E;">⚠ Produtos duplicados (${duplicados.size}):</strong>
+        <ul style="margin:4px 0 0 16px;color:#78350F;">
+          ${[...duplicados].map(k => `<li>${configs.find(c=>c.nomeKey===k)?.nome || k}</li>`).join('')}
+        </ul>
+        <span style="font-size:11px;color:#92400E;">Remova as entradas extras para evitar conflitos.</span>
+      </div>` : '';
+
+    const filtrar = (nome) => !busca || nome.toLowerCase().includes(busca);
+
     const htmlGrupos = Object.entries(grupos)
       .sort(([, a], [, b]) => a.ordem - b.ordem || 0)
-      .map(([grupo, grpData]) => `
-        <div class="config-grupo-bloco">
-          <div class="config-grupo-titulo">${grupo}</div>
-          ${grpData.itens.sort((a,b) => (a.ordemSeparacao||999)-(b.ordemSeparacao||999)).map(c => htmlConfigItemRow(c)).join('')}
-        </div>
-      `).join('');
+      .map(([grupo, grpData]) => {
+        const itensFiltrados = grpData.itens
+          .filter(c => filtrar(c.nome))
+          .sort((a,b) => (a.ordemSeparacao||999)-(b.ordemSeparacao||999));
+        if (!itensFiltrados.length) return '';
+        return `
+          <div class="config-grupo-bloco">
+            <div class="config-grupo-titulo">${grupo}</div>
+            ${itensFiltrados.map(c => htmlConfigItemRow(c)).join('')}
+          </div>`;
+      }).join('');
 
-    const htmlSemConfig = semConfig.length ? `
+    const semConfigFiltrado = semConfig.filter(it => filtrar(it.nomeDisplay));
+    const htmlSemConfig = semConfigFiltrado.length ? `
       <div class="config-grupo-bloco">
-        <div class="config-grupo-titulo producao-nao-clas-label">&#9888; Não configurados (${semConfig.length})</div>
+        <div class="config-grupo-titulo producao-nao-clas-label">&#9888; Não configurados (${semConfigFiltrado.length})</div>
         <p class="producao-nao-clas-hint">Estes itens estão nas festas mas ainda não foram classificados.</p>
-        ${semConfig.sort((a,b) => a.nomeDisplay.localeCompare(b.nomeDisplay,'pt-BR')).map(it => `
+        ${semConfigFiltrado.sort((a,b) => a.nomeDisplay.localeCompare(b.nomeDisplay,'pt-BR')).map(it => `
           <div class="config-item-row">
             <div class="config-item-info">
               <div class="config-item-nome">${it.nomeDisplay}</div>
@@ -3491,7 +3526,8 @@ async function renderizarCadastroItens() {
       </div>
     ` : '';
 
-    el.innerHTML = htmlGrupos + htmlSemConfig || estadoVazio('Nenhum item encontrado. Cadastre uma festa para começar.');
+    const conteudo = htmlDuplicados + htmlGrupos + htmlSemConfig;
+    el.innerHTML = conteudo || estadoVazio(busca ? `Nenhum produto encontrado para "${busca}".` : 'Nenhum item encontrado. Cadastre uma festa para começar.');
   } catch(e) {
     console.error(e);
     el.innerHTML = estadoVazio('Erro ao carregar. Tente novamente.');
@@ -3540,7 +3576,7 @@ async function abrirFormItemConfig(id, nomePreenchido) {
     document.getElementById('ic-nome').value    = cfg?.nome  || nomePreenchido || '';
     document.getElementById('ic-grupo').value   = cfg?.grupo || '';
     document.getElementById('ic-ordem').value   = (cfg?.ordemSeparacao && cfg.ordemSeparacao !== 999) ? cfg.ordemSeparacao : '';
-    document.getElementById('ic-dias-antes').value = cfg?.diasAntesEvento || 1;
+    document.getElementById('ic-dias-antes').value = cfg?.diasAntesEvento ?? 1;
     document.getElementById('ic-refrigerado').checked = !!cfg?.refrigerado;
     document.getElementById('ic-producao').checked    = !!cfg?.eProducao;
     document.getElementById('ic-separacao').checked      = cfg?.exibirSeparacao !== false;
@@ -3563,6 +3599,20 @@ async function abrirFormItemConfig(id, nomePreenchido) {
     mostrarTela('tela-form-item-config', 'Editar Item');
   } else {
     resetForm(null);
+    /* Pré-preencher grupo com categoria detectada automaticamente (sugestão editável) */
+    if (nomePreenchido) {
+      const keyBusca = normalizarNomeItem(nomePreenchido);
+      let sugestao = '';
+      todasFestasCache.forEach(f => {
+        if (sugestao) return;
+        (f.itens || []).forEach(it => {
+          if (sugestao) return;
+          const k = normalizarNomeItem(it.nome);
+          if (k === keyBusca || nomeBaseKey(k) === keyBusca) sugestao = it.categoria || '';
+        });
+      });
+      if (sugestao) document.getElementById('ic-grupo').value = sugestao;
+    }
     historico.push('tela-form-item-config');
     mostrarTela('tela-form-item-config', nomePreenchido ? `Configurar: ${nomePreenchido}` : 'Novo Item');
   }
@@ -3625,10 +3675,17 @@ async function salvarItemConfig() {
     setor,
     prateleira,
     refrigerado,
-    diasAntesEvento:  refrigerado ? (parseInt(diasStr) || 1) : 1,
+    diasAntesEvento:  refrigerado ? (diasStr !== '' && !isNaN(parseInt(diasStr)) ? parseInt(diasStr) : 1) : 1,
   };
 
   if (_itemConfigEditId) dados.id = _itemConfigEditId;
+
+  /* Verificar duplicado: outro item já tem o mesmo nomeKey */
+  const todosConfigs = await listarItemConfigs();
+  const duplicado = todosConfigs.find(c => c.nomeKey === dados.nomeKey && c.id !== _itemConfigEditId);
+  if (duplicado) {
+    if (!confirm(`Já existe um produto cadastrado com o nome "${duplicado.nome}".\n\nDeseja substituí-lo?`)) return;
+  }
 
   try {
     await salvarItemConfigDB(dados);

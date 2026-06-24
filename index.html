@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#2B3B2A">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=5">
+  <link rel="stylesheet" href="css/styles.css?v=6">
 </head>
 <body>
 
@@ -526,6 +526,9 @@
         <button class="btn-secundario btn-sm" onclick="backfillCategoriasNasFestas()" title="Aplicar categorias cadastradas nos itens das festas já importadas">
           &#9881; Aplicar Classificações nas Festas
         </button>
+      </div>
+      <div class="busca-sep-wrap" id="busca-cadastro-wrap">
+        <input type="search" id="busca-cadastro" class="busca-sep" placeholder="&#128269; Buscar produto..." oninput="filtrarCadastro(this.value)">
       </div>
       <div id="cadastro-itens-lista"></div>
       <div id="cadastro-itens-loc" class="hidden"></div>
