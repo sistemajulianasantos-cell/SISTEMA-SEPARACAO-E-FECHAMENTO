@@ -5,9 +5,9 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --roxo:        #5B21B6;
-  --roxo-escuro: #3B0D8E;
-  --roxo-claro:  #7C3AED;
+  --roxo:        #C4622D;
+  --roxo-escuro: #2B3B2A;
+  --roxo-claro:  #D4753A;
   --branco:      #FFFFFF;
   --cinza-50:    #F9FAFB;
   --cinza-100:   #F3F4F6;
@@ -31,7 +31,7 @@
 
 body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  background: #F0EDF8;
+  background: #F0EDE8;
   color: var(--cinza-900);
   min-height: 100vh;
   font-size: 15px;
@@ -184,7 +184,7 @@ body {
 .form-group textarea:focus {
   outline: none;
   border-color: var(--roxo);
-  box-shadow: 0 0 0 3px rgba(91,33,182,.12);
+  box-shadow: 0 0 0 3px rgba(196,98,45,.12);
 }
 
 .form-group textarea {
@@ -403,7 +403,7 @@ body {
 .card-festa.st-agendada   { border-left-color: #0284C7; }
 .card-festa.st-separando  { border-left-color: #D97706; }
 .card-festa.st-conferencia{ border-left-color: #1D4ED8; }
-.card-festa.st-festa      { border-left-color: #7C3AED; }
+.card-festa.st-festa      { border-left-color: #C4622D; }
 .card-festa.st-retorno    { border-left-color: #DC2626; }
 .card-festa.st-galpao     { border-left-color: #78716C; }
 .card-festa.st-concluida  { border-left-color: #166534; }
@@ -463,7 +463,7 @@ body {
 .badge-agendada   { background: #E0F2FE; color: #075985; }
 .badge-separando  { background: #FEF3C7; color: #78350F; }
 .badge-conferencia{ background: #DBEAFE; color: #1E3A8A; }
-.badge-festa      { background: #EDE9FE; color: #4C1D95; }
+.badge-festa      { background: #FEF0E8; color: #4C1D95; }
 .badge-retorno    { background: #FEE2E2; color: #7F1D1D; }
 .badge-galpao     { background: #F5F5F4; color: #44403C; }
 .badge-concluida  { background: #DCFCE7; color: #14532D; }
@@ -538,7 +538,7 @@ body {
   color: var(--cinza-900);
   transition: border-color .15s;
 }
-.qty-input:focus { outline: none; border-color: var(--roxo); box-shadow: 0 0 0 3px rgba(91,33,182,.12); }
+.qty-input:focus { outline: none; border-color: var(--roxo); box-shadow: 0 0 0 3px rgba(196,98,45,.12); }
 
 .msg-item {
   font-size: 12px;
@@ -707,7 +707,7 @@ body {
   margin-bottom: 10px;
   background: var(--cinza-50);
 }
-.area-upload:hover { border-color: var(--roxo); background: #F5F0FF; }
+.area-upload:hover { border-color: var(--roxo); background: #F9F5F0; }
 
 .grade-fotos { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px,1fr)); gap: 6px; }
 .foto-wrap   { position: relative; }
@@ -893,7 +893,7 @@ body {
   font-size: 15px; font-weight: 700;
   color: var(--cinza-900);
 }
-.role-card:hover { border-color: var(--roxo); background: #F5F0FF; }
+.role-card:hover { border-color: var(--roxo); background: #F9F5F0; }
 .role-card-seta  { color: var(--cinza-400); font-size: 18px; }
 
 /* ══ CHECKBOXES ═══════════════════════════════════════ */
@@ -938,7 +938,7 @@ body {
   background: var(--branco);
   color: var(--cinza-900);
 }
-.busca-sep:focus { outline: none; border-color: var(--roxo); box-shadow: 0 0 0 3px rgba(91,33,182,.15); }
+.busca-sep:focus { outline: none; border-color: var(--roxo); box-shadow: 0 0 0 3px rgba(196,98,45,.15); }
 
 /* ══ SELETOR DE STATUS (ADMIN) ════════════════════════ */
 .detalhe-status-col {
@@ -984,12 +984,12 @@ body {
   gap: 16px; background: var(--roxo); color: var(--branco);
   border-radius: 16px; padding: 48px 24px; margin: 24px auto;
   max-width: 280px; cursor: pointer;
-  box-shadow: 0 4px 20px rgba(91,33,182,.35);
+  box-shadow: 0 4px 20px rgba(196,98,45,.35);
   transition: transform .12s, box-shadow .12s;
   user-select: none;
 }
-.card-iniciar-sep:hover  { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(91,33,182,.45); }
-.card-iniciar-sep:active { transform: translateY(0);    box-shadow: 0 2px 10px rgba(91,33,182,.3);  }
+.card-iniciar-sep:hover  { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(196,98,45,.45); }
+.card-iniciar-sep:active { transform: translateY(0);    box-shadow: 0 2px 10px rgba(196,98,45,.3);  }
 .card-iniciar-sep-icone  { font-size: 40px; line-height: 1; }
 .card-iniciar-sep-texto  { font-size: 18px; font-weight: 800; letter-spacing: .3px; }
 
@@ -1216,7 +1216,7 @@ body.sidebar-pinada #sidebar { box-shadow: 2px 0 8px rgba(0,0,0,.08); }
   border: none; background: none; color: var(--roxo);
   font-size: 14px; font-weight: 700; padding: 6px 4px;
 }
-.sidebar-data-btn.todas:hover { background: #F5F0FF; border-radius: var(--raio); }
+.sidebar-data-btn.todas:hover { background: #F9F5F0; border-radius: var(--raio); }
 .sidebar-data-btn.ativa { background: var(--roxo); border-color: var(--roxo); color: var(--branco); }
 .sidebar-data-btn.ativa .sidebar-data-dia  { color: var(--branco); }
 .sidebar-data-btn.ativa .sidebar-data-texto{ color: var(--branco); }
@@ -1237,8 +1237,8 @@ body.sidebar-pinada #sidebar { box-shadow: 2px 0 8px rgba(0,0,0,.08); }
 .sidebar-btn:last-child { margin-bottom: 0; }
 .sidebar-btn-primario { background: var(--roxo); color: var(--branco); border-color: var(--roxo); }
 .sidebar-btn-primario:hover { background: var(--roxo-escuro); border-color: var(--roxo-escuro); }
-.sidebar-btn-destaque { color: var(--roxo); border-color: rgba(91,33,182,.25); }
-.sidebar-btn-destaque:hover { background: #F5F0FF; border-color: var(--roxo); }
+.sidebar-btn-destaque { color: var(--roxo); border-color: rgba(196,98,45,.25); }
+.sidebar-btn-destaque:hover { background: #F9F5F0; border-color: var(--roxo); }
 
 /* ══ AGENDA STRIP (cards de festa no topo do home CEO) ═ */
 .producao-agenda-wrap {
@@ -1331,7 +1331,7 @@ body.sidebar-pinada #sidebar { box-shadow: 2px 0 8px rgba(0,0,0,.08); }
   border: 1px solid var(--cinza-300); border-radius: var(--raio);
   font-size: 16px; font-weight: 700; text-align: center; color: var(--cinza-900);
 }
-.estoque-qty-input:focus { outline: none; border-color: var(--roxo); box-shadow: 0 0 0 3px rgba(91,33,182,.12); }
+.estoque-qty-input:focus { outline: none; border-color: var(--roxo); box-shadow: 0 0 0 3px rgba(196,98,45,.12); }
 .estoque-qty-un { font-size: 12px; color: var(--cinza-500); }
 
 .btn-comprar {
@@ -1483,7 +1483,7 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .prior-baixa { background: #DBEAFE; color: #1E3A8A; }
 .badge-standby {
   display: inline-flex; align-items: center; gap: 4px;
-  background: #EDE9FE; color: #4C1D95;
+  background: #FEF0E8; color: #4C1D95;
   font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px;
 }
 
@@ -1536,7 +1536,7 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 
 /* ══ RELATÓRIO POR PERÍODO ═══════════════════════════ */
 .rel-hero {
-  background: linear-gradient(135deg, var(--roxo) 0%, #1E40AF 100%);
+  background: linear-gradient(135deg, var(--roxo-escuro) 0%, #3D5C3A 100%);
   padding: 20px 16px 22px; color: #fff;
 }
 .rel-periodo-nav {
@@ -1687,7 +1687,7 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   font-size: 10px; font-weight: 600; opacity: .65; text-transform: uppercase; letter-spacing: .5px;
 }
 .forn-card-valor { font-weight: 700; text-transform: capitalize; }
-.forn-card-consignado { background: #EDE9FE; color: #5B21B6; }
+.forn-card-consignado { background: #FEF0E8; color: #C4622D; }
 .forn-card-cliente    { background: #DBEAFE; color: #1E40AF; }
 .forn-card-romero     { background: #D1FAE5; color: #065F46; }
 .forn-card-proprio    { background: #FEF3C7; color: #92400E; }
