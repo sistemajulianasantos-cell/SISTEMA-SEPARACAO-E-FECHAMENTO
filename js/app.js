@@ -1120,27 +1120,41 @@ async function abrirConferencia(id) {
 function renderizarConferencia(festa) {
   document.getElementById('conf-info').innerHTML = htmlInfoFesta(festa);
 
-  document.getElementById('conf-itens').innerHTML = (festa.itens || []).map((item, i) => {
+  const itensOcultosConf = (festa.itens || []).filter((item) => {
+    const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+    return cfg && cfg.conferirCoord === false;
+  });
+
+  document.getElementById('conf-itens').innerHTML =
+    (itensOcultosConf.length ? `
+      <div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#6B7280;">
+        ${itensOcultosConf.length} item(s) sem conferência do coordenador: ${itensOcultosConf.map(i => i.nome).join(', ')}
+      </div>` : '') +
+    (festa.itens || []).filter((item) => {
+      const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+      return !cfg || cfg.conferirCoord !== false;
+    }).map((item) => {
+    const ri        = (festa.itens || []).indexOf(item);
     const cfg       = buscarConfigItem(normalizarNomeItem(item.nome));
     const exigeFoto = !!cfg?.exigeFoto;
-    const temFoto   = !!(fotosCache.confItens[i] || item.fotoConferencia);
+    const temFoto   = !!(fotosCache.confItens[ri] || item.fotoConferencia);
     const fotoAreaHtml = exigeFoto ? `
-      <div class="item-foto-area${temFoto ? ' ok' : ''}" id="conf-foto-area-${i}">
+      <div class="item-foto-area${temFoto ? ' ok' : ''}" id="conf-foto-area-${ri}">
         <div class="item-foto-preview">
           ${item.fotoConferencia
             ? `<img src="${item.fotoConferencia}" alt="foto">`
-            : fotosCache.confItens[i]
-              ? `<img src="${URL.createObjectURL(fotosCache.confItens[i])}" alt="foto">`
+            : fotosCache.confItens[ri]
+              ? `<img src="${URL.createObjectURL(fotosCache.confItens[ri])}" alt="foto">`
               : `<div class="item-foto-placeholder">📷</div>`}
         </div>
         <div class="item-foto-label">
           <div class="item-foto-label-titulo${temFoto ? ' ok' : ''}">${temFoto ? '✓ Foto anexada' : 'Foto obrigatória'}</div>
           <div class="item-foto-label-desc">${temFoto ? 'Toque para trocar' : 'Este item exige registro fotográfico'}</div>
         </div>
-        <input type="file" id="conf-foto-input-${i}" accept="image/*" capture="environment" style="display:none"
-          onchange="onFotoItemConf(${i}, this)" />
+        <input type="file" id="conf-foto-input-${ri}" accept="image/*" capture="environment" style="display:none"
+          onchange="onFotoItemConf(${ri}, this)" />
         <button class="btn-foto-item${temFoto ? ' ok' : ''}"
-          onclick="document.getElementById('conf-foto-input-${i}').click()">
+          onclick="document.getElementById('conf-foto-input-${ri}').click()">
           ${temFoto ? '✓ OK' : '📷 Anexar'}
         </button>
       </div>
@@ -1152,7 +1166,7 @@ function renderizarConferencia(festa) {
           <div>
             <div class="item-nome">
               ${nomeBasDisplay(item.nome)}
-              <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${i})">✏️</button>
+              <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${ri})">✏️</button>
             </div>
             ${htmlBadgeForn(item) || ''}
             <div class="item-sub">Separado: <strong>${item.qtdSeparada || 0}</strong> ${item.unidade || 'un'}</div>
@@ -1160,13 +1174,13 @@ function renderizarConferencia(festa) {
         </div>
         <div class="item-entrada">
           <label>Conferido:</label>
-          <input type="number" class="qty-input" id="conf-qty-${i}"
+          <input type="number" class="qty-input" id="conf-qty-${ri}"
             value="${item.qtdConferida !== undefined ? item.qtdConferida : (item.qtdSeparada || '')}"
             min="0" placeholder="0"
-            oninput="checarConf(${i}, ${item.qtdSeparada || 0})" />
+            oninput="checarConf(${ri}, ${item.qtdSeparada || 0})" />
           <span class="item-unidade">${item.unidade || 'un'}</span>
         </div>
-        <div id="conf-msg-${i}">
+        <div id="conf-msg-${ri}">
           ${item.qtdConferida !== undefined && item.qtdConferida !== item.qtdSeparada
             ? `<span class="msg-item msg-erro">Divergencia registrada</span>` : ''}
         </div>
@@ -1227,6 +1241,8 @@ function checarConf(i, separado) {
 function atualizarBoxDivConf() {
   const itens = festaAtual?.itens || [];
   const divs  = itens.map((item, i) => {
+    const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+    if (cfg && cfg.conferirCoord === false) return null;
     const val = parseFloat(document.getElementById(`conf-qty-${i}`)?.value) || 0;
     const sep = item.qtdSeparada || 0;
     return val !== sep ? { item: item.nome, separado: sep, conferido: val } : null;
@@ -1249,9 +1265,10 @@ async function concluirConferencia() {
   if (!festaAtual) return;
   const btn = document.getElementById('btn-conf-concluir');
 
-  /* Validar fotos obrigatórias por item */
+  /* Validar fotos obrigatórias por item (apenas itens que devem ser conferidos) */
   const semFoto = (festaAtual.itens || []).filter((item, i) => {
     const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+    if (cfg && cfg.conferirCoord === false) return false;
     return cfg?.exigeFoto && !fotosCache.confItens[i] && !item.fotoConferencia;
   });
   if (semFoto.length) {
@@ -1263,8 +1280,12 @@ async function concluirConferencia() {
   btn.textContent = 'Salvando...';
 
   try {
-    /* Montar itens com qtdConferida e upload de fotos por item */
+    /* Montar itens com qtdConferida; itens sem conferência do coord mantêm qtdSeparada */
     const itens = await Promise.all((festaAtual.itens || []).map(async (item, i) => {
+      const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+      if (cfg && cfg.conferirCoord === false) {
+        return { ...item, qtdConferida: item.qtdSeparada || 0 };
+      }
       const qtdConferida = parseFloat(document.getElementById(`conf-qty-${i}`)?.value) || 0;
       const fotoFile     = fotosCache.confItens[i];
       let fotoConferencia = item.fotoConferencia || null;
@@ -1276,7 +1297,11 @@ async function concluirConferencia() {
     }));
 
     const divergencias = itens
-      .filter(it => it.qtdConferida !== (it.qtdSeparada || 0))
+      .filter(it => {
+        const cfg = buscarConfigItem(normalizarNomeItem(it.nome));
+        if (cfg && cfg.conferirCoord === false) return false;
+        return it.qtdConferida !== (it.qtdSeparada || 0);
+      })
       .map(it => ({ item: it.nome, separado: it.qtdSeparada || 0, conferido: it.qtdConferida }));
 
     let fotoUrls = [];
@@ -3236,8 +3261,9 @@ async function abrirFormItemConfig(id, nomePreenchido) {
     document.getElementById('ic-dias-antes').value = cfg?.diasAntesEvento || 1;
     document.getElementById('ic-refrigerado').checked = !!cfg?.refrigerado;
     document.getElementById('ic-producao').checked    = !!cfg?.eProducao;
-    document.getElementById('ic-separacao').checked   = cfg?.exibirSeparacao !== false;
-    document.getElementById('ic-exige-foto').checked  = !!cfg?.exigeFoto;
+    document.getElementById('ic-separacao').checked      = cfg?.exibirSeparacao !== false;
+    document.getElementById('ic-exige-foto').checked     = !!cfg?.exigeFoto;
+    document.getElementById('ic-conferir-coord').checked = cfg?.conferirCoord !== false;
     document.getElementById('ic-setor').value      = cfg?.setor      || '';
     document.getElementById('ic-prateleira').value = cfg?.prateleira || '';
     toggleRefrigeradoForm(!!cfg?.refrigerado);
@@ -3300,6 +3326,7 @@ async function salvarItemConfig() {
   const eProducao       = document.getElementById('ic-producao').checked;
   const exibirSeparacao = document.getElementById('ic-separacao').checked;
   const exigeFoto       = document.getElementById('ic-exige-foto').checked;
+  const conferirCoord   = document.getElementById('ic-conferir-coord').checked;
   const setor           = document.getElementById('ic-setor').value.trim();
   const prateleira      = document.getElementById('ic-prateleira').value.trim();
 
@@ -3312,6 +3339,7 @@ async function salvarItemConfig() {
     eProducao,
     exibirSeparacao,
     exigeFoto,
+    conferirCoord,
     setor,
     prateleira,
     refrigerado,
