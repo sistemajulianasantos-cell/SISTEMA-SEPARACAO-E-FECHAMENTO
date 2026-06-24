@@ -1039,6 +1039,33 @@ function formatarDuracao(inicio, fim) {
 
 async function mudarStatusFesta(id, novoStatus) {
   const label = STATUS_LABELS[novoStatus] || novoStatus;
+
+  if (novoStatus === 'agendada') {
+    if (!confirm('Retornar para "Agendada" vai apagar TODOS os dados de separação, conferência e retorno desta festa. Deseja continuar?')) return;
+    try {
+      const itensReset = (festaAtual?.itens || []).map(it => ({
+        id:            it.id,
+        nome:          it.nome,
+        categoria:     it.categoria     || '',
+        fornecimento:  it.fornecimento  || '',
+        qtdNecessaria: it.qtdNecessaria || 0,
+        unidade:       it.unidade       || 'un',
+        separado:      false,
+        qtdSeparada:   0,
+        qtdConferida:  0,
+        qtdRetorno:    0,
+        qtdGalpao:     0,
+        qtdDanificada: 0,
+      }));
+      await resetarParaAgendada(id, itensReset);
+      toast(`Festa retornada para "${label}" e dados de processo apagados.`, 'sucesso');
+    } catch(e) {
+      console.error(e);
+      toast('Erro ao resetar festa.', 'erro');
+    }
+    return;
+  }
+
   try {
     await atualizarFesta(id, { status: novoStatus });
     toast(`Status alterado para "${label}".`, 'sucesso');
@@ -2168,10 +2195,12 @@ function parsearOR(linhas) {
     if (matchItem) {
       const [, qtdStr, unidade, nomeRaw] = matchItem;
 
-      // Limpar nome: remover ** (marcadores de negrito), e colunas
+      // Limpar nome: remover marcadores, cabeçalhos de coluna e números soltos no final
+      // (números soltos são valores das colunas Saída/Extras/Volta mesclados na linha)
       const nome = nomeRaw
         .replace(/\*\*/g, '')
         .replace(/\s+(Sa[íi]da|Extras|Volta)\s*.*$/i, '')
+        .replace(/(?:\s+\d+(?:[.,]\d+)?)+\s*$/, '')
         .trim();
 
       if (nome.length > 1) {
@@ -2205,8 +2234,41 @@ function parsearOR(linhas) {
       somenteLetras.length > 2 &&
       somenteLetras === somenteLetras.toUpperCase() &&
       !/^\d/.test(linha) &&
-      linha.length < 60
+      linha.length < 80
     ) {
+      // Verificar se o PDF fundiu um cabeçalho de categoria com o primeiro item da seção
+      // Ex: "BEBIDAS ALCOOLICAS 10 UN VINHO TINTO" → categoria + item na mesma linha
+      const RE_CAT_EMBUTIDA = /^([A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\s\/\-]*?)\s+(\d+(?:[.,]\d+)?)\s+(UN|PCT|CX|KG|L|LT|GF|FR|PC|ML|FD|BND|SC|GR|MT|PAR)\b\s*(.+)/i;
+      const matchEmb = linha.match(RE_CAT_EMBUTIDA);
+      if (matchEmb) {
+        const [, catPart, qtdStr, unidade, nomeRaw] = matchEmb;
+        const catCheck = catPart.replace(/[^A-Za-zÀ-ÿ\s]/g, '').trim();
+        if (catCheck.length > 2 && catCheck === catCheck.toUpperCase()) {
+          categoriaAtual = catPart.trim();
+          const nome = nomeRaw
+            .replace(/\*\*/g, '')
+            .replace(/\s+(Sa[íi]da|Extras|Volta)\s*.*$/i, '')
+            .replace(/(?:\s+\d+(?:[.,]\d+)?)+\s*$/, '')
+            .trim();
+          if (nome.length > 1) {
+            let fornecimento = '';
+            const nomeNorm = normalizarNomeItem(nome);
+            for (const suf of SUFIXOS_FORNECIMENTO) {
+              if (nomeNorm.endsWith('_' + suf)) { fornecimento = suf; break; }
+            }
+            resultado.itens.push({
+              id:            `item-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+              nome,
+              categoria:     categoriaAtual,
+              fornecimento,
+              qtdNecessaria: parseFloat(qtdStr.replace(',', '.')),
+              unidade:       unidade.toUpperCase(),
+              qtdSeparada:   0, qtdConferida: 0, qtdRetorno: 0, qtdGalpao: 0, qtdDanificada: 0,
+            });
+          }
+          continue;
+        }
+      }
       categoriaAtual = linha.trim();
     }
   }

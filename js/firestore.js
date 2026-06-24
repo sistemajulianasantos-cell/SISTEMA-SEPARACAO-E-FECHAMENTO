@@ -121,6 +121,35 @@ async function atualizarFesta(id, dados) {
   return db.collection('festas').doc(id).update(dados);
 }
 
+async function resetarParaAgendada(id, itens) {
+  const DEL = () => firebase.firestore.FieldValue.delete();
+  return db.collection('festas').doc(id).update({
+    status:             'agendada',
+    itens,
+    editandoAgora:      null,
+    alteracoes:         [],
+    colaborador:        DEL(),
+    coordenador:        DEL(),
+    separacaoInicio:    DEL(),
+    separacaoFim:       DEL(),
+    primeiroItemEm:     DEL(),
+    conferenciaFim:     DEL(),
+    retornoFim:         DEL(),
+    galpaoFim:          DEL(),
+    obsSeparacao:       DEL(),
+    obsConferencia:     DEL(),
+    obsRetorno:         DEL(),
+    obsGalpao:          DEL(),
+    fotosSeparacao:     DEL(),
+    fotosConferencia:   DEL(),
+    fotosRetorno:       DEL(),
+    fotosGalpao:        DEL(),
+    divergencias:       DEL(),
+    divergenciasGalpao: DEL(),
+    ultimaAlteracao:    DEL(),
+  });
+}
+
 async function deletarFesta(id) {
   return db.collection('festas').doc(id).delete();
 }
