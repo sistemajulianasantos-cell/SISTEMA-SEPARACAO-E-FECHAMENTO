@@ -112,7 +112,7 @@ function renderizarPainelTV(festas) {
       const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
       if (!cfg?.eProducao) return;
       const key = normalizarNomeItem(item.nome);
-      if (!mapaProd[key]) mapaProd[key] = { nome: nomeBasDisplay(item.nome), total: 0, unidade: item.unidade || 'un' };
+      if (!mapaProd[key]) mapaProd[key] = { nome: nomeBasDisplay(item.nome), total: 0, unidade: item.unidade || 'un', grupo: cfg.grupo || 'Geral' };
       mapaProd[key].total += (item.qtdNecessaria || 0);
     });
   });
@@ -177,13 +177,28 @@ function _tvRenderProducao(producao) {
     return;
   }
 
-  el.innerHTML = producao.map(p => `
-    <div class="tv-prod-item">
-      <div class="tv-prod-nome">${p.nome}</div>
-      <div>
-        <span class="tv-prod-qty">${p.total}</span>
-        <span class="tv-prod-un">${p.unidade}</span>
-      </div>
+  /* Agrupar por grupo/classificação */
+  const grupos = {};
+  producao.forEach(p => {
+    const g = p.grupo || 'Geral';
+    if (!grupos[g]) grupos[g] = [];
+    grupos[g].push(p);
+  });
+
+  const ordemGrupos = Object.keys(grupos).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  el.innerHTML = ordemGrupos.map(g => `
+    <div class="tv-prod-grupo">
+      <div class="tv-prod-grupo-header">${g}</div>
+      ${grupos[g].map(p => `
+        <div class="tv-prod-item">
+          <div class="tv-prod-nome">${p.nome}</div>
+          <div>
+            <span class="tv-prod-qty">${p.total}</span>
+            <span class="tv-prod-un">${p.unidade}</span>
+          </div>
+        </div>
+      `).join('')}
     </div>
   `).join('');
 }

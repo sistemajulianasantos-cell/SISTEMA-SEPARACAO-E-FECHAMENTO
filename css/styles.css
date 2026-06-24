@@ -2065,6 +2065,20 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 }
 
 /* ── Produção ── */
+.tv-prod-grupo { margin-bottom: 14px; }
+
+.tv-prod-grupo-header {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #FFFFFF;
+  background: #15803d;
+  padding: 4px 10px;
+  border-radius: 6px 6px 0 0;
+  margin-bottom: 4px;
+}
+
 .tv-prod-item {
   display: flex;
   justify-content: space-between;
