@@ -3398,7 +3398,10 @@ async function abrirCadastroItens(aba) {
   if (inputBusca) inputBusca.value = '';
   /* Garantir que a aba correta esteja ativa */
   const abaAlvo = aba || 'config';
-  const btnAlvo = document.getElementById(abaAlvo === 'localizacoes' ? 'tab-itens-loc' : 'tab-itens-config');
+  const btnAlvo = document.getElementById(
+    abaAlvo === 'localizacoes' ? 'tab-itens-loc' :
+    abaAlvo === 'categorias'   ? 'tab-itens-cat'  : 'tab-itens-config'
+  );
   trocarAbaItens(abaAlvo, btnAlvo);
 }
 
@@ -3411,19 +3414,38 @@ function trocarAbaItens(aba, btn) {
   document.querySelectorAll('#tela-cadastro-itens .tab').forEach(b => b.classList.remove('ativo'));
   if (btn) btn.classList.add('ativo');
 
-  const elConf = document.getElementById('cadastro-itens-lista');
-  const elLoc  = document.getElementById('cadastro-itens-loc');
-  const btnNovo = document.getElementById('btn-novo-item-config');
+  const elConf    = document.getElementById('cadastro-itens-lista');
+  const elCat     = document.getElementById('cadastro-itens-cat');
+  const elLoc     = document.getElementById('cadastro-itens-loc');
+  const btnNovo   = document.getElementById('btn-novo-item-config');
+  const btnNovoCat= document.getElementById('btn-nova-categoria');
+  const btnSel    = document.getElementById('btn-selecionar-itens');
+  const btnAplicar= document.getElementById('btn-aplicar-class');
+  const busca     = document.getElementById('busca-cadastro-wrap');
 
-  if (aba === 'localizacoes') {
-    elConf?.classList.add('hidden');
+  /* Reset todos */
+  elConf?.classList.add('hidden');
+  elCat?.classList.add('hidden');
+  elLoc?.classList.add('hidden');
+  if (btnNovo)    btnNovo.classList.add('hidden');
+  if (btnNovoCat) btnNovoCat.classList.add('hidden');
+  if (btnSel)     btnSel.style.display = '';
+  if (btnAplicar) btnAplicar.classList.add('hidden');
+  if (busca)      busca.classList.add('hidden');
+
+  if (aba === 'categorias') {
+    elCat?.classList.remove('hidden');
+    if (btnNovoCat) btnNovoCat.classList.remove('hidden');
+    if (btnSel)     btnSel.style.display = 'none';
+    renderizarCategorias();
+  } else if (aba === 'localizacoes') {
     elLoc?.classList.remove('hidden');
-    if (btnNovo) btnNovo.style.display = 'none';
     renderizarLocalizacoes();
   } else {
     elConf?.classList.remove('hidden');
-    elLoc?.classList.add('hidden');
-    if (btnNovo) btnNovo.style.display = '';
+    if (btnNovo)    btnNovo.classList.remove('hidden');
+    if (btnAplicar) btnAplicar.classList.remove('hidden');
+    if (busca)      busca.classList.remove('hidden');
     renderizarCadastroItens();
   }
 }
@@ -4301,14 +4323,12 @@ async function salvarLocalizacaoItem(configId, nomeKey) {
 ══════════════════════════════════════════════════ */
 
 async function abrirCadastroCategorias() {
-  navegarSidebar();
-  historico.push('tela-cadastro-categorias');
-  mostrarTela('tela-cadastro-categorias', 'Categorias');
-  await renderizarCategorias();
+  /* Redireciona para a aba Categorias dentro de Cadastro */
+  abrirCadastroItens('categorias');
 }
 
 async function renderizarCategorias() {
-  const el = document.getElementById('categorias-lista');
+  const el = document.getElementById('cadastro-itens-cat') || document.getElementById('categorias-lista');
   if (!el) return;
   el.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
   try {
@@ -4372,7 +4392,8 @@ async function salvarCategoria() {
     toast('Categoria salva.', 'sucesso');
     goBack();
     setTimeout(async () => {
-      if (historico[historico.length - 1] === 'tela-cadastro-categorias') {
+      const tela = historico[historico.length - 1];
+      if (tela === 'tela-cadastro-categorias' || tela === 'tela-cadastro-itens') {
         await renderizarCategorias();
       }
     }, 100);
