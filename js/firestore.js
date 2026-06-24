@@ -205,7 +205,12 @@ async function listarItemConfigs() {
 }
 
 async function salvarItemConfigDB(dados) {
-  /* Upsert por nomeKey */
+  /* Edição de doc existente — atualiza pelo ID para evitar duplicata se nomeKey mudou */
+  if (dados.id) {
+    const { id, ...rest } = dados;
+    return db.collection('item_config').doc(id).update({ ...rest, updatedAt: TS() });
+  }
+  /* Criação: upsert por nomeKey */
   const snap = await db.collection('item_config')
     .where('nomeKey', '==', dados.nomeKey).limit(1).get();
   if (!snap.empty) {

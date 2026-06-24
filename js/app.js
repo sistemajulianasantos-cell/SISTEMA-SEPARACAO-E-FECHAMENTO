@@ -3318,8 +3318,15 @@ async function salvarItemConfig() {
     diasAntesEvento:  refrigerado ? (parseInt(diasStr) || 1) : 1,
   };
 
+  if (_itemConfigEditId) dados.id = _itemConfigEditId;
+
   try {
     await salvarItemConfigDB(dados);
+    /* Se o nomeKey mudou durante edição, remove a entrada antiga do cache */
+    if (_itemConfigEditId) {
+      const oldKey = Object.keys(itemConfigsCache).find(k => itemConfigsCache[k].id === _itemConfigEditId);
+      if (oldKey && oldKey !== dados.nomeKey) delete itemConfigsCache[oldKey];
+    }
     itemConfigsCache[dados.nomeKey] = { ...(itemConfigsCache[dados.nomeKey] || {}), ...dados };
     toast('Item salvo com sucesso.', 'sucesso');
     goBack();
