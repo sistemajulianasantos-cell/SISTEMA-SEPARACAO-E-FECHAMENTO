@@ -1978,7 +1978,7 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 
 .tv-col-conteudo {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 12px;
   background: #FFFFFF;
 }

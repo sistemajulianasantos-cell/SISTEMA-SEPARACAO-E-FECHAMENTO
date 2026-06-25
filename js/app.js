@@ -33,14 +33,51 @@ let _buscaCadastro       = '';
 
 let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [], confItens: {} };
 let modoGrupoSep = 'categoria'; /* 'nenhum' | 'categoria' | 'setor' */
-let _tvClockTimer = null;
+let _tvClockTimer      = null;
+let _tvScrollTimers    = [];
+let _tvScrollState     = {};
+let _tvScrollDelay     = null;
 
 /* ══════════════════════════════════════════════════
    PAINEL TV
 ══════════════════════════════════════════════════ */
 
+function _tvPararAutoScroll() {
+  _tvScrollTimers.forEach(clearInterval);
+  _tvScrollTimers = [];
+  Object.values(_tvScrollState).forEach(s => s.pauseTimer && clearTimeout(s.pauseTimer));
+  _tvScrollState = {};
+  if (_tvScrollDelay) { clearTimeout(_tvScrollDelay); _tvScrollDelay = null; }
+}
+
+function _tvIniciarAutoScroll() {
+  _tvPararAutoScroll();
+  const IDS = ['tv-agenda', 'tv-separando', 'tv-producao'];
+  IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const state = { paused: false, pauseTimer: null };
+    _tvScrollState[id] = state;
+    const timer = setInterval(() => {
+      if (state.paused) return;
+      const max = el.scrollHeight - el.clientHeight;
+      if (max <= 5) { el.scrollTop = 0; return; }
+      el.scrollTop += 1;
+      if (el.scrollTop >= max - 2) {
+        state.paused = true;
+        state.pauseTimer = setTimeout(() => {
+          el.scrollTop = 0;
+          state.pauseTimer = setTimeout(() => { state.paused = false; }, 2000);
+        }, 4000); // pausa 4s no fim antes de voltar
+      }
+    }, 40); // ~25px/s — velocidade confortável de leitura
+    _tvScrollTimers.push(timer);
+  });
+}
+
 function carregarTV() {
   pararListeners();
+  _tvPararAutoScroll();
 
   if (_tvClockTimer) clearInterval(_tvClockTimer);
   _tvAtualizarRelogio();
@@ -121,6 +158,10 @@ function renderizarPainelTV(festas) {
   _tvRenderSeparando(separando);
   _tvRenderProducao(producao);
   _tvRenderAgenda(agendadasHoje, atrasadas, proximas, hojeKey);
+
+  /* Reinicia o auto-scroll após o DOM atualizar */
+  if (_tvScrollDelay) clearTimeout(_tvScrollDelay);
+  _tvScrollDelay = setTimeout(_tvIniciarAutoScroll, 400);
 }
 
 function _tvRenderSeparando(separando) {
@@ -387,6 +428,7 @@ function irParaPrincipal() {
 function pararListeners() {
   if (unsubFestas) { unsubFestas(); unsubFestas = null; }
   if (unsubFesta)  { unsubFesta();  unsubFesta  = null; }
+  _tvPararAutoScroll();
 }
 
 /* ══════════════════════════════════════════════════
