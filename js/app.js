@@ -3153,14 +3153,14 @@ function agregarItensFestas(festas) {
 
 /* Retorna {diasRestantes, msg} se item está em stand-by, null se já liberado ou não refrigerado */
 function standByInfo(item, festaData) {
-  const cfg = itemConfigsCache[normalizarNomeItem(item.nome)];
+  const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
   if (!cfg?.refrigerado) return null;
   if (!festaData) return null;
 
   const dataFesta = toDate(festaData);
   if (isNaN(dataFesta)) return null;
 
-  const diasAntes = cfg.diasAntesEvento || 1;
+  const diasAntes = cfg.diasAntesEvento ?? 1;
   const dataLibera = new Date(dataFesta);
   dataLibera.setDate(dataLibera.getDate() - diasAntes);
   dataLibera.setHours(0, 0, 0, 0);
