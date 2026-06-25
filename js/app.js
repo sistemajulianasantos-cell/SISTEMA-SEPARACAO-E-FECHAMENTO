@@ -50,7 +50,7 @@ function _tvPararAutoScroll() {
 
 function _tvIniciarAutoScroll() {
   _tvPararAutoScroll();
-  const IDS = ['tv-agenda', 'tv-separando', 'tv-producao', 'tv-estoque'];
+  const IDS = ['tv-agenda', 'tv-separando', 'tv-producao'];
   IDS.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -148,7 +148,7 @@ function renderizarPainelTV(festas) {
       const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
       if (!cfg?.eProducao) return;
       const key = normalizarNomeItem(item.nome);
-      if (!mapaProd[key]) mapaProd[key] = { nome: nomeBasDisplay(item.nome), total: 0, unidade: item.unidade || 'un', grupo: cfg.grupo || 'Geral' };
+      if (!mapaProd[key]) mapaProd[key] = { nomeKey: key, nome: nomeBasDisplay(item.nome), total: 0, unidade: item.unidade || 'un', grupo: cfg.grupo || 'Geral' };
       mapaProd[key].total += (item.qtdNecessaria || 0);
     });
   });
@@ -157,7 +157,6 @@ function renderizarPainelTV(festas) {
   _tvRenderSeparando(separando);
   _tvRenderProducao(producao);
   _tvRenderAgenda(agendadasHoje, atrasadas, proximas, hojeKey);
-  _tvRenderEstoque(producao);
 
   /* Reinicia o auto-scroll após o DOM atualizar */
   if (_tvScrollDelay) clearTimeout(_tvScrollDelay);
@@ -218,28 +217,58 @@ function _tvRenderProducao(producao) {
     return;
   }
 
-  /* Agrupar por grupo/classificação */
+  /* Enriquecer com dados de estoque */
+  const itens = producao.map(p => {
+    const est    = estoqueCache[p.nomeKey] || estoqueCache[nomeBaseKey(p.nomeKey)] || {};
+    const qtdEst = est.qtd || 0;
+    const falta  = p.total - qtdEst;
+    const pct    = p.total > 0 ? Math.min(100, Math.round((qtdEst / p.total) * 100)) : 100;
+    return { ...p, qtdEst, falta, pct };
+  });
+
+  /* Dentro de cada grupo: faltam primeiro, depois ok */
   const grupos = {};
-  producao.forEach(p => {
+  itens.forEach(p => {
     const g = p.grupo || 'Geral';
     if (!grupos[g]) grupos[g] = [];
     grupos[g].push(p);
   });
+  Object.values(grupos).forEach(arr => arr.sort((a, b) => b.falta - a.falta));
+
+  const renderItem = p => {
+    if (p.falta > 0) {
+      return `
+        <div class="tv-prod-item tv-prod-falta">
+          <div class="tv-prod-item-topo">
+            <div class="tv-prod-nome">${p.nome}</div>
+            <div style="text-align:right">
+              <div class="tv-prod-falta-num">${p.falta}</div>
+              <div class="tv-prod-falta-label">${p.unidade} falta</div>
+            </div>
+          </div>
+          <div class="tv-prod-detalhe">Pedido: ${p.total} &nbsp;|&nbsp; Estoque: ${p.qtdEst}</div>
+          <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill deficit" style="width:${p.pct}%"></div></div>
+        </div>`;
+    }
+    return `
+      <div class="tv-prod-item">
+        <div class="tv-prod-item-topo">
+          <div class="tv-prod-nome">${p.nome}</div>
+          <div style="text-align:right">
+            <div class="tv-prod-qty">${p.total}</div>
+            <div class="tv-prod-ok-label">✓ ok</div>
+          </div>
+        </div>
+        <div class="tv-prod-detalhe">Estoque: ${p.qtdEst}</div>
+        <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill" style="width:${p.pct}%"></div></div>
+      </div>`;
+  };
 
   const ordemGrupos = Object.keys(grupos).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-
   el.innerHTML = ordemGrupos.map(g => `
     <div class="tv-prod-grupo">
       <div class="tv-prod-grupo-header">${g}</div>
-      ${grupos[g].map(p => `
-        <div class="tv-prod-item">
-          <div class="tv-prod-nome">${p.nome}</div>
-          <div>
-            <span class="tv-prod-qty">${p.total}</span>
-            <span class="tv-prod-un">${p.unidade}</span>
-          </div>
-        </div>
-      `).join('')}
+      ${grupos[g].map(renderItem).join('')}
     </div>
   `).join('');
 }
