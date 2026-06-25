@@ -588,12 +588,20 @@ body {
   background: var(--branco);
   border: var(--borda);
   border-radius: 6px;
-  padding: 14px;
+  padding: 0;
   margin-bottom: 10px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: stretch;
+  gap: 0;
+  overflow: hidden;
+}
+.item-pend-esquerda {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 14px;
+  gap: 10px;
 }
 .item-pend-info { flex: 1; min-width: 0; }
 .item-pend-acoes {
@@ -636,11 +644,10 @@ body {
   background: var(--verde);
   color: var(--branco);
   border: none;
-  border-radius: 12px;
-  width: 100px;
-  min-width: 100px;
-  align-self: stretch;
-  font-size: 16px;
+  border-radius: 0;
+  width: 110px;
+  min-width: 110px;
+  font-size: 18px;
   font-weight: 800;
   cursor: pointer;
   letter-spacing: .3px;
@@ -648,6 +655,7 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  align-self: stretch;
 }
 .btn-separar:active { opacity: .82; }
 .btn-separar::after {
@@ -1087,12 +1095,10 @@ input, select, textarea { font-size: 16px !important; }
   /* ── Separação por abas ── */
   .sep-tab            { padding: 12px 8px; font-size: 13px; }
 
-  /* Item pendente: empilha verticalmente em telas estreitas */
-  .item-pend-card     { flex-direction: column; align-items: stretch; gap: 10px; }
-  .item-pend-acoes    { display: flex; justify-content: space-between; align-items: stretch; min-height: 72px; }
-  .btn-qty            { width: 44px; height: 44px; font-size: 22px; align-self: center; }
-  .qty-ajuste         { width: 60px; font-size: 18px !important; align-self: center; }
-  .btn-separar        { width: 110px; min-width: 110px; font-size: 17px; border-radius: 14px; }
+  /* Item pendente */
+  .btn-qty            { width: 44px; height: 44px; font-size: 22px; }
+  .qty-ajuste         { width: 60px; font-size: 18px !important; }
+  .btn-separar        { width: 110px; min-width: 110px; font-size: 18px; }
 
   /* Item separado */
   .btn-desfazer       { padding: 10px 14px; min-height: 36px; font-size: 13px; }

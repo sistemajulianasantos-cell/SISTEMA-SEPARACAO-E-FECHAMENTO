@@ -1071,28 +1071,30 @@ function htmlItemPendente(item, i) {
   const badgeForn = htmlBadgeForn(item);
   return `
     <div class="item-pend-card">
-      <div class="item-pend-info">
-        <div class="item-nome">
-          ${nomeBasDisplay(item.nome)}
-          <button class="btn-editar-nome" title="Substituir / editar nome" onclick="editarNomeItem(${i})">✏️</button>
+      <div class="item-pend-esquerda">
+        <div class="item-pend-info">
+          <div class="item-nome">
+            ${nomeBasDisplay(item.nome)}
+            <button class="btn-editar-nome" title="Substituir / editar nome" onclick="editarNomeItem(${i})">✏️</button>
+          </div>
+          ${badgeForn || ''}
+          <div class="item-sub">${item.unidade || 'un'} &mdash; total: <strong>${item.qtdNecessaria}</strong></div>
+          ${locHtml}
         </div>
-        ${badgeForn || ''}
-        <div class="item-sub">${item.unidade || 'un'} &mdash; total: <strong>${item.qtdNecessaria}</strong></div>
-        ${locHtml}
-      </div>
-      <div class="item-pend-acoes">
-        <div class="qty-ajuste-wrap">
-          <button class="btn-qty" onclick="ajustarQty(${i},-1)">&#8722;</button>
-          <input type="number" id="qty-ajuste-${i}" class="qty-ajuste"
-            value="${item.qtdNecessaria}" min="0" />
-          <button class="btn-qty" onclick="ajustarQty(${i},1)">&#43;</button>
+        <div class="item-pend-acoes">
+          <div class="qty-ajuste-wrap">
+            <button class="btn-qty" onclick="ajustarQty(${i},-1)">&#8722;</button>
+            <input type="number" id="qty-ajuste-${i}" class="qty-ajuste"
+              value="${item.qtdNecessaria}" min="0" />
+            <button class="btn-qty" onclick="ajustarQty(${i},1)">&#43;</button>
+          </div>
         </div>
-        <button class="btn-separar"
-          onpointerdown="iniciarHoldSepara(this,${i})"
-          onpointerup="cancelarHoldSepara(this)"
-          onpointercancel="cancelarHoldSepara(this)"
-          onpointerleave="cancelarHoldSepara(this)">Separar</button>
       </div>
+      <button class="btn-separar"
+        onpointerdown="iniciarHoldSepara(this,${i})"
+        onpointerup="cancelarHoldSepara(this)"
+        onpointercancel="cancelarHoldSepara(this)"
+        onpointerleave="cancelarHoldSepara(this)">Separar</button>
     </div>
   `;
 }
