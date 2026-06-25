@@ -1029,7 +1029,7 @@ function htmlItemPendente(item, i) {
           onpointerdown="iniciarHoldSepara(this,${i})"
           onpointerup="cancelarHoldSepara(this)"
           onpointercancel="cancelarHoldSepara(this)"
-          onpointerleave="cancelarHoldSepara(this)">Separar</button>
+          onpointerleave="cancelarHoldSepara(this)"><span style="font-size:22px;line-height:1">✓</span>Separar</button>
       </div>
     </div>
   `;
