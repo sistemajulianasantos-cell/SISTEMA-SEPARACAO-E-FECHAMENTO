@@ -3220,6 +3220,9 @@ function agregarItensFestas(festas) {
 function standByInfo(item, festaData) {
   const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
   if (!cfg) return null;
+  /* Só aplica stand-by se o item tem diasAntesEvento configurado (refrigerado ou producao) */
+  if (!cfg.refrigerado && !cfg.eProducao) return null;
+  if (cfg.diasAntesEvento === undefined || cfg.diasAntesEvento === null) return null;
   if (!festaData) return null;
 
   const dataFesta = toDate(festaData);
@@ -3228,35 +3231,19 @@ function standByInfo(item, festaData) {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
-  /* Itens de produção: bloqueados até o dia do evento */
-  if (cfg.eProducao) {
-    const dataLibera = new Date(dataFesta);
-    dataLibera.setHours(0, 0, 0, 0);
-    const diasRestantes = Math.ceil((dataLibera - hoje) / (1000 * 60 * 60 * 24));
-    if (diasRestantes <= 0) return null;
-    return {
-      diasRestantes,
-      tipo: 'producao',
-      msg: diasRestantes === 1 ? 'Separar amanhã (dia do evento)' : `Separar em ${diasRestantes} dias (dia do evento)`,
-    };
-  }
-
-  /* Itens refrigerados: bloqueados N dias antes do evento */
-  if (!cfg.refrigerado) return null;
-
-  const diasAntes = cfg.diasAntesEvento ?? 1;
   const dataLibera = new Date(dataFesta);
-  dataLibera.setDate(dataLibera.getDate() - diasAntes);
+  dataLibera.setDate(dataLibera.getDate() - cfg.diasAntesEvento);
   dataLibera.setHours(0, 0, 0, 0);
 
   const diasRestantes = Math.ceil((dataLibera - hoje) / (1000 * 60 * 60 * 24));
   if (diasRestantes <= 0) return null;
 
-  return {
-    diasRestantes,
-    tipo: 'refrigerado',
-    msg: diasRestantes === 1 ? 'Libera amanhã' : `Libera em ${diasRestantes} dias`,
-  };
+  const tipo = cfg.eProducao ? 'producao' : 'refrigerado';
+  const msg  = cfg.diasAntesEvento === 0
+    ? (diasRestantes === 1 ? 'Separar amanhã (dia do evento)' : `Separar em ${diasRestantes} dias (dia do evento)`)
+    : (diasRestantes === 1 ? 'Libera amanhã' : `Libera em ${diasRestantes} dias`);
+
+  return { diasRestantes, tipo, msg };
 }
 
 async function abrirEstoque() {
@@ -3695,14 +3682,14 @@ async function abrirFormItemConfig(id, nomePreenchido) {
     document.getElementById('ic-grupo').value   = cfg?.grupo || '';
     document.getElementById('ic-ordem').value   = (cfg?.ordemSeparacao && cfg.ordemSeparacao !== 999) ? cfg.ordemSeparacao : '';
     document.getElementById('ic-dias-antes').value = cfg?.diasAntesEvento ?? 1;
-    document.getElementById('ic-refrigerado').checked = !!cfg?.refrigerado;
-    document.getElementById('ic-producao').checked    = !!cfg?.eProducao;
-    document.getElementById('ic-separacao').checked      = cfg?.exibirSeparacao !== false;
-    document.getElementById('ic-exige-foto').checked     = !!cfg?.exigeFoto;
-    document.getElementById('ic-conferir-coord').checked = cfg?.conferirCoord !== false;
+    document.getElementById('ic-refrigerado').checked    = !!cfg?.refrigerado;
+    document.getElementById('ic-producao').checked        = !!cfg?.eProducao;
+    document.getElementById('ic-separacao').checked       = cfg?.exibirSeparacao !== false;
+    document.getElementById('ic-exige-foto').checked      = !!cfg?.exigeFoto;
+    document.getElementById('ic-conferir-coord').checked  = cfg?.conferirCoord !== false;
     document.getElementById('ic-setor').value      = cfg?.setor      || '';
     document.getElementById('ic-prateleira').value = cfg?.prateleira || '';
-    toggleRefrigeradoForm(!!cfg?.refrigerado);
+    toggleStandByForm();
     document.querySelectorAll('input[name="ic-prioridade"]').forEach(r => {
       r.checked = r.value === (cfg?.prioridade || '');
     });
@@ -3757,10 +3744,13 @@ async function preencherSugestoesItemConfig() {
   } catch(e) { console.error(e); }
 }
 
-function toggleRefrigeradoForm(checked) {
+function toggleStandByForm() {
+  const refrig  = document.getElementById('ic-refrigerado')?.checked;
+  const prod    = document.getElementById('ic-producao')?.checked;
   const section = document.getElementById('ic-standby-config');
-  if (section) section.classList.toggle('hidden', !checked);
+  if (section) section.classList.toggle('hidden', !refrig && !prod);
 }
+function toggleRefrigeradoForm(checked) { toggleStandByForm(); }
 
 async function salvarItemConfig() {
   const nome = document.getElementById('ic-nome').value.trim();
@@ -3793,7 +3783,7 @@ async function salvarItemConfig() {
     setor,
     prateleira,
     refrigerado,
-    diasAntesEvento:  refrigerado ? (diasStr !== '' && !isNaN(parseInt(diasStr)) ? parseInt(diasStr) : 1) : 1,
+    diasAntesEvento: (refrigerado || eProducao) ? (diasStr !== '' && !isNaN(parseInt(diasStr)) ? parseInt(diasStr) : 1) : 1,
   };
 
   if (_itemConfigEditId) dados.id = _itemConfigEditId;
