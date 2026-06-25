@@ -3114,6 +3114,8 @@ function deveExibirNaSeparacao(item) {
   const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
   if (!cfg) return true; // sem config → exibe por padrão
   if (cfg.exibirSeparacao === false) return false;
+  // itens de produção sempre aparecem na separação
+  if (cfg.eProducao) return true;
   // verificar nível de categoria
   if (cfg.grupo) {
     const cat = categoriasCache.find(c => c.nome === cfg.grupo);
