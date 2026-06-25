@@ -3272,11 +3272,7 @@ function agregarItensFestas(festas) {
 /* Retorna {diasRestantes, msg, tipo} se item está em stand-by, null se já liberado */
 function standByInfo(item, festaData) {
   const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
-  if (!cfg) return null;
-  /* Só aplica stand-by se o item tem diasAntesEvento configurado (refrigerado ou producao) */
-  if (!cfg.refrigerado && !cfg.eProducao) return null;
-  if (cfg.diasAntesEvento === undefined || cfg.diasAntesEvento === null) return null;
-  if (!festaData) return null;
+  if (!cfg || !festaData) return null;
 
   const dataFesta = toDate(festaData);
   if (isNaN(dataFesta)) return null;
@@ -3284,19 +3280,38 @@ function standByInfo(item, festaData) {
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
+  /* Produção (sem ser refrigerado): só bloqueia se diasAntesEvento === 0 explicitamente */
+  if (cfg.eProducao && !cfg.refrigerado) {
+    if (cfg.diasAntesEvento !== 0) return null;
+    const dataLibera = new Date(dataFesta);
+    dataLibera.setHours(0, 0, 0, 0);
+    const diasRestantes = Math.ceil((dataLibera - hoje) / (1000 * 60 * 60 * 24));
+    if (diasRestantes <= 0) return null;
+    return {
+      diasRestantes,
+      tipo: 'producao',
+      msg: diasRestantes === 1 ? 'Separar amanhã (dia do evento)' : `Separar em ${diasRestantes} dias (dia do evento)`,
+    };
+  }
+
+  /* Refrigerado: bloqueia N dias antes conforme cadastro */
+  if (!cfg.refrigerado) return null;
+
+  const diasAntes = cfg.diasAntesEvento ?? 1;
   const dataLibera = new Date(dataFesta);
-  dataLibera.setDate(dataLibera.getDate() - cfg.diasAntesEvento);
+  dataLibera.setDate(dataLibera.getDate() - diasAntes);
   dataLibera.setHours(0, 0, 0, 0);
 
   const diasRestantes = Math.ceil((dataLibera - hoje) / (1000 * 60 * 60 * 24));
   if (diasRestantes <= 0) return null;
 
-  const tipo = cfg.eProducao ? 'producao' : 'refrigerado';
-  const msg  = cfg.diasAntesEvento === 0
-    ? (diasRestantes === 1 ? 'Separar amanhã (dia do evento)' : `Separar em ${diasRestantes} dias (dia do evento)`)
-    : (diasRestantes === 1 ? 'Libera amanhã' : `Libera em ${diasRestantes} dias`);
-
-  return { diasRestantes, tipo, msg };
+  return {
+    diasRestantes,
+    tipo: 'refrigerado',
+    msg: diasAntes === 0
+      ? (diasRestantes === 1 ? 'Separar amanhã (dia do evento)' : `Separar em ${diasRestantes} dias (dia do evento)`)
+      : (diasRestantes === 1 ? 'Libera amanhã' : `Libera em ${diasRestantes} dias`),
+  };
 }
 
 async function abrirEstoque() {
