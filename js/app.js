@@ -936,21 +936,41 @@ function renderizarSeparacao(festa) {
   /* Preservar texto da busca em re-renders automáticos */
   const buscaAtual = document.getElementById('busca-sep-input')?.value || '';
 
+  const standByProd  = standBy.filter(it => standByInfo(it, festa.data)?.tipo === 'producao');
+  const standByFrig  = standBy.filter(it => standByInfo(it, festa.data)?.tipo === 'refrigerado');
+
   const htmlStandBy = standBy.length ? `
     <div class="standby-section">
-      <div class="standby-section-titulo">&#10052; Itens Refrigerados — Stand-by</div>
-      ${standBy.map(it => {
-        const info = standByInfo(it, festa.data);
-        return `
-          <div class="item-standby-card">
-            <span class="item-standby-icone">&#10052;</span>
-            <div class="item-standby-corpo">
-              <div class="item-standby-nome">${it.nome}</div>
-              <div class="item-standby-msg">${info.msg} &mdash; Qtd: <strong>${it.qtdNecessaria}</strong> ${it.unidade || 'un'}</div>
+      ${standByProd.length ? `
+        <div class="standby-section-titulo">🍹 Produção — Separar no dia do evento</div>
+        ${standByProd.map(it => {
+          const info = standByInfo(it, festa.data);
+          return `
+            <div class="item-standby-card producao-bloqueada">
+              <span class="item-standby-icone">🍹</span>
+              <div class="item-standby-corpo">
+                <div class="item-standby-nome">${it.nome}</div>
+                <div class="item-standby-msg">${info.msg} &mdash; Qtd: <strong>${it.qtdNecessaria}</strong> ${it.unidade || 'un'}</div>
+              </div>
             </div>
-          </div>
-        `;
-      }).join('')}
+          `;
+        }).join('')}
+      ` : ''}
+      ${standByFrig.length ? `
+        <div class="standby-section-titulo">&#10052; Refrigerados — Stand-by</div>
+        ${standByFrig.map(it => {
+          const info = standByInfo(it, festa.data);
+          return `
+            <div class="item-standby-card">
+              <span class="item-standby-icone">&#10052;</span>
+              <div class="item-standby-corpo">
+                <div class="item-standby-nome">${it.nome}</div>
+                <div class="item-standby-msg">${info.msg} &mdash; Qtd: <strong>${it.qtdNecessaria}</strong> ${it.unidade || 'un'}</div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      ` : ''}
     </div>
   ` : '';
 
@@ -3153,28 +3173,45 @@ function agregarItensFestas(festas) {
   return Object.values(mapa).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 }
 
-/* Retorna {diasRestantes, msg} se item está em stand-by, null se já liberado ou não refrigerado */
+/* Retorna {diasRestantes, msg, tipo} se item está em stand-by, null se já liberado */
 function standByInfo(item, festaData) {
   const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
-  if (!cfg?.refrigerado) return null;
+  if (!cfg) return null;
   if (!festaData) return null;
 
   const dataFesta = toDate(festaData);
   if (isNaN(dataFesta)) return null;
+
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  /* Itens de produção: bloqueados até o dia do evento */
+  if (cfg.eProducao) {
+    const dataLibera = new Date(dataFesta);
+    dataLibera.setHours(0, 0, 0, 0);
+    const diasRestantes = Math.ceil((dataLibera - hoje) / (1000 * 60 * 60 * 24));
+    if (diasRestantes <= 0) return null;
+    return {
+      diasRestantes,
+      tipo: 'producao',
+      msg: diasRestantes === 1 ? 'Separar amanhã (dia do evento)' : `Separar em ${diasRestantes} dias (dia do evento)`,
+    };
+  }
+
+  /* Itens refrigerados: bloqueados N dias antes do evento */
+  if (!cfg.refrigerado) return null;
 
   const diasAntes = cfg.diasAntesEvento ?? 1;
   const dataLibera = new Date(dataFesta);
   dataLibera.setDate(dataLibera.getDate() - diasAntes);
   dataLibera.setHours(0, 0, 0, 0);
 
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-
   const diasRestantes = Math.ceil((dataLibera - hoje) / (1000 * 60 * 60 * 24));
   if (diasRestantes <= 0) return null;
 
   return {
     diasRestantes,
+    tipo: 'refrigerado',
     msg: diasRestantes === 1 ? 'Libera amanhã' : `Libera em ${diasRestantes} dias`,
   };
 }

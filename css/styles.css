@@ -1504,6 +1504,10 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   border-radius: 6px; padding: 12px 14px; margin-bottom: 8px;
   display: flex; align-items: flex-start; gap: 12px; opacity: .75;
 }
+.item-standby-card.producao-bloqueada {
+  background: #F0FDF4; border: 1px dashed #86EFAC;
+  opacity: .7;
+}
 .item-standby-icone { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
 .item-standby-corpo { flex: 1; min-width: 0; }
 .item-standby-nome  { font-size: 14px; font-weight: 700; color: var(--cinza-700); }
