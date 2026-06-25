@@ -2355,19 +2355,19 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 }
 .barra-busca::placeholder { color: var(--cinza-400); }
 
-/* ── TV: badge de compra na produção ── */
-.tv-prod-compra {
-  display: inline-block;
+/* ── TV: estado aguardando chegada de compra ── */
+.tv-prod-item.tv-prod-aguardando {
+  background: #EFF6FF;
+  border-left-color: #2563EB;
+}
+.tv-prod-aguardando-label {
   font-size: 10px;
   font-weight: 700;
-  background: #FEF3C7;
-  color: #92400E;
-  border-radius: 4px;
-  padding: 2px 6px;
-  margin-top: 3px;
-  vertical-align: middle;
+  color: #1d4ed8;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
-.tv-prod-compra.tv-prod-compra-ok {
-  background: #DBEAFE;
-  color: #1E40AF;
+.tv-prod-barra-fill.tv-prod-barra-aguardando {
+  background: #2563EB;
 }

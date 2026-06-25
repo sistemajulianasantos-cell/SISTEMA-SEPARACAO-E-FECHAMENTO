@@ -236,14 +236,24 @@ function _tvRenderProducao(producao) {
     return { ...p, qtdEst, falta, pct };
   });
 
-  /* Dentro de cada grupo: faltam primeiro, depois ok */
+  /* Dentro de cada grupo: falta sem compra → aguardando chegada → ok */
   const grupos = {};
   itens.forEach(p => {
     const g = p.grupo || 'Geral';
     if (!grupos[g]) grupos[g] = [];
     grupos[g].push(p);
   });
-  Object.values(grupos).forEach(arr => arr.sort((a, b) => b.falta - a.falta));
+  const _prioridade = p => {
+    const baseKey = nomeBaseKey(p.nomeKey);
+    const temCompra = comprasCache.some(c =>
+      (c.nomeKey === p.nomeKey || c.nomeKey === baseKey) &&
+      (c.status === 'pendente' || c.status === 'pedido')
+    );
+    if (p.falta > 0 && !temCompra) return 0;  // urgente
+    if (p.falta > 0 && temCompra)  return 1;  // aguardando chegada
+    return 2;                                  // ok
+  };
+  Object.values(grupos).forEach(arr => arr.sort((a, b) => _prioridade(a) - _prioridade(b) || b.falta - a.falta));
 
   const renderItem = p => {
     const baseKey = nomeBaseKey(p.nomeKey);
@@ -251,11 +261,27 @@ function _tvRenderProducao(producao) {
       (c.nomeKey === p.nomeKey || c.nomeKey === baseKey) &&
       (c.status === 'pendente' || c.status === 'pedido')
     );
-    const compraHtml = compra
-      ? `<span class="tv-prod-compra ${compra.status === 'pedido' ? 'tv-prod-compra-ok' : ''}">${compra.status === 'pedido' ? '🛒 Compra pedida' : '⏳ Compra pendente'}: ${compra.qtdSolicitada} ${p.unidade}</span>`
-      : '';
+
+    if (p.falta > 0 && compra) {
+      /* Falta, mas há compra em andamento — aguardando chegada */
+      const statusLabel = compra.status === 'pedido' ? 'Pedido feito' : 'Compra solicitada';
+      return `
+        <div class="tv-prod-item tv-prod-aguardando">
+          <div class="tv-prod-item-topo">
+            <div class="tv-prod-nome">${p.nome}</div>
+            <div style="text-align:right">
+              <div class="tv-prod-falta-num" style="color:#1d4ed8">${compra.qtdSolicitada}</div>
+              <div class="tv-prod-falta-label" style="color:#1d4ed8">${p.unidade} a chegar</div>
+            </div>
+          </div>
+          <div class="tv-prod-detalhe">Estoque: ${p.qtdEst} &nbsp;|&nbsp; Falta: ${p.falta}</div>
+          <div class="tv-prod-aguardando-label">🚚 ${statusLabel} — aguardando chegada</div>
+          <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill tv-prod-barra-aguardando" style="width:${p.pct}%"></div></div>
+        </div>`;
+    }
 
     if (p.falta > 0) {
+      /* Falta e sem compra registrada */
       return `
         <div class="tv-prod-item tv-prod-falta">
           <div class="tv-prod-item-topo">
@@ -265,10 +291,12 @@ function _tvRenderProducao(producao) {
               <div class="tv-prod-falta-label">${p.unidade} falta</div>
             </div>
           </div>
-          <div class="tv-prod-detalhe">Estoque: ${p.qtdEst} &nbsp;${compraHtml}</div>
+          <div class="tv-prod-detalhe">Estoque: ${p.qtdEst}</div>
           <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill deficit" style="width:${p.pct}%"></div></div>
         </div>`;
     }
+
+    /* Estoque ok */
     return `
       <div class="tv-prod-item">
         <div class="tv-prod-item-topo">
@@ -278,7 +306,7 @@ function _tvRenderProducao(producao) {
             <div class="tv-prod-ok-label">✓ ok</div>
           </div>
         </div>
-        <div class="tv-prod-detalhe">Estoque: ${p.qtdEst} &nbsp;${compraHtml}</div>
+        <div class="tv-prod-detalhe">Estoque: ${p.qtdEst}</div>
         <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill" style="width:${p.pct}%"></div></div>
       </div>`;
   };
