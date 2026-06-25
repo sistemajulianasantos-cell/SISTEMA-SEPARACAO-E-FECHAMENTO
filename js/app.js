@@ -21,6 +21,10 @@ let abaEstoqueAtual    = 'sintetico';
 let abaProducaoAtual   = 'sintetico';
 let ordemProducaoAtual = 'categoria';   /* 'categoria' | 'prioridade' */
 let estoqueCache       = {};
+let comprasCache       = [];
+let _abaCompras        = 'alertas';
+let _solicitarContext  = null;
+let _receberContext    = null;
 let itemConfigsCache   = {};   /* nomeKey → config */
 let categoriasCache    = [];   /* [{id, nome, nomeKey, ordem}] */
 let _comprarContext    = null;
@@ -659,6 +663,7 @@ async function carregarCEO() {
     renderizarStatsCEO(festas);
     renderizarAgendaStripCEO(festas);
     renderizarProducaoCEO();
+    atualizarBadgeCompras();
   });
 }
 
@@ -3784,8 +3789,10 @@ async function abrirFormItemConfig(id, nomePreenchido) {
     document.getElementById('ic-separacao').checked       = cfg?.exibirSeparacao !== false;
     document.getElementById('ic-exige-foto').checked      = !!cfg?.exigeFoto;
     document.getElementById('ic-conferir-coord').checked  = cfg?.conferirCoord !== false;
-    document.getElementById('ic-setor').value      = cfg?.setor      || '';
-    document.getElementById('ic-prateleira').value = cfg?.prateleira || '';
+    document.getElementById('ic-setor').value        = cfg?.setor        || '';
+    document.getElementById('ic-prateleira').value   = cfg?.prateleira   || '';
+    document.getElementById('ic-estoque-min').value  = cfg?.estoqueMinimo != null ? cfg.estoqueMinimo : '';
+    document.getElementById('ic-qtd-sugerida').value = cfg?.qtdSugerida  != null ? cfg.qtdSugerida  : '';
     toggleStandByForm();
     document.querySelectorAll('input[name="ic-prioridade"]').forEach(r => {
       r.checked = r.value === (cfg?.prioridade || '');
@@ -3881,6 +3888,8 @@ async function salvarItemConfig() {
     prateleira,
     refrigerado,
     diasAntesEvento: (refrigerado || eProducao) ? (diasStr !== '' && !isNaN(parseInt(diasStr)) ? parseInt(diasStr) : 1) : 1,
+    estoqueMinimo: (() => { const v = parseFloat(document.getElementById('ic-estoque-min').value); return isNaN(v) ? null : v; })(),
+    qtdSugerida:   (() => { const v = parseFloat(document.getElementById('ic-qtd-sugerida').value); return isNaN(v) ? null : v; })(),
   };
 
   if (_itemConfigEditId) dados.id = _itemConfigEditId;
@@ -4596,5 +4605,275 @@ async function confirmarDeletarCategoria(id, nome) {
     console.error(e);
     toast('Erro ao remover categoria.', 'erro');
   }
+}
+
+/* ══════════════════════════════════════════════════
+   TELA COMPRAS
+══════════════════════════════════════════════════ */
+
+async function abrirCompras() {
+  historico.push('tela-compras');
+  mostrarTela('tela-compras', 'Compras');
+  _abaCompras = 'alertas';
+  await recarregarCompras();
+}
+
+async function recarregarCompras() {
+  try {
+    const [cfgs, est, compras] = await Promise.all([
+      listarItemConfigs(), buscarEstoque(), listarCompras(),
+    ]);
+    itemConfigsCache = {};
+    cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    estoqueCache = est;
+    comprasCache = compras;
+    renderizarCompras();
+    atualizarBadgeCompras();
+  } catch(e) { console.error(e); toast('Erro ao carregar compras.', 'erro'); }
+}
+
+function atualizarBadgeCompras() {
+  const alertas = _contarAlertasCompras();
+  const badge   = document.getElementById('badge-compras');
+  if (!badge) return;
+  if (alertas > 0) {
+    badge.textContent = alertas;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+function _contarAlertasCompras() {
+  return Object.values(itemConfigsCache).filter(cfg => {
+    if (cfg.estoqueMinimo == null) return false;
+    const qtd = estoqueCache[cfg.nomeKey]?.qtd || 0;
+    return qtd < cfg.estoqueMinimo;
+  }).length;
+}
+
+function _alertasCompras() {
+  return Object.values(itemConfigsCache)
+    .filter(cfg => cfg.estoqueMinimo != null)
+    .map(cfg => {
+      const qtdAtual = estoqueCache[cfg.nomeKey]?.qtd || 0;
+      const falta    = cfg.estoqueMinimo - qtdAtual;
+      const pct      = cfg.estoqueMinimo > 0 ? Math.min(100, Math.round((qtdAtual / cfg.estoqueMinimo) * 100)) : 100;
+      return { nomeKey: cfg.nomeKey, nome: cfg.nome, unidade: cfg.unidade || 'un',
+               qtdAtual, estoqueMinimo: cfg.estoqueMinimo, qtdSugerida: cfg.qtdSugerida || 0,
+               falta, pct };
+    })
+    .sort((a, b) => b.falta - a.falta);
+}
+
+function trocarAbaCompras(aba, btn) {
+  _abaCompras = aba;
+  document.querySelectorAll('#compras-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  ['alertas','andamento','historico'].forEach(id => {
+    const el = document.getElementById(`compras-${id}`);
+    if (el) el.classList.toggle('hidden', id !== aba);
+  });
+}
+
+function renderizarCompras() {
+  trocarAbaCompras(_abaCompras, document.querySelector(`#compras-tabs .tab.ativo`));
+  _renderAlertas();
+  _renderAndamento();
+  _renderHistorico();
+}
+
+function _renderAlertas() {
+  const el = document.getElementById('compras-alertas');
+  if (!el) return;
+  const todos    = _alertasCompras();
+  const urgentes = todos.filter(a => a.falta > 0);
+  const ok       = todos.filter(a => a.falta <= 0);
+  const badge    = document.getElementById('badge-alertas-tab');
+  if (badge) badge.textContent = urgentes.length || '';
+
+  if (!todos.length) {
+    el.innerHTML = '<p class="vazio-sep">Nenhum item com estoque mínimo configurado.</p>';
+    return;
+  }
+
+  const renderCard = (a) => {
+    const cor   = a.falta > 0 ? '' : ' ok';
+    const label = a.falta > 0
+      ? `<span class="compra-falta-destaque">${a.falta} ${a.unidade} abaixo do mínimo</span>`
+      : `<span style="color:#15803d;font-weight:700">✓ Estoque ok</span>`;
+    const jaTemPedido = comprasCache.some(c => c.nomeKey === a.nomeKey && (c.status === 'pendente' || c.status === 'pedido'));
+    return `
+      <div class="compra-alerta-card${cor}">
+        <div class="compra-alerta-nome">${a.nome}</div>
+        <div class="compra-alerta-nums">
+          <span>Atual: <strong>${a.qtdAtual} ${a.unidade}</strong></span>
+          <span>Mínimo: <strong>${a.estoqueMinimo} ${a.unidade}</strong></span>
+          ${a.qtdSugerida ? `<span>Sugerido: <strong>${a.qtdSugerida} ${a.unidade}</strong></span>` : ''}
+        </div>
+        ${label}
+        <div class="compra-alerta-barra-wrap">
+          <div class="compra-alerta-barra-fill${a.falta > 0 ? ' deficit' : ''}" style="width:${a.pct}%"></div>
+        </div>
+        <div class="compra-alerta-acoes">
+          ${a.falta > 0 && !jaTemPedido
+            ? `<button class="btn-primario" style="font-size:13px;padding:8px 14px" onclick="abrirModalSolicitar('${a.nomeKey}')">+ Solicitar Compra</button>`
+            : jaTemPedido ? `<span style="font-size:12px;color:#1d4ed8;font-weight:600">Pedido em andamento</span>` : ''}
+        </div>
+      </div>`;
+  };
+
+  el.innerHTML = (urgentes.length ? `<h3 style="font-size:13px;font-weight:700;color:#DC2626;margin-bottom:8px">Precisam Comprar (${urgentes.length})</h3>` + urgentes.map(renderCard).join('') : '')
+               + (ok.length       ? `<h3 style="font-size:13px;font-weight:700;color:#15803d;margin:16px 0 8px">Estoque OK (${ok.length})</h3>` + ok.map(renderCard).join('') : '');
+}
+
+function _renderAndamento() {
+  const el = document.getElementById('compras-andamento');
+  if (!el) return;
+  const lista  = comprasCache.filter(c => c.status === 'pendente' || c.status === 'pedido');
+  const badge  = document.getElementById('badge-andamento-tab');
+  if (badge) badge.textContent = lista.length || '';
+
+  if (!lista.length) {
+    el.innerHTML = '<p class="vazio-sep">Nenhum pedido em andamento.</p>';
+    return;
+  }
+
+  el.innerHTML = lista.map(c => {
+    const statusLabel = c.status === 'pedido' ? 'Pedido feito' : 'Pendente';
+    const statusClass = c.status === 'pedido' ? 'compra-status-pedido' : 'compra-status-pendente';
+    const data        = c.criadoEm?.toDate ? c.criadoEm.toDate().toLocaleDateString('pt-BR') : '—';
+    return `
+      <div class="compra-pedido-card">
+        <div class="compra-pedido-topo">
+          <div class="compra-pedido-nome">${c.nome}</div>
+          <span class="compra-status-badge ${statusClass}">${statusLabel}</span>
+        </div>
+        <div class="compra-pedido-detalhe">
+          Qtd solicitada: <strong>${c.qtdSolicitada} ${c.unidade || 'un'}</strong>
+          &nbsp;|&nbsp; Solicitado em: ${data}
+          ${c.observacao ? `<br>Obs: ${c.observacao}` : ''}
+        </div>
+        <div class="compra-pedido-acoes">
+          ${c.status === 'pendente'
+            ? `<button class="btn-primario"   style="font-size:13px;padding:8px 14px" onclick="marcarComoPedido('${c.id}')">✓ Pedido Feito</button>`
+            : ''}
+          <button class="btn-primario" style="font-size:13px;padding:8px 14px;background:#15803d;border-color:#15803d" onclick="abrirModalReceber('${c.id}')">Registrar Recebimento</button>
+          <button class="btn-secundario" style="font-size:12px;padding:6px 10px" onclick="cancelarCompra('${c.id}')">Cancelar</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function _renderHistorico() {
+  const el = document.getElementById('compras-historico');
+  if (!el) return;
+  const lista = comprasCache.filter(c => c.status === 'recebido');
+
+  if (!lista.length) {
+    el.innerHTML = '<p class="vazio-sep">Nenhuma compra concluída ainda.</p>';
+    return;
+  }
+
+  el.innerHTML = lista.map(c => {
+    const dataRec = c.recebidoEm?.toDate ? c.recebidoEm.toDate().toLocaleDateString('pt-BR') : '—';
+    return `
+      <div class="compra-pedido-card">
+        <div class="compra-pedido-topo">
+          <div class="compra-pedido-nome">${c.nome}</div>
+          <span class="compra-status-badge compra-status-recebido">Recebido</span>
+        </div>
+        <div class="compra-pedido-detalhe">
+          Recebido: <strong>${c.qtdRecebida || c.qtdSolicitada} ${c.unidade || 'un'}</strong>
+          &nbsp;|&nbsp; Data: ${dataRec}
+          ${c.observacao ? `<br>Obs: ${c.observacao}` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+/* ── Modais ── */
+
+function abrirModalSolicitar(nomeKey) {
+  const cfg  = itemConfigsCache[nomeKey];
+  if (!cfg) return;
+  _solicitarContext = { nomeKey, nome: cfg.nome, unidade: cfg.unidade || 'un' };
+  document.getElementById('modal-solicitar-titulo').textContent = `Solicitar: ${cfg.nome}`;
+  document.getElementById('modal-solicitar-qty').value  = cfg.qtdSugerida || '';
+  document.getElementById('modal-solicitar-obs').value  = '';
+  document.getElementById('modal-solicitar-compra').classList.remove('hidden');
+}
+
+function fecharModalSolicitarCompra() {
+  document.getElementById('modal-solicitar-compra').classList.add('hidden');
+  _solicitarContext = null;
+}
+
+async function confirmarSolicitacaoCompra() {
+  if (!_solicitarContext) return;
+  const qty = parseFloat(document.getElementById('modal-solicitar-qty').value);
+  if (isNaN(qty) || qty <= 0) return toast('Informe uma quantidade válida.', 'erro');
+  const obs = document.getElementById('modal-solicitar-obs').value.trim();
+  const { nomeKey, nome, unidade } = _solicitarContext;
+  try {
+    await salvarCompraDB({
+      nomeKey, nome, unidade,
+      qtdSolicitada: qty,
+      qtdAtual:      estoqueCache[nomeKey]?.qtd || 0,
+      estoqueMinimo: itemConfigsCache[nomeKey]?.estoqueMinimo || 0,
+      status:        'pendente',
+      observacao:    obs,
+    });
+    fecharModalSolicitarCompra();
+    toast(`Compra de "${nome}" solicitada!`, 'sucesso');
+    await recarregarCompras();
+    trocarAbaCompras('andamento', document.querySelectorAll('#compras-tabs .tab')[1]);
+  } catch(e) { console.error(e); toast('Erro ao solicitar compra.', 'erro'); }
+}
+
+async function marcarComoPedido(id) {
+  try {
+    await atualizarCompraDB(id, { status: 'pedido', pedidoEm: new Date() });
+    toast('Marcado como pedido feito!', 'sucesso');
+    await recarregarCompras();
+  } catch(e) { console.error(e); toast('Erro ao atualizar.', 'erro'); }
+}
+
+function abrirModalReceber(id) {
+  const compra = comprasCache.find(c => c.id === id);
+  if (!compra) return;
+  _receberContext = compra;
+  document.getElementById('modal-receber-info').textContent = `${compra.nome} — Solicitado: ${compra.qtdSolicitada} ${compra.unidade || 'un'}`;
+  document.getElementById('modal-receber-qty').value = compra.qtdSolicitada;
+  document.getElementById('modal-receber-compra').classList.remove('hidden');
+}
+
+function fecharModalReceberCompra() {
+  document.getElementById('modal-receber-compra').classList.add('hidden');
+  _receberContext = null;
+}
+
+async function confirmarRecebimentoCompra() {
+  if (!_receberContext) return;
+  const qty = parseFloat(document.getElementById('modal-receber-qty').value);
+  if (isNaN(qty) || qty <= 0) return toast('Informe a quantidade recebida.', 'erro');
+  const { id, nomeKey, nome, unidade } = _receberContext;
+  try {
+    const qtdAtual = estoqueCache[nomeKey]?.qtd || 0;
+    await salvarItemEstoque(nomeKey, { qtd: qtdAtual + qty, unidade, nome });
+    await atualizarCompraDB(id, { status: 'recebido', qtdRecebida: qty, recebidoEm: new Date() });
+    fecharModalReceberCompra();
+    toast(`+${qty} ${unidade} de "${nome}" adicionados ao estoque!`, 'sucesso');
+    await recarregarCompras();
+  } catch(e) { console.error(e); toast('Erro ao registrar recebimento.', 'erro'); }
+}
+
+async function cancelarCompra(id) {
+  if (!confirm('Cancelar este pedido?')) return;
+  try {
+    await deletarCompraDB(id);
+    toast('Pedido cancelado.', 'sucesso');
+    await recarregarCompras();
+  } catch(e) { console.error(e); toast('Erro ao cancelar.', 'erro'); }
 }
 

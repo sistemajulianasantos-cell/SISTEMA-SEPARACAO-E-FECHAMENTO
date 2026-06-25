@@ -1250,6 +1250,15 @@ body.sidebar-pinada #sidebar { box-shadow: 2px 0 8px rgba(0,0,0,.08); }
 .sidebar-btn-primario:hover { background: var(--roxo-escuro); border-color: var(--roxo-escuro); }
 .sidebar-btn-destaque { color: var(--roxo); border-color: rgba(196,98,45,.25); }
 .sidebar-btn-destaque:hover { background: #F9F5F0; border-color: var(--roxo); }
+.sidebar-btn-compras { color: #B45309; border-color: rgba(180,83,9,.25); font-weight: 700; }
+.sidebar-btn-compras:hover { background: #FFFBEB; border-color: #B45309; }
+.sidebar-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #DC2626; color: #fff;
+  font-size: 10px; font-weight: 800;
+  border-radius: 999px; min-width: 18px; height: 18px;
+  padding: 0 5px; margin-left: 6px; vertical-align: middle;
+}
 
 /* ══ AGENDA STRIP (cards de festa no topo do home CEO) ═ */
 .producao-agenda-wrap {
@@ -2244,3 +2253,82 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .tv-agenda-meta { font-size: 12px; color: #6B7280; }
 
 .tv-vazio { text-align: center; color: #D1D5DB; font-size: 14px; padding: 40px 16px; }
+
+/* ══════════════════════════════════════════
+   TELA COMPRAS
+══════════════════════════════════════════ */
+.compra-alerta-card {
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-left: 4px solid #DC2626;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.compra-alerta-card.ok {
+  border-left-color: #15803d;
+  opacity: .7;
+}
+.compra-alerta-nome {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 6px;
+}
+.compra-alerta-nums {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: #6B7280;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.compra-alerta-nums strong { color: #111827; }
+.compra-falta-destaque {
+  font-size: 18px;
+  font-weight: 900;
+  color: #DC2626;
+}
+.compra-alerta-barra-wrap {
+  height: 6px;
+  background: #F3F4F6;
+  border-radius: 3px;
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+.compra-alerta-barra-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: #15803d;
+  transition: width .4s;
+}
+.compra-alerta-barra-fill.deficit { background: #DC2626; }
+.compra-alerta-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.compra-pedido-card {
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.compra-pedido-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.compra-pedido-nome { font-size: 14px; font-weight: 700; color: #111827; }
+.compra-status-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.compra-status-pendente { background: #FEF3C7; color: #92400E; }
+.compra-status-pedido   { background: #DBEAFE; color: #1E40AF; }
+.compra-status-recebido { background: #D1FAE5; color: #065F46; }
+.compra-pedido-detalhe  { font-size: 12px; color: #6B7280; margin-bottom: 10px; }
+.compra-pedido-acoes    { display: flex; gap: 8px; flex-wrap: wrap; }

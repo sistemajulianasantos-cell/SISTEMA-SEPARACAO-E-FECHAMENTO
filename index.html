@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#2B3B2A">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=16">
+  <link rel="stylesheet" href="css/styles.css?v=17">
 </head>
 <body>
 
@@ -63,6 +63,7 @@
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirSidebarNovoUsuario()">&#43; Novo Usuário</button>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirUsuarios()">Gerenciar Usuários</button>
         <button class="sidebar-btn sidebar-btn-destaque" onclick="navegarSidebar(); abrirEstoque()">Controle de Estoque</button>
+        <button class="sidebar-btn sidebar-btn-compras" onclick="navegarSidebar(); abrirCompras()">Compras <span id="badge-compras" class="sidebar-badge hidden"></span></button>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirRelatorio()">Relatório por Período</button>
       </div>
 
@@ -631,6 +632,19 @@
           <input type="number" id="ic-dias-antes" value="0" min="0" max="30" style="width:80px" />
           <p class="form-hint">0 = somente no dia do evento &nbsp;|&nbsp; 1 = a partir do dia anterior</p>
         </div>
+        <div class="form-secao-titulo">Controle de Compras</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Estoque Mínimo</label>
+            <input type="number" id="ic-estoque-min" value="" min="0" step="0.1" placeholder="Ex: 10" style="width:100%" />
+            <p class="form-hint">Alerta de compra quando o estoque ficar abaixo deste valor</p>
+          </div>
+          <div class="form-group">
+            <label>Qtd. Sugerida de Compra</label>
+            <input type="number" id="ic-qtd-sugerida" value="" min="0" step="0.1" placeholder="Ex: 50" style="width:100%" />
+            <p class="form-hint">Quantidade sugerida ao solicitar uma compra</p>
+          </div>
+        </div>
         <div class="form-secao-titulo">Localização no Estoque</div>
         <div class="form-row">
           <div class="form-group">
@@ -785,6 +799,59 @@
           <div id="tv-producao" class="tv-col-conteudo"></div>
         </div>
 
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: COMPRAS ══════════ -->
+  <div id="tela-compras" class="tela hidden">
+    <div class="container">
+      <div class="secao-header">
+        <h2 class="titulo-tela">Compras</h2>
+        <button class="btn-secundario" onclick="recarregarCompras()">↻ Atualizar</button>
+      </div>
+      <div class="tab-row" id="compras-tabs">
+        <button class="tab ativo" onclick="trocarAbaCompras('alertas',this)">Alertas <span id="badge-alertas-tab" class="sep-badge"></span></button>
+        <button class="tab"       onclick="trocarAbaCompras('andamento',this)">Em Andamento <span id="badge-andamento-tab" class="sep-badge sep-badge-ok"></span></button>
+        <button class="tab"       onclick="trocarAbaCompras('historico',this)">Histórico</button>
+      </div>
+      <div id="compras-alertas"></div>
+      <div id="compras-andamento" class="hidden"></div>
+      <div id="compras-historico" class="hidden"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: SOLICITAR COMPRA -->
+  <div id="modal-solicitar-compra" class="modal-overlay hidden" onclick="fecharModalSolicitarCompra()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-titulo" id="modal-solicitar-titulo">Solicitar Compra</div>
+      <div class="form-group" style="margin-top:16px">
+        <label>Quantidade a comprar</label>
+        <input type="number" id="modal-solicitar-qty" min="0.1" step="0.1" style="width:100%" />
+      </div>
+      <div class="form-group">
+        <label>Observação (fornecedor, link, etc.)</label>
+        <textarea id="modal-solicitar-obs" rows="2" style="width:100%;resize:vertical"></textarea>
+      </div>
+      <div class="rodape-form" style="margin-top:16px">
+        <button class="btn-secundario" onclick="fecharModalSolicitarCompra()">Cancelar</button>
+        <button class="btn-primario"   onclick="confirmarSolicitacaoCompra()">Solicitar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: REGISTRAR RECEBIMENTO -->
+  <div id="modal-receber-compra" class="modal-overlay hidden" onclick="fecharModalReceberCompra()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-titulo">Registrar Recebimento</div>
+      <div id="modal-receber-info" style="font-size:13px;color:#6B7280;margin:10px 0 4px"></div>
+      <div class="form-group" style="margin-top:8px">
+        <label>Quantidade recebida</label>
+        <input type="number" id="modal-receber-qty" min="0.1" step="0.1" style="width:100%" />
+      </div>
+      <div class="rodape-form" style="margin-top:16px">
+        <button class="btn-secundario" onclick="fecharModalReceberCompra()">Cancelar</button>
+        <button class="btn-primario"   onclick="confirmarRecebimentoCompra()">Confirmar</button>
       </div>
     </div>
   </div>

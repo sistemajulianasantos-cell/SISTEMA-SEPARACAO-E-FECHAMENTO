@@ -298,6 +298,27 @@ async function editarQtdFesta(festaId, itens) {
 }
 
 /* ════════════════════════════════════════
+   COMPRAS
+════════════════════════════════════════ */
+
+async function listarCompras() {
+  const snap = await db.collection('compras').orderBy('criadoEm', 'desc').get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function salvarCompraDB(dados) {
+  return db.collection('compras').add({ ...dados, criadoEm: TS() });
+}
+
+async function atualizarCompraDB(id, dados) {
+  return db.collection('compras').doc(id).update({ ...dados, updatedAt: TS() });
+}
+
+async function deletarCompraDB(id) {
+  return db.collection('compras').doc(id).delete();
+}
+
+/* ════════════════════════════════════════
    STORAGE — fotos
 ════════════════════════════════════════ */
 
