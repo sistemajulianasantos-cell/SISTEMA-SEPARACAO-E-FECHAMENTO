@@ -45,8 +45,6 @@ let _tvScrollDelay     = null;
 function _tvPararAutoScroll() {
   _tvScrollTimers.forEach(clearInterval);
   _tvScrollTimers = [];
-  Object.values(_tvScrollState).forEach(s => s.pauseTimer && clearTimeout(s.pauseTimer));
-  _tvScrollState = {};
   if (_tvScrollDelay) { clearTimeout(_tvScrollDelay); _tvScrollDelay = null; }
 }
 
@@ -56,21 +54,22 @@ function _tvIniciarAutoScroll() {
   IDS.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
-    const state = { paused: false, pauseTimer: null };
-    _tvScrollState[id] = state;
+
+    /* Só faz loop se o conteúdo ultrapassar a altura visível */
+    const alturaOriginal = el.scrollHeight;
+    if (alturaOriginal <= el.clientHeight + 10) return;
+
+    /* Duplica o conteúdo para loop contínuo sem salto */
+    el.innerHTML = el.innerHTML + el.innerHTML;
+    el.scrollTop = 0;
+
     const timer = setInterval(() => {
-      if (state.paused) return;
-      const max = el.scrollHeight - el.clientHeight;
-      if (max <= 5) { el.scrollTop = 0; return; }
       el.scrollTop += 1;
-      if (el.scrollTop >= max - 2) {
-        state.paused = true;
-        state.pauseTimer = setTimeout(() => {
-          el.scrollTop = 0;
-          state.pauseTimer = setTimeout(() => { state.paused = false; }, 2000);
-        }, 4000); // pausa 4s no fim antes de voltar
+      /* Quando chega na metade (fim da 1ª cópia), volta silenciosamente */
+      if (el.scrollTop >= alturaOriginal) {
+        el.scrollTop -= alturaOriginal;
       }
-    }, 40); // ~25px/s — velocidade confortável de leitura
+    }, 35); // ~28px/s
     _tvScrollTimers.push(timer);
   });
 }
