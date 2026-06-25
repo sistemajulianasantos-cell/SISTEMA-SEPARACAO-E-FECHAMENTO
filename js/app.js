@@ -984,12 +984,12 @@ function renderizarSeparacao(festa) {
   const htmlStandBy = standBy.length ? `
     <div class="standby-section">
       ${standByProd.length ? `
-        <div class="standby-section-titulo">🍹 Produção — Separar no dia do evento</div>
+        <div class="standby-section-titulo">Produção — Separar no dia do evento</div>
         ${standByProd.map(it => {
           const info = standByInfo(it, festa.data);
           return `
             <div class="item-standby-card producao-bloqueada">
-              <span class="item-standby-icone">🍹</span>
+              <span class="item-standby-icone" style="display:none"></span>
               <div class="item-standby-corpo">
                 <div class="item-standby-nome">${it.nome}</div>
                 <div class="item-standby-msg">${info.msg} &mdash; Qtd: <strong>${it.qtdNecessaria}</strong> ${it.unidade || 'un'}</div>
