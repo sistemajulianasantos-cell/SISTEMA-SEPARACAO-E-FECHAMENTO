@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#2B3B2A">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=20">
+  <link rel="stylesheet" href="css/styles.css?v=21">
 </head>
 <body>
 
@@ -65,6 +65,7 @@
         <button class="sidebar-btn sidebar-btn-destaque" onclick="navegarSidebar(); abrirEstoque()">Controle de Estoque</button>
         <button class="sidebar-btn sidebar-btn-compras" onclick="navegarSidebar(); abrirCompras()">Compras <span id="badge-compras" class="sidebar-badge hidden"></span></button>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirRelatorio()">Relatório por Período</button>
+        <button class="sidebar-btn sidebar-btn-analise" onclick="navegarSidebar(); abrirAnalise()">Análise de Desempenho</button>
       </div>
 
       <!-- Cadastro -->
@@ -738,6 +739,24 @@
     </div>
   </div>
 
+  <!-- ══════════ TELA: ANÁLISE DE DESEMPENHO (CEO) ══════════ -->
+  <div id="tela-analise" class="tela hidden">
+    <div class="analise-hero">
+      <div class="rel-periodo-nav">
+        <button class="rel-nav-btn" onclick="navMesAnalise(-1)">&#8249;</button>
+        <span class="rel-mes-label" id="analise-mes-label">Junho 2026</span>
+        <button class="rel-nav-btn" onclick="navMesAnalise(1)">&#8250;</button>
+      </div>
+      <h2 style="color:#fff;font-size:18px;font-weight:700;margin-top:8px">Análise de Desempenho</h2>
+    </div>
+    <div class="container" style="padding-top:16px">
+      <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+        <button class="btn-secundario btn-sm" onclick="carregarAnalise()">&#8635; Atualizar</button>
+      </div>
+      <div id="analise-conteudo"></div>
+    </div>
+  </div>
+
   <!-- ══════════ TELA: RELATÓRIO POR PERÍODO (CEO) ══════════ -->
   <div id="tela-relatorio" class="tela hidden">
 
@@ -900,8 +919,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
 
   <script src="js/config.js"></script>
-  <script src="js/firestore.js?v=20"></script>
-  <script src="js/app.js?v=20"></script>
+  <script src="js/firestore.js?v=21"></script>
+  <script src="js/app.js?v=21"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

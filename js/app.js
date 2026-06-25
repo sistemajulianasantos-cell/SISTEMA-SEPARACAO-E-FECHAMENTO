@@ -4106,6 +4106,207 @@ async function excluirSelecionadosCadastro() {
 }
 
 /* ══════════════════════════════════════════════════
+   ANÁLISE DE DESEMPENHO
+══════════════════════════════════════════════════ */
+
+let _analiseAno   = new Date().getFullYear();
+let _analiseMes   = new Date().getMonth();
+let _analiseCache = [];
+
+const MESES_FULL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                    'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+function _fmtMin(mins) {
+  if (!isFinite(mins) || mins < 0) return '—';
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60), m = mins % 60;
+  return m > 0 ? `${h}h ${m}min` : `${h}h`;
+}
+
+function _classeVelocidade(mins, media) {
+  if (!isFinite(mins) || !isFinite(media) || media === 0) return '';
+  const ratio = mins / media;
+  if (ratio <= 0.8)  return 'analise-rapido';
+  if (ratio >= 1.3)  return 'analise-lento';
+  return 'analise-medio';
+}
+
+async function abrirAnalise() {
+  historico.push(telaListaAtual());
+  mostrarTela('tela-analise', 'Análise de Desempenho');
+  _analiseAno = new Date().getFullYear();
+  _analiseMes = new Date().getMonth();
+  await carregarAnalise();
+}
+
+async function carregarAnalise() {
+  document.getElementById('analise-conteudo').innerHTML =
+    '<div class="estado-vazio"><p>Carregando...</p></div>';
+  try {
+    _analiseCache = await buscarTodasFestas();
+    renderizarAnalise();
+  } catch(e) {
+    console.error(e);
+    document.getElementById('analise-conteudo').innerHTML =
+      estadoVazio('Erro ao carregar dados.');
+  }
+}
+
+function navMesAnalise(delta) {
+  _analiseMes += delta;
+  if (_analiseMes < 0)  { _analiseMes = 11; _analiseAno--; }
+  if (_analiseMes > 11) { _analiseMes = 0;  _analiseAno++; }
+  document.getElementById('analise-mes-label').textContent =
+    `${MESES_FULL[_analiseMes]} ${_analiseAno}`;
+  renderizarAnalise();
+}
+
+function renderizarAnalise() {
+  const label = document.getElementById('analise-mes-label');
+  if (label) label.textContent = `${MESES_FULL[_analiseMes]} ${_analiseAno}`;
+
+  /* Festas com separação concluída no período */
+  const registros = _analiseCache
+    .filter(f => {
+      if (!f.separacaoInicio || !f.separacaoFim) return false;
+      const d = toDate(f.separacaoFim);
+      return d.getMonth() === _analiseMes && d.getFullYear() === _analiseAno;
+    })
+    .map(f => {
+      const ini  = toDate(f.separacaoInicio);
+      const fim  = toDate(f.separacaoFim);
+      const mins = Math.round((fim - ini) / 60000);
+      const totalItens = (f.itens || []).length;
+      const sepItens   = (f.itens || []).filter(it => it.separado).length;
+      return {
+        festaId: f.id, nome: f.nome, cliente: f.cliente || '—',
+        colaborador: f.colaborador || '—',
+        data: f.data, dataFim: f.separacaoFim,
+        ini, fim, mins, totalItens, sepItens,
+        status: f.status,
+      };
+    })
+    .filter(r => r.mins > 0)
+    .sort((a, b) => toDate(b.dataFim) - toDate(a.dataFim));
+
+  const el = document.getElementById('analise-conteudo');
+  if (!el) return;
+
+  if (!registros.length) {
+    el.innerHTML = estadoVazio(`Nenhuma separação concluída em ${MESES_FULL[_analiseMes]} ${_analiseAno}.`);
+    return;
+  }
+
+  /* Métricas globais */
+  const mediaMins = Math.round(registros.reduce((s, r) => s + r.mins, 0) / registros.length);
+  const maisRapido = registros.reduce((a, b) => a.mins < b.mins ? a : b);
+  const maisLento  = registros.reduce((a, b) => a.mins > b.mins ? a : b);
+  const totalItens = registros.reduce((s, r) => s + r.totalItens, 0);
+
+  /* Por colaborador */
+  const porColab = {};
+  registros.forEach(r => {
+    if (!porColab[r.colaborador]) porColab[r.colaborador] = [];
+    porColab[r.colaborador].push(r);
+  });
+  const ranking = Object.entries(porColab)
+    .map(([nome, regs]) => ({
+      nome,
+      total:   regs.length,
+      media:   Math.round(regs.reduce((s, r) => s + r.mins, 0) / regs.length),
+      melhor:  Math.min(...regs.map(r => r.mins)),
+      pior:    Math.max(...regs.map(r => r.mins)),
+      itens:   regs.reduce((s, r) => s + r.totalItens, 0),
+    }))
+    .sort((a, b) => a.media - b.media);
+
+  el.innerHTML = `
+    <!-- Cards de resumo -->
+    <div class="analise-cards">
+      <div class="analise-card">
+        <div class="analise-card-valor">${registros.length}</div>
+        <div class="analise-card-label">Separações no período</div>
+      </div>
+      <div class="analise-card">
+        <div class="analise-card-valor">${_fmtMin(mediaMins)}</div>
+        <div class="analise-card-label">Tempo médio</div>
+      </div>
+      <div class="analise-card analise-card-verde">
+        <div class="analise-card-valor">${_fmtMin(maisRapido.mins)}</div>
+        <div class="analise-card-label">Mais rápida<br><span class="analise-card-sub">${maisRapido.nome || maisRapido.cliente}</span></div>
+      </div>
+      <div class="analise-card analise-card-laranja">
+        <div class="analise-card-valor">${_fmtMin(maisLento.mins)}</div>
+        <div class="analise-card-label">Mais demorada<br><span class="analise-card-sub">${maisLento.nome || maisLento.cliente}</span></div>
+      </div>
+    </div>
+
+    <!-- Ranking colaboradores -->
+    <h3 class="analise-secao-titulo">Desempenho por Colaborador</h3>
+    <div class="analise-ranking">
+      ${ranking.map((c, i) => `
+        <div class="analise-colab-card ${c.media <= mediaMins * 0.9 ? 'analise-colab-top' : ''}">
+          <div class="analise-colab-pos">${i + 1}º</div>
+          <div class="analise-colab-info">
+            <div class="analise-colab-nome">${c.nome}</div>
+            <div class="analise-colab-stats">
+              ${c.total} separação${c.total > 1 ? 'ões' : ''} &nbsp;·&nbsp;
+              ${c.itens} itens no total
+            </div>
+          </div>
+          <div class="analise-colab-tempos">
+            <div class="analise-tempo-bloco">
+              <div class="analise-tempo-val analise-rapido">${_fmtMin(c.melhor)}</div>
+              <div class="analise-tempo-legenda">melhor</div>
+            </div>
+            <div class="analise-tempo-bloco">
+              <div class="analise-tempo-val">${_fmtMin(c.media)}</div>
+              <div class="analise-tempo-legenda">média</div>
+            </div>
+            <div class="analise-tempo-bloco">
+              <div class="analise-tempo-val analise-lento">${_fmtMin(c.pior)}</div>
+              <div class="analise-tempo-legenda">pior</div>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- Lista de separações -->
+    <h3 class="analise-secao-titulo">Todas as Separações</h3>
+    <div class="analise-lista">
+      <div class="analise-lista-header">
+        <span>Festa / Cliente</span>
+        <span>Colaborador</span>
+        <span>Data evento</span>
+        <span>Duração</span>
+      </div>
+      ${registros.map(r => {
+        const cls  = _classeVelocidade(r.mins, mediaMins);
+        const dataEvento = r.data
+          ? toDate(r.data).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' })
+          : '—';
+        const horaIni = r.ini.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+        const horaFim = r.fim.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
+        return `
+          <div class="analise-lista-row">
+            <div>
+              <div class="analise-lista-nome">${r.nome || '—'}</div>
+              <div class="analise-lista-cliente">${r.cliente}</div>
+            </div>
+            <div class="analise-lista-colab">${r.colaborador}</div>
+            <div class="analise-lista-data">${dataEvento}</div>
+            <div>
+              <span class="analise-duracao ${cls}">${_fmtMin(r.mins)}</span>
+              <div class="analise-horario">${horaIni} → ${horaFim}</div>
+            </div>
+          </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+/* ══════════════════════════════════════════════════
    RELATÓRIO POR PERÍODO
 ══════════════════════════════════════════════════ */
 
