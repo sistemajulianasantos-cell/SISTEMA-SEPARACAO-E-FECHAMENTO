@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#2B3B2A">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=17">
+  <link rel="stylesheet" href="css/styles.css?v=18">
 </head>
 <body>
 
@@ -196,6 +196,10 @@
           <button class="btn-primario"   onclick="abrirCriarFesta()">Nova Festa</button>
         </div>
       </div>
+      <div class="barra-busca-wrap">
+        <input type="search" class="barra-busca" placeholder="Buscar festa ou cliente..."
+          oninput="filtrarFestas(this.value)" />
+      </div>
       <div id="ceo-lista" class="lista-festas"></div>
     </div>
   </div>
@@ -277,6 +281,10 @@
       <div class="secao-header">
         <h2 class="titulo-tela">Gerenciamento de Usuários</h2>
         <button class="btn-primario" onclick="abrirFormUsuario()">Novo Usuário</button>
+      </div>
+      <div class="barra-busca-wrap">
+        <input type="search" class="barra-busca" placeholder="Buscar usuário..."
+          oninput="filtrarUsuarios(this.value)" />
       </div>
       <div id="usuarios-lista"></div>
     </div>
@@ -718,6 +726,10 @@
         <button class="btn-secundario btn-sm" onclick="recarregarEstoque()">&#8635; Atualizar</button>
       </div>
       <p class="desc-tela">Edite as quantidades em estoque. O sistema calcula automaticamente o saldo em relação às festas ativas.</p>
+      <div class="barra-busca-wrap">
+        <input type="search" class="barra-busca" placeholder="Buscar item..."
+          oninput="filtrarEstoque(this.value)" />
+      </div>
       <div class="filtros-tabs" id="estoque-tabs">
         <button class="tab ativo" data-aba="sintetico" onclick="trocarAbaEstoque('sintetico',this)">Sintético</button>
         <button class="tab"       data-aba="analitico" onclick="trocarAbaEstoque('analitico',this)">Por Festa</button>
@@ -814,6 +826,10 @@
         <button class="tab ativo" onclick="trocarAbaCompras('alertas',this)">Alertas <span id="badge-alertas-tab" class="sep-badge"></span></button>
         <button class="tab"       onclick="trocarAbaCompras('andamento',this)">Em Andamento <span id="badge-andamento-tab" class="sep-badge sep-badge-ok"></span></button>
         <button class="tab"       onclick="trocarAbaCompras('historico',this)">Histórico</button>
+      </div>
+      <div class="barra-busca-wrap">
+        <input type="search" class="barra-busca" placeholder="Buscar item..."
+          oninput="filtrarCompras(this.value)" />
       </div>
       <div id="compras-alertas"></div>
       <div id="compras-andamento" class="hidden"></div>

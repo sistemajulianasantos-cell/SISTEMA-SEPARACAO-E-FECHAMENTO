@@ -2332,3 +2332,25 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .compra-status-recebido { background: #D1FAE5; color: #065F46; }
 .compra-pedido-detalhe  { font-size: 12px; color: #6B7280; margin-bottom: 10px; }
 .compra-pedido-acoes    { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Barra de busca global ── */
+.barra-busca-wrap {
+  margin: 10px 0 12px;
+}
+.barra-busca {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 14px;
+  border: 1px solid var(--cinza-300);
+  border-radius: var(--raio);
+  font-size: 14px;
+  color: var(--cinza-700);
+  background: #fff;
+  outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.barra-busca:focus {
+  border-color: var(--roxo);
+  box-shadow: 0 0 0 3px rgba(196,98,45,.15);
+}
+.barra-busca::placeholder { color: var(--cinza-400); }

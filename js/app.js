@@ -25,6 +25,11 @@ let comprasCache       = [];
 let _abaCompras        = 'alertas';
 let _solicitarContext  = null;
 let _receberContext    = null;
+let _buscaFestas       = '';
+let _buscaUsuarios     = '';
+let _buscaEstoque      = '';
+let _buscaCompras      = '';
+let _usuariosCache     = [];
 let itemConfigsCache   = {};   /* nomeKey → config */
 let categoriasCache    = [];   /* [{id, nome, nomeKey, ordem}] */
 let _comprarContext    = null;
@@ -828,19 +833,31 @@ function renderizarAgendaStripCEO(festas) {
   }).join('');
 }
 
-/* Aplica filtro de status + filtro de data e re-renderiza a lista */
+/* Aplica filtro de status + filtro de data + busca e re-renderiza a lista */
 function atualizarVisaoCEO() {
   const porStatus = filtroAtualCEO === 'todas'
     ? todasFestasCache
     : todasFestasCache.filter(f => f.status === filtroAtualCEO);
 
-  const lista = filtroData
+  const porData = filtroData
     ? porStatus.filter(f => normalizarData(f.data) === filtroData)
     : porStatus;
+
+  const busca = _buscaFestas.toLowerCase().trim();
+  const lista = busca
+    ? porData.filter(f =>
+        (f.nome   || '').toLowerCase().includes(busca) ||
+        (f.cliente || '').toLowerCase().includes(busca))
+    : porData;
 
   document.getElementById('ceo-lista').innerHTML = lista.length
     ? lista.map(f => htmlCardFesta(f, 'ceo')).join('')
     : estadoVazio('Nenhuma festa encontrada.');
+}
+
+function filtrarFestas(valor) {
+  _buscaFestas = valor;
+  atualizarVisaoCEO();
 }
 
 function filtrarCEO(filtro, btn) {
@@ -2363,38 +2380,49 @@ function abrirUsuarios() {
   carregarUsuarios();
 }
 
+function filtrarUsuarios(valor) {
+  _buscaUsuarios = valor;
+  renderizarListaUsuarios();
+}
+
+function renderizarListaUsuarios() {
+  const el = document.getElementById('usuarios-lista');
+  if (!el) return;
+  const busca = _buscaUsuarios.toLowerCase().trim();
+  const lista = busca
+    ? _usuariosCache.filter(u => (u.nome || '').toLowerCase().includes(busca))
+    : _usuariosCache;
+  if (!lista.length) { el.innerHTML = estadoVazio('Nenhum usuário encontrado.'); return; }
+  el.innerHTML = lista.map(u => {
+    const rolesTexto = (u.roles || [u.role]).map(r => ROLE_LABELS[r] || r).join(', ');
+    return `
+      <div class="usuario-row">
+        <div class="usuario-info">
+          <div class="usuario-nome">${u.nome}</div>
+          <div class="usuario-role">${rolesTexto}</div>
+        </div>
+        <div class="usuario-acoes">
+          ${u.id !== usuarioAtual.id
+            ? `<button class="btn-perigo" onclick="confirmarDeletarUsuario('${u.id}','${u.nome}')">Remover</button>`
+            : '<span style="font-size:12px;color:var(--cinza-400)">Você</span>'
+          }
+        </div>
+      </div>`;
+  }).join('');
+}
+
 async function carregarUsuarios() {
   const el = document.getElementById('usuarios-lista');
   el.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
   try {
     const usuarios = await listarUsuarios();
+    _usuariosCache = usuarios;
     if (!usuarios.length) {
       el.innerHTML = estadoVazio('Nenhum usuário cadastrado.');
       return;
     }
-    el.innerHTML = usuarios.map(u => {
-      const rolesTexto = (u.roles || [u.role])
-        .map(r => ROLE_LABELS[r] || r)
-        .join(', ');
-      return `
-        <div class="usuario-row">
-          <div class="usuario-info">
-            <div class="usuario-nome">${u.nome}</div>
-            <div class="usuario-role">${rolesTexto}</div>
-          </div>
-          <div class="usuario-acoes">
-            ${u.id !== usuarioAtual.id
-              ? `<button class="btn-perigo" onclick="confirmarDeletarUsuario('${u.id}','${u.nome}')">Remover</button>`
-              : '<span style="font-size:12px;color:var(--cinza-400)">Você</span>'
-            }
-          </div>
-        </div>
-      `;
-    }).join('');
-  } catch (e) {
-    console.error(e);
-    el.innerHTML = estadoVazio('Erro ao carregar usuários.');
-  }
+    renderizarListaUsuarios();
+  } catch(e) { el.innerHTML = estadoVazio('Erro ao carregar.'); }
 }
 
 function abrirFormUsuario() {
@@ -3384,8 +3412,15 @@ function trocarAbaEstoque(aba, btn) {
   renderizarEstoque(todasFestasCache, estoqueCache);
 }
 
+function filtrarEstoque(valor) {
+  _buscaEstoque = valor;
+  renderizarEstoque(todasFestasCache, estoqueCache);
+}
+
 function renderizarEstoque(festas, estoqueMap) {
-  const itens = agregarItensFestas(festas);
+  const todos = agregarItensFestas(festas);
+  const busca = _buscaEstoque.toLowerCase().trim();
+  const itens = busca ? todos.filter(it => (it.nome || '').toLowerCase().includes(busca)) : todos;
   if (!itens.length) {
     document.getElementById('estoque-conteudo').innerHTML =
       estadoVazio('Nenhum item encontrado nas festas ativas.');
@@ -4676,6 +4711,11 @@ function trocarAbaCompras(aba, btn) {
   });
 }
 
+function filtrarCompras(valor) {
+  _buscaCompras = valor;
+  renderizarCompras();
+}
+
 function renderizarCompras() {
   trocarAbaCompras(_abaCompras, document.querySelector(`#compras-tabs .tab.ativo`));
   _renderAlertas();
@@ -4686,7 +4726,8 @@ function renderizarCompras() {
 function _renderAlertas() {
   const el = document.getElementById('compras-alertas');
   if (!el) return;
-  const todos    = _alertasCompras();
+  const busca    = _buscaCompras.toLowerCase().trim();
+  const todos    = busca ? _alertasCompras().filter(a => (a.nome || '').toLowerCase().includes(busca)) : _alertasCompras();
   const urgentes = todos.filter(a => a.falta > 0);
   const ok       = todos.filter(a => a.falta <= 0);
   const badge    = document.getElementById('badge-alertas-tab');
@@ -4730,7 +4771,8 @@ function _renderAlertas() {
 function _renderAndamento() {
   const el = document.getElementById('compras-andamento');
   if (!el) return;
-  const lista  = comprasCache.filter(c => c.status === 'pendente' || c.status === 'pedido');
+  const busca  = _buscaCompras.toLowerCase().trim();
+  const lista  = comprasCache.filter(c => (c.status === 'pendente' || c.status === 'pedido') && (!busca || (c.nome || '').toLowerCase().includes(busca)));
   const badge  = document.getElementById('badge-andamento-tab');
   if (badge) badge.textContent = lista.length || '';
 
@@ -4768,7 +4810,8 @@ function _renderAndamento() {
 function _renderHistorico() {
   const el = document.getElementById('compras-historico');
   if (!el) return;
-  const lista = comprasCache.filter(c => c.status === 'recebido');
+  const busca = _buscaCompras.toLowerCase().trim();
+  const lista = comprasCache.filter(c => c.status === 'recebido' && (!busca || (c.nome || '').toLowerCase().includes(busca)));
 
   if (!lista.length) {
     el.innerHTML = '<p class="vazio-sep">Nenhuma compra concluída ainda.</p>';
