@@ -91,11 +91,12 @@ function carregarTV() {
   _tvAtualizarRelogio();
   _tvClockTimer = setInterval(_tvAtualizarRelogio, 1000);
 
-  Promise.all([listarItemConfigs(), listarCategorias(), buscarEstoque()]).then(([cfgs, cats, est]) => {
+  Promise.all([listarItemConfigs(), listarCategorias(), buscarEstoque(), listarCompras()]).then(([cfgs, cats, est, compras]) => {
     itemConfigsCache = {};
     cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
     categoriasCache = cats;
     estoqueCache    = est;
+    comprasCache    = compras;
     if (todasFestasCache.length) renderizarPainelTV(todasFestasCache);
   }).catch(e => console.error('TV configs:', e));
 
@@ -245,6 +246,15 @@ function _tvRenderProducao(producao) {
   Object.values(grupos).forEach(arr => arr.sort((a, b) => b.falta - a.falta));
 
   const renderItem = p => {
+    const baseKey = nomeBaseKey(p.nomeKey);
+    const compra  = comprasCache.find(c =>
+      (c.nomeKey === p.nomeKey || c.nomeKey === baseKey) &&
+      (c.status === 'pendente' || c.status === 'pedido')
+    );
+    const compraHtml = compra
+      ? `<span class="tv-prod-compra ${compra.status === 'pedido' ? 'tv-prod-compra-ok' : ''}">${compra.status === 'pedido' ? '🛒 Compra pedida' : '⏳ Compra pendente'}: ${compra.qtdSolicitada} ${p.unidade}</span>`
+      : '';
+
     if (p.falta > 0) {
       return `
         <div class="tv-prod-item tv-prod-falta">
@@ -255,7 +265,7 @@ function _tvRenderProducao(producao) {
               <div class="tv-prod-falta-label">${p.unidade} falta</div>
             </div>
           </div>
-          <div class="tv-prod-detalhe">Pedido: ${p.total} &nbsp;|&nbsp; Estoque: ${p.qtdEst}</div>
+          <div class="tv-prod-detalhe">Estoque: ${p.qtdEst} &nbsp;${compraHtml}</div>
           <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill deficit" style="width:${p.pct}%"></div></div>
         </div>`;
     }
@@ -268,7 +278,7 @@ function _tvRenderProducao(producao) {
             <div class="tv-prod-ok-label">✓ ok</div>
           </div>
         </div>
-        <div class="tv-prod-detalhe">Estoque: ${p.qtdEst}</div>
+        <div class="tv-prod-detalhe">Estoque: ${p.qtdEst} &nbsp;${compraHtml}</div>
         <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill" style="width:${p.pct}%"></div></div>
       </div>`;
   };

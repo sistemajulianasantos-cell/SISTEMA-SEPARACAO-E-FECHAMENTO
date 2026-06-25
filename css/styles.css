@@ -2354,3 +2354,20 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   box-shadow: 0 0 0 3px rgba(196,98,45,.15);
 }
 .barra-busca::placeholder { color: var(--cinza-400); }
+
+/* ── TV: badge de compra na produção ── */
+.tv-prod-compra {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  background: #FEF3C7;
+  color: #92400E;
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-top: 3px;
+  vertical-align: middle;
+}
+.tv-prod-compra.tv-prod-compra-ok {
+  background: #DBEAFE;
+  color: #1E40AF;
+}
