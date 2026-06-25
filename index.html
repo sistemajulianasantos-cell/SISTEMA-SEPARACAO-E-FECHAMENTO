@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#2B3B2A">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=14">
+  <link rel="stylesheet" href="css/styles.css?v=15">
 </head>
 <body>
 
@@ -758,13 +758,12 @@
         </div>
       </div>
 
-      <!-- Grid de 3 colunas -->
+      <!-- Grid de 4 colunas -->
       <div class="tv-grid">
 
         <!-- Col 1: Agenda -->
         <div class="tv-col">
           <div class="tv-col-header tv-col-header-agenda">
-            <span>📅</span>
             <span>AGENDA</span>
           </div>
           <div id="tv-agenda" class="tv-col-conteudo"></div>
@@ -773,19 +772,25 @@
         <!-- Col 2: Em separação -->
         <div class="tv-col">
           <div class="tv-col-header tv-col-header-sep">
-            <span>⚡</span>
             <span id="tv-sep-titulo">EM SEPARAÇÃO</span>
           </div>
           <div id="tv-separando" class="tv-col-conteudo"></div>
         </div>
 
-        <!-- Col 3: Produção -->
+        <!-- Col 3: Produção total -->
         <div class="tv-col">
           <div class="tv-col-header tv-col-header-prod">
-            <span>🧪</span>
-            <span>PRODUÇÃO — QTD TOTAL</span>
+            <span>PRODUÇÃO</span>
           </div>
           <div id="tv-producao" class="tv-col-conteudo"></div>
+        </div>
+
+        <!-- Col 4: A produzir (estoque vs pedido) -->
+        <div class="tv-col">
+          <div class="tv-col-header tv-col-header-estoque">
+            <span>A PRODUZIR</span>
+          </div>
+          <div id="tv-estoque" class="tv-col-conteudo"></div>
         </div>
 
       </div>

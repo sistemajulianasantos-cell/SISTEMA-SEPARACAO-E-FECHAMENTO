@@ -50,7 +50,7 @@ function _tvPararAutoScroll() {
 
 function _tvIniciarAutoScroll() {
   _tvPararAutoScroll();
-  const IDS = ['tv-agenda', 'tv-separando', 'tv-producao'];
+  const IDS = ['tv-agenda', 'tv-separando', 'tv-producao', 'tv-estoque'];
   IDS.forEach(id => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -82,11 +82,11 @@ function carregarTV() {
   _tvAtualizarRelogio();
   _tvClockTimer = setInterval(_tvAtualizarRelogio, 1000);
 
-  Promise.all([listarItemConfigs(), listarCategorias()]).then(([cfgs, cats]) => {
+  Promise.all([listarItemConfigs(), listarCategorias(), buscarEstoque()]).then(([cfgs, cats, est]) => {
     itemConfigsCache = {};
     cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
     categoriasCache = cats;
-    /* Re-renderizar após configs carregarem (garante que produção apareça) */
+    estoqueCache    = est;
     if (todasFestasCache.length) renderizarPainelTV(todasFestasCache);
   }).catch(e => console.error('TV configs:', e));
 
@@ -157,6 +157,7 @@ function renderizarPainelTV(festas) {
   _tvRenderSeparando(separando);
   _tvRenderProducao(producao);
   _tvRenderAgenda(agendadasHoje, atrasadas, proximas, hojeKey);
+  _tvRenderEstoque(producao);
 
   /* Reinicia o auto-scroll após o DOM atualizar */
   if (_tvScrollDelay) clearTimeout(_tvScrollDelay);
@@ -241,6 +242,56 @@ function _tvRenderProducao(producao) {
       `).join('')}
     </div>
   `).join('');
+}
+
+function _tvRenderEstoque(producao) {
+  const el = document.getElementById('tv-estoque');
+  if (!el) return;
+
+  if (!producao.length) {
+    el.innerHTML = '<div class="tv-vazio">Sem itens de produção</div>';
+    return;
+  }
+
+  const itens = producao.map(p => {
+    const baseKey = nomeBaseKey(p.nomeKey || normalizarNomeItem(p.nome));
+    const est     = estoqueCache[baseKey] || estoqueCache[p.nomeKey] || {};
+    const qtdEst  = est.qtd || 0;
+    const falta   = p.total - qtdEst;
+    return { ...p, qtdEst, falta };
+  }).sort((a, b) => b.falta - a.falta);
+
+  const comFalta = itens.filter(p => p.falta > 0);
+  const okItems  = itens.filter(p => p.falta <= 0);
+
+  const renderItem = (p) => {
+    if (p.falta > 0) {
+      return `
+        <div class="tv-est-item">
+          <div class="tv-est-nome">${p.nome}</div>
+          <div class="tv-est-nums">
+            <span>Pedido: <strong>${p.total}</strong></span>
+            <span>Estoque: <strong>${p.qtdEst}</strong></span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:4px">
+            <div class="tv-est-produzir">${p.falta}</div>
+            <div class="tv-est-produzir-label">${p.unidade} a produzir</div>
+          </div>
+        </div>`;
+    }
+    return `
+      <div class="tv-est-item" style="border-left-color:#15803d;background:#F0FDF4">
+        <div class="tv-est-nome">${p.nome}</div>
+        <div class="tv-est-nums">
+          <span>Pedido: <strong>${p.total}</strong></span>
+          <span>Estoque: <strong>${p.qtdEst}</strong></span>
+        </div>
+        <div class="tv-est-ok">OK</div>
+      </div>`;
+  };
+
+  el.innerHTML = (comFalta.length ? `<div class="tv-secao-titulo">FALTAM (${comFalta.length})</div>` + comFalta.map(renderItem).join('') : '')
+               + (okItems.length  ? `<div class="tv-secao-titulo">OK (${okItems.length})</div>`      + okItems.map(renderItem).join('')  : '');
 }
 
 function _tvRenderAgenda(agendadasHoje, atrasadas, proximas, hojeKey) {
@@ -3031,10 +3082,12 @@ function htmlProducaoSintetico(itens) {
           <div class="producao-item-total">Necessário: <strong>${item.total}</strong> ${item.unidade}</div>
         </div>
         <div class="producao-item-nums">
-          <span class="${diff < 0 ? 'producao-diff-falta' : 'producao-diff-ok'}">
-            ${diff < 0 ? `Falta ${Math.abs(diff)}` : `+${diff} ok`}
-          </span>
-          <span style="font-size:11px;color:var(--cinza-500)">${qtdEst} em estoque</span>
+          ${diff < 0
+            ? `<span class="producao-diff-falta" style="font-size:18px;font-weight:900">A PRODUZIR: ${Math.abs(diff)} ${item.unidade}</span>
+               <span style="font-size:11px;color:var(--cinza-500)">Pedido: ${item.total} &nbsp;|&nbsp; Estoque: ${qtdEst}</span>`
+            : `<span class="producao-diff-ok">OK — +${diff} em estoque</span>
+               <span style="font-size:11px;color:var(--cinza-500)">Pedido: ${item.total} &nbsp;|&nbsp; Estoque: ${qtdEst}</span>`
+          }
           <div class="producao-mini-bar">
             <div class="producao-mini-fill ${diff < 0 ? 'deficit' : 'ok'}" style="width:${pct}%"></div>
           </div>

@@ -1950,7 +1950,7 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 /* ── Grid ── */
 .tv-grid {
   display: grid;
-  grid-template-columns: 1fr 1.2fr 0.8fr;
+  grid-template-columns: 0.75fr 1.1fr 0.85fr 0.85fr;
   flex: 1;
   overflow: hidden;
   gap: 10px;
@@ -1978,9 +1978,10 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   flex-shrink: 0;
 }
 
-.tv-col-header-sep    { background: #1d4ed8; color: #fff; }
-.tv-col-header-prod   { background: #15803d; color: #fff; }
-.tv-col-header-agenda { background: #2B3B2A; color: #fff; }
+.tv-col-header-sep     { background: #1d4ed8; color: #fff; }
+.tv-col-header-prod    { background: #15803d; color: #fff; }
+.tv-col-header-agenda  { background: #2B3B2A; color: #fff; }
+.tv-col-header-estoque { background: #C4622D; color: #fff; }
 
 .tv-col-conteudo {
   flex: 1;
@@ -2115,6 +2116,46 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 }
 
 .tv-prod-un { font-size: 11px; color: #6B7280; margin-left: 3px; }
+
+/* ── A Produzir (estoque) ── */
+.tv-est-item {
+  background: #FFF7F4;
+  border-left: 3px solid #C4622D;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.tv-est-nome {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1F2937;
+  margin-bottom: 6px;
+}
+.tv-est-nums {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #6B7280;
+  margin-bottom: 4px;
+}
+.tv-est-produzir {
+  font-size: 18px;
+  font-weight: 900;
+  color: #C4622D;
+  line-height: 1;
+}
+.tv-est-produzir-label {
+  font-size: 10px;
+  color: #C4622D;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.tv-est-ok {
+  font-size: 12px;
+  color: #15803d;
+  font-weight: 700;
+}
 
 /* ── Agenda ── */
 .tv-secao-titulo {
