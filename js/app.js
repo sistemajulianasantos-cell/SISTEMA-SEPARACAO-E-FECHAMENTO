@@ -151,9 +151,9 @@ function renderizarPainelTV(festas) {
     .sort((a, b) => toDate(a.data) - toDate(b.data))
     .slice(0, 6);
 
-  /* Produção: agregar itens eProducao de todas as festas ativas */
+  /* Produção: agregar itens eProducao apenas de festas ainda a preparar */
   const mapaProd = {};
-  festas.filter(f => f.status !== 'concluida').forEach(f => {
+  festas.filter(f => f.status === 'agendada' || f.status === 'separando').forEach(f => {
     (f.itens || []).forEach(item => {
       const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
       if (!cfg?.eProducao) return;
@@ -223,7 +223,7 @@ function _tvRenderProducao(producao) {
   if (!el) return;
 
   if (!producao.length) {
-    el.innerHTML = '<div class="tv-vazio">Sem itens de produção cadastrados</div>';
+    el.innerHTML = '<div class="tv-vazio">Nenhum item de produção pendente</div>';
     return;
   }
 
