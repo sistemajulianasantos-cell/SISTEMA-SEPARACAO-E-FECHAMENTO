@@ -332,8 +332,27 @@
     <!-- Alerta de festas hoje com itens pendentes -->
     <div id="alerta-hoje-colab"></div>
     <div class="container">
-      <h2 class="titulo-tela">Festas para Separar</h2>
+      <div class="secao-header">
+        <h2 class="titulo-tela">Festas para Separar</h2>
+        <button class="btn-secundario btn-sm" onclick="abrirInventario()">&#128203; Inventário</button>
+      </div>
       <div id="colab-lista" class="lista-festas"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: INVENTÁRIO (SEPARADOR) ══════════ -->
+  <div id="tela-inventario" class="tela hidden">
+    <div class="container">
+      <div class="secao-header">
+        <h2 class="titulo-tela">Inventário de Estoque</h2>
+        <button class="btn-secundario btn-sm" onclick="recarregarInventario()">&#8635; Atualizar</button>
+      </div>
+      <p class="desc-tela">Registre as quantidades atuais no estoque. Toque no número para editar.</p>
+      <div class="barra-busca-wrap">
+        <input type="search" class="barra-busca" placeholder="Buscar item..."
+          oninput="filtrarInventario(this.value)" />
+      </div>
+      <div id="inventario-conteudo"></div>
     </div>
   </div>
 
@@ -919,8 +938,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
 
   <script src="js/config.js"></script>
-  <script src="js/firestore.js?v=21"></script>
-  <script src="js/app.js?v=21"></script>
+  <script src="js/firestore.js?v=22"></script>
+  <script src="js/app.js?v=22"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

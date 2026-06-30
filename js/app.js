@@ -3414,6 +3414,107 @@ function standByInfo(item, festaData) {
   };
 }
 
+/* ══════════════════════════════════════════════════
+   INVENTÁRIO (SEPARADOR) — contagem de estoque sem compras
+══════════════════════════════════════════════════ */
+
+let _buscaInventario = '';
+
+async function abrirInventario() {
+  historico.push('tela-colaborador');
+  mostrarTela('tela-inventario', 'Inventário de Estoque');
+  _buscaInventario = '';
+  const busca = document.querySelector('#tela-inventario .barra-busca');
+  if (busca) busca.value = '';
+  await recarregarInventario();
+}
+
+async function recarregarInventario() {
+  document.getElementById('inventario-conteudo').innerHTML =
+    '<div class="estado-vazio"><p>Carregando...</p></div>';
+  try {
+    const [configs, estoqueMap] = await Promise.all([
+      listarItemConfigs(),
+      buscarEstoque(),
+    ]);
+    estoqueCache = estoqueMap;
+    renderizarInventario(configs, estoqueMap);
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao carregar inventário.', 'erro');
+    document.getElementById('inventario-conteudo').innerHTML =
+      '<div class="estado-vazio"><p>Erro ao carregar. Tente novamente.</p></div>';
+  }
+}
+
+function filtrarInventario(valor) {
+  _buscaInventario = valor;
+  recarregarInventario();
+}
+
+function renderizarInventario(configs, estoqueMap) {
+  const busca = _buscaInventario.toLowerCase().trim();
+  let itens = configs.filter(c => c.nome);
+  if (busca) itens = itens.filter(c => (c.nome || '').toLowerCase().includes(busca) || (c.grupo || '').toLowerCase().includes(busca));
+  if (!itens.length) {
+    document.getElementById('inventario-conteudo').innerHTML =
+      estadoVazio('Nenhum item encontrado no cadastro.');
+    return;
+  }
+
+  /* Agrupar por categoria/grupo */
+  const grupos = {};
+  itens.forEach(c => {
+    const g = c.grupo || 'Sem Categoria';
+    if (!grupos[g]) grupos[g] = [];
+    grupos[g].push(c);
+  });
+
+  const html = Object.keys(grupos).sort().map(g => {
+    const linhas = grupos[g].map(c => {
+      const key    = c.nomeKey || normalizarNomeItem(c.nome);
+      const est    = estoqueMap[key] || {};
+      const qtdEst = est.qtd != null ? est.qtd : '';
+      const un     = c.unidade || est.unidade || '';
+      return `
+        <div class="estoque-item-card" style="margin-bottom:8px">
+          <div class="estoque-item-header">
+            <div class="estoque-item-nome">${c.nome}</div>
+            ${un ? `<div class="estoque-item-total" style="font-size:12px;color:var(--cinza-500)">${un}</div>` : ''}
+          </div>
+          <div class="estoque-body-row">
+            <span class="estoque-body-label">Qtd. em estoque:</span>
+            <div class="estoque-qty-wrap">
+              <input type="number" class="estoque-qty-input"
+                id="inv-qty-${key}"
+                value="${qtdEst}" min="0" placeholder="0"
+                onchange="salvarInventarioQtd('${_esc(key)}','${_esc(c.nome)}','${_esc(un)}',this.value)"
+              />
+              ${un ? `<span class="estoque-qty-un">${un}</span>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+    return `
+      <div class="grupo-titulo" style="margin-top:16px;margin-bottom:4px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--cinza-500);letter-spacing:.5px">${g}</div>
+      ${linhas}`;
+  }).join('');
+
+  document.getElementById('inventario-conteudo').innerHTML = html;
+}
+
+async function salvarInventarioQtd(nomeKey, nome, unidade, qtdStr) {
+  const qtd = parseFloat(qtdStr) || 0;
+  try {
+    await salvarItemEstoque(nomeKey, { nome, unidade, qtd });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey };
+    toast('Quantidade salva.', 'sucesso');
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao salvar. Tente novamente.', 'erro');
+  }
+}
+
 async function abrirEstoque() {
   historico.push('tela-estoque');
   mostrarTela('tela-estoque', 'Controle de Estoque');
