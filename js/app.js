@@ -1175,6 +1175,20 @@ function renderizarSeparacao(festa) {
         oninput="filtrarItensSep(this.value)"
         value="${buscaAtual.replace(/"/g, '&quot;')}" />
     </div>
+    <div class="sep-add-item-wrap" style="margin-bottom:10px">
+      <button class="btn-secundario btn-sm" onclick="toggleAddItemSep()">&#43; Item não listado</button>
+      <div id="sep-add-item-form" class="hidden" style="margin-top:8px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div style="flex:2;min-width:160px">
+          <label style="font-size:12px;color:var(--cinza-600)">Item cadastrado</label>
+          <select id="sep-add-select" style="width:100%"></select>
+        </div>
+        <div style="width:90px">
+          <label style="font-size:12px;color:var(--cinza-600)">Qtd.</label>
+          <input type="number" id="sep-add-qtd" min="0" placeholder="0" style="width:100%" />
+        </div>
+        <button class="btn-primario btn-sm" onclick="adicionarItemSeparacao()">Adicionar</button>
+      </div>
+    </div>
     <button class="btn-confirmar btn-full" style="margin:10px 0" onclick="concluirSeparacao()">Finalizar Separação</button>
     <div class="sep-tabs">
       <button class="sep-tab ${tab === 'pendente' ? 'ativo' : ''}" onclick="mudarTabSep('pendente')">
@@ -1198,6 +1212,67 @@ function renderizarSeparacao(festa) {
   `;
 
   if (buscaAtual) filtrarItensSep(buscaAtual);
+}
+
+function toggleAddItemSep() {
+  const form = document.getElementById('sep-add-item-form');
+  if (!form) return;
+  const abrindo = form.classList.contains('hidden');
+  form.classList.toggle('hidden');
+  if (abrindo) popularSelectAddItemSep();
+}
+
+function popularSelectAddItemSep() {
+  const select = document.getElementById('sep-add-select');
+  if (!select || !festaAtual) return;
+
+  const itens = festaAtual.itens || [];
+  const keysJaNaFesta = new Set(itens.map(it => nomeBaseKey(normalizarNomeItem(it.nome))));
+
+  const disponiveis = Object.values(itemConfigsCache)
+    .filter(c => !keysJaNaFesta.has(nomeBaseKey(c.nomeKey || normalizarNomeItem(c.nome))))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  select.innerHTML = disponiveis.length
+    ? disponiveis.map(c => `<option value="${_esc(c.nomeKey)}">${c.nome}</option>`).join('')
+    : '<option value="">Nenhum item disponivel</option>';
+}
+
+async function adicionarItemSeparacao() {
+  if (!festaAtual) return;
+  const select  = document.getElementById('sep-add-select');
+  const nomeKey = select?.value;
+  if (!nomeKey) return toast('Selecione um item para adicionar.', 'erro');
+
+  const cfg = itemConfigsCache[nomeKey];
+  if (!cfg) return toast('Item nao encontrado no cadastro.', 'erro');
+
+  const qtdInput = document.getElementById('sep-add-qtd');
+  const qtd      = parseFloat(qtdInput?.value) || 0;
+  if (qtd <= 0) return toast('Informe uma quantidade.', 'erro');
+
+  const itens = (festaAtual.itens || []).map(it => ({ ...it }));
+  itens.push({
+    id:            `item-novo-${Date.now()}`,
+    nome:          cfg.nome,
+    qtdNecessaria: qtd,
+    unidade:       cfg.unidade || 'un',
+    separado:      false,
+    qtdSeparada:   0,
+    qtdConferida:  0,
+    qtdRetorno:    0,
+    qtdGalpao:     0,
+    qtdDanificada: 0,
+  });
+
+  try {
+    await atualizarFesta(festaAtual.id, { itens });
+    toast(`${cfg.nome} adicionado a lista.`, 'sucesso');
+    /* O listener do escutarFesta vai re-renderizar automaticamente */
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao adicionar item.', 'erro');
+  }
 }
 
 function htmlBadgeForn(item) {
