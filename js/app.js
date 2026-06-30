@@ -3418,12 +3418,17 @@ function standByInfo(item, festaData) {
    INVENTÁRIO (SEPARADOR) — contagem de estoque sem compras
 ══════════════════════════════════════════════════ */
 
-let _buscaInventario = '';
+let _buscaInventario    = '';
+let _inventarioContados = new Set(); /* nomeKeys contados nesta sessão */
+let _abaInventario      = 'acontar'; /* 'acontar' | 'contados' */
+let _inventarioConfigs  = [];        /* cache dos item_configs carregados */
 
 async function abrirInventario() {
   historico.push('tela-colaborador');
   mostrarTela('tela-inventario', 'Inventário de Estoque');
-  _buscaInventario = '';
+  _buscaInventario    = '';
+  _inventarioContados = new Set();
+  _abaInventario      = 'acontar';
   const busca = document.querySelector('#tela-inventario .barra-busca');
   if (busca) busca.value = '';
   await recarregarInventario();
@@ -3437,8 +3442,9 @@ async function recarregarInventario() {
       listarItemConfigs(),
       buscarEstoque(),
     ]);
-    estoqueCache = estoqueMap;
-    renderizarInventario(configs, estoqueMap);
+    estoqueCache       = estoqueMap;
+    _inventarioConfigs = configs;
+    renderizarInventario();
   } catch (e) {
     console.error(e);
     toast('Erro ao carregar inventário.', 'erro');
@@ -3449,35 +3455,75 @@ async function recarregarInventario() {
 
 function filtrarInventario(valor) {
   _buscaInventario = valor;
-  recarregarInventario();
+  renderizarInventario();
 }
 
-function renderizarInventario(configs, estoqueMap) {
+function trocarAbaInventario(aba, btn) {
+  _abaInventario = aba;
+  document.querySelectorAll('#inv-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  renderizarInventario();
+}
+
+function _atualizarTabsInventario() {
+  const totalConfigs = _inventarioConfigs.filter(c => c.nome).length;
+  const nContados    = _inventarioContados.size;
+  const nAContar     = totalConfigs - nContados;
+  const tabAContar   = document.getElementById('inv-tab-acontar');
+  const tabContados  = document.getElementById('inv-tab-contados');
+  if (tabAContar)  tabAContar.textContent  = `A Contar (${nAContar})`;
+  if (tabContados) tabContados.textContent = `Contados (${nContados})`;
+}
+
+function renderizarInventario() {
   const busca = _buscaInventario.toLowerCase().trim();
-  let itens = configs.filter(c => c.nome);
-  if (busca) itens = itens.filter(c => (c.nome || '').toLowerCase().includes(busca) || (c.grupo || '').toLowerCase().includes(busca));
-  if (!itens.length) {
-    document.getElementById('inventario-conteudo').innerHTML =
-      estadoVazio('Nenhum item encontrado no cadastro.');
+  let itens = _inventarioConfigs.filter(c => c.nome);
+  if (busca) itens = itens.filter(c =>
+    (c.nome || '').toLowerCase().includes(busca) ||
+    (c.grupo || '').toLowerCase().includes(busca)
+  );
+
+  /* Separar por aba */
+  const aContar  = itens.filter(c => !_inventarioContados.has(c.nomeKey || normalizarNomeItem(c.nome)));
+  const contados = itens.filter(c =>  _inventarioContados.has(c.nomeKey || normalizarNomeItem(c.nome)));
+  const lista    = _abaInventario === 'acontar' ? aContar : contados;
+
+  /* Tabs com contadores */
+  const nContados = _inventarioContados.size;
+  const nAContar  = _inventarioConfigs.filter(c => c.nome).length - nContados;
+  const tabsHtml  = `
+    <div class="filtros-tabs" id="inv-tabs" style="margin-bottom:12px">
+      <button class="tab${_abaInventario === 'acontar'  ? ' ativo' : ''}" id="inv-tab-acontar"
+        onclick="trocarAbaInventario('acontar',this)">A Contar (${nAContar})</button>
+      <button class="tab${_abaInventario === 'contados' ? ' ativo' : ''}" id="inv-tab-contados"
+        onclick="trocarAbaInventario('contados',this)">Contados (${nContados})</button>
+    </div>`;
+
+  if (!lista.length) {
+    const msg = _abaInventario === 'acontar'
+      ? 'Todos os itens já foram contados nesta sessão!'
+      : 'Nenhum item contado ainda.';
+    document.getElementById('inventario-conteudo').innerHTML = tabsHtml + estadoVazio(msg);
     return;
   }
 
   /* Agrupar por categoria/grupo */
   const grupos = {};
-  itens.forEach(c => {
+  lista.forEach(c => {
     const g = c.grupo || 'Sem Categoria';
     if (!grupos[g]) grupos[g] = [];
     grupos[g].push(c);
   });
 
-  const html = Object.keys(grupos).sort().map(g => {
+  const itenHtml = Object.keys(grupos).sort().map(g => {
     const linhas = grupos[g].map(c => {
       const key    = c.nomeKey || normalizarNomeItem(c.nome);
-      const est    = estoqueMap[key] || {};
+      const est    = estoqueCache[key] || {};
       const qtdEst = est.qtd != null ? est.qtd : '';
       const un     = c.unidade || est.unidade || '';
+      const jaContado = _inventarioContados.has(key);
       return `
-        <div class="estoque-item-card" style="margin-bottom:8px">
+        <div class="estoque-item-card" id="inv-card-${key}" style="margin-bottom:8px${jaContado ? ';opacity:.6' : ''}">
           <div class="estoque-item-header">
             <div class="estoque-item-nome">${c.nome}</div>
             ${un ? `<div class="estoque-item-total" style="font-size:12px;color:var(--cinza-500)">${un}</div>` : ''}
@@ -3500,7 +3546,7 @@ function renderizarInventario(configs, estoqueMap) {
       ${linhas}`;
   }).join('');
 
-  document.getElementById('inventario-conteudo').innerHTML = html;
+  document.getElementById('inventario-conteudo').innerHTML = tabsHtml + itenHtml;
 }
 
 async function salvarInventarioQtd(nomeKey, nome, unidade, qtdStr) {
@@ -3508,7 +3554,12 @@ async function salvarInventarioQtd(nomeKey, nome, unidade, qtdStr) {
   try {
     await salvarItemEstoque(nomeKey, { nome, unidade, qtd });
     estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey };
-    toast('Quantidade salva.', 'sucesso');
+    _inventarioContados.add(nomeKey);
+    toast('Contado! Item movido para "Contados".', 'sucesso');
+    /* Remove o card da lista após salvar e atualiza as tabs */
+    const card = document.getElementById(`inv-card-${nomeKey}`);
+    if (card) card.remove();
+    _atualizarTabsInventario();
   } catch (e) {
     console.error(e);
     toast('Erro ao salvar. Tente novamente.', 'erro');
