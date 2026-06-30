@@ -512,6 +512,20 @@
       </div>
       <h3 class="titulo-secao">Quantidades Necessarias</h3>
       <div id="ef-itens"></div>
+      <h3 class="titulo-secao">Adicionar Item</h3>
+      <div class="form-secao">
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label>Item cadastrado</label>
+            <select id="ef-add-select"></select>
+          </div>
+          <div class="form-group">
+            <label>Quantidade</label>
+            <input type="number" id="ef-add-qtd" min="0" placeholder="0" />
+          </div>
+        </div>
+        <button class="btn-secundario btn-sm" onclick="adicionarItemEdicaoFesta()">&#43; Adicionar Item</button>
+      </div>
       <div class="rodape-form">
         <button class="btn-secundario" onclick="goBack()">Cancelar</button>
         <button class="btn-primario"   onclick="salvarEdicaoFesta()">Salvar Alteracoes</button>
@@ -951,8 +965,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
 
   <script src="js/config.js"></script>
-  <script src="js/firestore.js?v=31"></script>
-  <script src="js/app.js?v=31"></script>
+  <script src="js/firestore.js?v=32"></script>
+  <script src="js/app.js?v=32"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

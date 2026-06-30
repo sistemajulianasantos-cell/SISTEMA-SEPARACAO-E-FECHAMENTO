@@ -2302,8 +2302,11 @@ function ceoSepararFesta(id) {
 }
 
 /* ── Edição de data/quantidades ── */
+let _efItensExtras = [];   /* itens do catálogo adicionados nesta sessão de edição, ainda não salvos */
+
 async function abrirEditarFesta(id) {
   festaEditandoId = id;
+  _efItensExtras  = [];
   pararListeners();
   historico.push('tela-editar-festa');
   mostrarTela('tela-editar-festa', 'Editar Festa');
@@ -2328,15 +2331,17 @@ function renderizarEditarFesta(festa) {
   }
   document.getElementById('ef-hora').value = festa.hora || '';
 
-  /* Preencher quantidades por item */
-  const itens = festa.itens || [];
-  document.getElementById('ef-itens').innerHTML = itens.map((item, i) => `
+  /* Preencher quantidades por item (itens já na festa + itens adicionados nesta sessão) */
+  const itens     = festa.itens || [];
+  const todos     = itens.concat(_efItensExtras);
+  document.getElementById('ef-itens').innerHTML = todos.map((item, i) => `
     <div class="item-row">
       <div class="item-topo">
         <div>
           <div class="item-nome">${item.nome}</div>
           <div class="item-sub">Unidade: ${item.unidade || 'un'}</div>
         </div>
+        ${item._novo ? `<button class="btn-del-item" onclick="removerItemExtraEdicao(${i - itens.length})">x</button>` : ''}
       </div>
       <div class="item-entrada">
         <label>Quantidade necessaria:</label>
@@ -2346,6 +2351,58 @@ function renderizarEditarFesta(festa) {
       </div>
     </div>
   `).join('');
+
+  popularSelectAddItemEdicao();
+}
+
+function popularSelectAddItemEdicao() {
+  const select = document.getElementById('ef-add-select');
+  if (!select) return;
+
+  const itens = (festaAtual?.itens || []).concat(_efItensExtras);
+  const keysJaNaFesta = new Set(itens.map(it => nomeBaseKey(normalizarNomeItem(it.nome))));
+
+  const disponiveis = Object.values(itemConfigsCache)
+    .filter(c => !keysJaNaFesta.has(nomeBaseKey(c.nomeKey || normalizarNomeItem(c.nome))))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  select.innerHTML = disponiveis.length
+    ? disponiveis.map(c => `<option value="${_esc(c.nomeKey)}">${c.nome}</option>`).join('')
+    : '<option value="">Nenhum item disponivel</option>';
+}
+
+function adicionarItemEdicaoFesta() {
+  const select = document.getElementById('ef-add-select');
+  const nomeKey = select?.value;
+  if (!nomeKey) return toast('Selecione um item para adicionar.', 'erro');
+
+  const cfg = itemConfigsCache[nomeKey];
+  if (!cfg) return toast('Item nao encontrado no cadastro.', 'erro');
+
+  const qtdInput = document.getElementById('ef-add-qtd');
+  const qtd      = parseFloat(qtdInput?.value) || 0;
+
+  _efItensExtras.push({
+    id:            `item-novo-${Date.now()}`,
+    nome:          cfg.nome,
+    qtdNecessaria: qtd,
+    unidade:       cfg.unidade || 'un',
+    qtdSeparada:   0,
+    qtdConferida:  0,
+    qtdRetorno:    0,
+    qtdGalpao:     0,
+    qtdDanificada: 0,
+    _novo:         true,
+  });
+
+  if (qtdInput) qtdInput.value = '';
+  renderizarEditarFesta(festaAtual);
+  toast(`${cfg.nome} adicionado. Salve as alteracoes para confirmar.`, 'sucesso');
+}
+
+function removerItemExtraEdicao(idx) {
+  _efItensExtras.splice(idx, 1);
+  renderizarEditarFesta(festaAtual);
 }
 
 async function salvarEdicaoFesta() {
@@ -2361,8 +2418,13 @@ async function salvarEdicaoFesta() {
   /* Montar itens com novas quantidades e registrar o que mudou */
   const itens        = festaAtual.itens || [];
   const alteracoes   = [];
-  const itensAtuais  = itens.map((item, i) => {
+  const itensAtuais  = itens.concat(_efItensExtras).map((item, i) => {
     const novaQtd = parseFloat(document.getElementById(`ef-qty-${i}`)?.value) || 0;
+    if (item._novo) {
+      alteracoes.push({ campo: item.nome, de: 'Item adicionado', para: novaQtd });
+      const { _novo, ...itemLimpo } = item;
+      return { ...itemLimpo, qtdNecessaria: novaQtd };
+    }
     if (novaQtd !== item.qtdNecessaria) {
       alteracoes.push({ campo: item.nome, de: item.qtdNecessaria, para: novaQtd });
     }
@@ -2389,6 +2451,8 @@ async function salvarEdicaoFesta() {
 
     /* Liberar separador */
     try { await atualizarFesta(festaEditandoId, { editandoAgora: null }); } catch(_) {}
+
+    _efItensExtras = [];
 
     const msg = alteracoes.length
       ? `Alteracoes salvas. ${alteracoes.length} campo(s) modificado(s).`
