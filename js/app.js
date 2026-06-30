@@ -3458,15 +3458,6 @@ function trocarAbaInventario(aba, btn) {
   renderizarInventario();
 }
 
-function _atualizarTabsInventario() {
-  const totalConfigs = _inventarioConfigs.filter(c => c.nome).length;
-  const nContados    = _inventarioContados.size;
-  const nAContar     = totalConfigs - nContados;
-  const tabAContar   = document.getElementById('inv-tab-acontar');
-  const tabContados  = document.getElementById('inv-tab-contados');
-  if (tabAContar)  tabAContar.textContent  = `A Contar (${nAContar})`;
-  if (tabContados) tabContados.textContent = `Contados (${nContados})`;
-}
 
 function renderizarInventario() {
   const busca = _buscaInventario.toLowerCase().trim();
@@ -3551,10 +3542,8 @@ async function salvarInventarioQtd(nomeKey, nome, unidade) {
     await salvarItemEstoque(nomeKey, { nome, unidade, qtd });
     estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey };
     _inventarioContados.add(nomeKey);
-    toast(`${nome}: ${qtd} ${unidade} contado!`, 'sucesso');
-    const card = document.getElementById(`inv-card-${nomeKey}`);
-    if (card) card.remove();
-    _atualizarTabsInventario();
+    toast(`${nome}: ${qtd} ${unidade || 'un'} ✓`, 'sucesso');
+    renderizarInventario();
   } catch (e) {
     console.error(e);
     toast('Erro ao salvar. Tente novamente.', 'erro');
