@@ -1180,7 +1180,8 @@ function renderizarSeparacao(festa) {
       <div id="sep-add-item-form" class="hidden" style="margin-top:8px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
         <div style="flex:2;min-width:160px">
           <label style="font-size:12px;color:var(--cinza-600)">Item cadastrado</label>
-          <select id="sep-add-select" style="width:100%"></select>
+          <input type="text" id="sep-add-input" list="sep-add-datalist" placeholder="Buscar item..." autocomplete="off" style="width:100%" />
+          <datalist id="sep-add-datalist"></datalist>
         </div>
         <div style="width:90px">
           <label style="font-size:12px;color:var(--cinza-600)">Qtd.</label>
@@ -1223,8 +1224,8 @@ function toggleAddItemSep() {
 }
 
 function popularSelectAddItemSep() {
-  const select = document.getElementById('sep-add-select');
-  if (!select || !festaAtual) return;
+  const datalist = document.getElementById('sep-add-datalist');
+  if (!datalist || !festaAtual) return;
 
   const itens = festaAtual.itens || [];
   const keysJaNaFesta = new Set(itens.map(it => nomeBaseKey(normalizarNomeItem(it.nome))));
@@ -1233,19 +1234,14 @@ function popularSelectAddItemSep() {
     .filter(c => !keysJaNaFesta.has(nomeBaseKey(c.nomeKey || normalizarNomeItem(c.nome))))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
-  select.innerHTML = disponiveis.length
-    ? disponiveis.map(c => `<option value="${_esc(c.nomeKey)}">${c.nome}</option>`).join('')
-    : '<option value="">Nenhum item disponivel</option>';
+  datalist.innerHTML = disponiveis.map(c => `<option value="${_esc(c.nome)}">`).join('');
 }
 
 async function adicionarItemSeparacao() {
   if (!festaAtual) return;
-  const select  = document.getElementById('sep-add-select');
-  const nomeKey = select?.value;
-  if (!nomeKey) return toast('Selecione um item para adicionar.', 'erro');
-
-  const cfg = itemConfigsCache[nomeKey];
-  if (!cfg) return toast('Item nao encontrado no cadastro.', 'erro');
+  const input = document.getElementById('sep-add-input');
+  const cfg   = _resolverItemCatalogoPorNome(input?.value);
+  if (!cfg) return toast('Selecione um item valido da lista do cadastro.', 'erro');
 
   const qtdInput = document.getElementById('sep-add-qtd');
   const qtd      = parseFloat(qtdInput?.value) || 0;
@@ -2431,8 +2427,8 @@ function renderizarEditarFesta(festa) {
 }
 
 function popularSelectAddItemEdicao() {
-  const select = document.getElementById('ef-add-select');
-  if (!select) return;
+  const datalist = document.getElementById('ef-add-datalist');
+  if (!datalist) return;
 
   const itens = (festaAtual?.itens || []).concat(_efItensExtras);
   const keysJaNaFesta = new Set(itens.map(it => nomeBaseKey(normalizarNomeItem(it.nome))));
@@ -2441,18 +2437,13 @@ function popularSelectAddItemEdicao() {
     .filter(c => !keysJaNaFesta.has(nomeBaseKey(c.nomeKey || normalizarNomeItem(c.nome))))
     .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
-  select.innerHTML = disponiveis.length
-    ? disponiveis.map(c => `<option value="${_esc(c.nomeKey)}">${c.nome}</option>`).join('')
-    : '<option value="">Nenhum item disponivel</option>';
+  datalist.innerHTML = disponiveis.map(c => `<option value="${_esc(c.nome)}">`).join('');
 }
 
 function adicionarItemEdicaoFesta() {
-  const select = document.getElementById('ef-add-select');
-  const nomeKey = select?.value;
-  if (!nomeKey) return toast('Selecione um item para adicionar.', 'erro');
-
-  const cfg = itemConfigsCache[nomeKey];
-  if (!cfg) return toast('Item nao encontrado no cadastro.', 'erro');
+  const input = document.getElementById('ef-add-input');
+  const cfg   = _resolverItemCatalogoPorNome(input?.value);
+  if (!cfg) return toast('Selecione um item valido da lista do cadastro.', 'erro');
 
   const qtdInput = document.getElementById('ef-add-qtd');
   const qtd      = parseFloat(qtdInput?.value) || 0;
@@ -2471,6 +2462,7 @@ function adicionarItemEdicaoFesta() {
   });
 
   if (qtdInput) qtdInput.value = '';
+  if (input)    input.value    = '';
   renderizarEditarFesta(festaAtual);
   toast(`${cfg.nome} adicionado. Salve as alteracoes para confirmar.`, 'sucesso');
 }
@@ -3834,6 +3826,13 @@ function renderizarEstoque(festas, estoqueMap) {
 
 function _esc(s) {
   return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+}
+
+/* Resolve um item do cadastro (item_config) a partir do nome digitado num input com datalist */
+function _resolverItemCatalogoPorNome(nomeDigitado) {
+  const alvo = normalizarNomeItem(nomeDigitado);
+  if (!alvo) return null;
+  return Object.values(itemConfigsCache).find(c => normalizarNomeItem(c.nome) === alvo) || null;
 }
 
 function htmlEstoqueSintetico(item, est) {
