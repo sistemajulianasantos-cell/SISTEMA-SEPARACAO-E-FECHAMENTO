@@ -509,10 +509,11 @@ function goBack() {
       if (!unsubFestas) carregarCEO(); else atualizarVisaoCEO();
     } else {
       mostrarTela(anterior);
-      if (anterior === 'tela-ceo')          carregarCEO();
-      if (anterior === 'tela-colaborador')  carregarColab();
-      if (anterior === 'tela-coordenador')  carregarCoord(filtroAtualCoord);
-      if (anterior === 'tela-usuarios')     carregarUsuarios();
+      if (anterior === 'tela-ceo')                  carregarCEO();
+      if (anterior === 'tela-colaborador')          carregarColab();
+      if (anterior === 'tela-coordenador')          carregarCoord(filtroAtualCoord);
+      if (anterior === 'tela-usuarios')             carregarUsuarios();
+      if (anterior === 'tela-historico-contagem')   abrirHistoricoContagem();
     }
   } else {
     irParaPrincipal();
@@ -3560,7 +3561,7 @@ async function salvarInventarioQtd(nomeKey, nome, unidade) {
 ══════════════════════════════════════════════════ */
 
 async function abrirHistoricoContagem() {
-  historico.push('tela-estoque');
+  historico.push('tela-historico-contagem');
   mostrarTela('tela-historico-contagem', 'Histórico de Contagem');
   document.getElementById('hist-cont-lista').innerHTML =
     '<div class="estado-vazio"><p>Carregando...</p></div>';
@@ -3568,7 +3569,7 @@ async function abrirHistoricoContagem() {
     const registros = await listarHistoricoContagem(300);
     renderizarHistoricoContagem(registros);
   } catch (e) {
-    console.error(e);
+    console.error('Histórico contagem:', e);
     document.getElementById('hist-cont-lista').innerHTML =
       '<div class="estado-vazio"><p>Erro ao carregar. Tente novamente.</p></div>';
   }
