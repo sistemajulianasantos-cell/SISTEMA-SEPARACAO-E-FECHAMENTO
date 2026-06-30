@@ -3544,6 +3544,8 @@ async function salvarInventarioQtd(nomeKey, nome, unidade) {
   try {
     await salvarItemEstoque(nomeKey, { nome, unidade, qtd });
     estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey };
+    registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor: usuarioAtual?.nome || '—' })
+      .catch(e => console.error('Erro ao registrar histórico:', e));
     _inventarioContados.add(nomeKey);
     toast(`${nome}: ${qtd} ${unidade || 'un'} ✓`, 'sucesso');
     renderizarInventario();
@@ -3551,6 +3553,75 @@ async function salvarInventarioQtd(nomeKey, nome, unidade) {
     console.error(e);
     toast('Erro ao salvar. Tente novamente.', 'erro');
   }
+}
+
+/* ══════════════════════════════════════════════════
+   HISTÓRICO DE CONTAGEM (CEO)
+══════════════════════════════════════════════════ */
+
+async function abrirHistoricoContagem() {
+  historico.push('tela-estoque');
+  mostrarTela('tela-historico-contagem', 'Histórico de Contagem');
+  document.getElementById('hist-cont-lista').innerHTML =
+    '<div class="estado-vazio"><p>Carregando...</p></div>';
+  try {
+    const registros = await listarHistoricoContagem(300);
+    renderizarHistoricoContagem(registros);
+  } catch (e) {
+    console.error(e);
+    document.getElementById('hist-cont-lista').innerHTML =
+      '<div class="estado-vazio"><p>Erro ao carregar. Tente novamente.</p></div>';
+  }
+}
+
+function renderizarHistoricoContagem(registros) {
+  const el = document.getElementById('hist-cont-lista');
+  if (!registros.length) {
+    el.innerHTML = estadoVazio('Nenhuma contagem registrada ainda.');
+    return;
+  }
+
+  const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const fmt = ts => {
+    if (!ts) return '—';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    if (isNaN(d)) return '—';
+    const dia  = String(d.getDate()).padStart(2,'0');
+    const mes  = MESES[d.getMonth()];
+    const ano  = d.getFullYear();
+    const hora = String(d.getHours()).padStart(2,'0');
+    const min  = String(d.getMinutes()).padStart(2,'0');
+    return `${dia} ${mes} ${ano} às ${hora}:${min}`;
+  };
+
+  /* Agrupar por data (dia) */
+  const porDia = {};
+  registros.forEach(r => {
+    const d = r.contadoEm?.toDate ? r.contadoEm.toDate() : new Date(r.contadoEm);
+    const diaKey = isNaN(d) ? 'Sem data' : `${String(d.getDate()).padStart(2,'0')} ${MESES[d.getMonth()]} ${d.getFullYear()}`;
+    if (!porDia[diaKey]) porDia[diaKey] = [];
+    porDia[diaKey].push(r);
+  });
+
+  el.innerHTML = Object.keys(porDia).map(dia => `
+    <div class="grupo-titulo" style="margin-top:16px;margin-bottom:4px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--cinza-500);letter-spacing:.5px">${dia}</div>
+    ${porDia[dia].map(r => `
+      <div class="estoque-item-card" style="margin-bottom:6px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div>
+            <div style="font-weight:600;font-size:14px">${r.nome || r.nomeKey}</div>
+            <div style="font-size:12px;color:var(--cinza-500);margin-top:2px">
+              👤 ${r.contadoPor || '—'} &nbsp;·&nbsp; ${fmt(r.contadoEm)}
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:20px;font-weight:700;color:var(--verde-700)">${r.qtd}</div>
+            <div style="font-size:11px;color:var(--cinza-500)">${r.unidade || 'un'}</div>
+          </div>
+        </div>
+      </div>
+    `).join('')}
+  `).join('');
 }
 
 async function abrirEstoque() {

@@ -281,6 +281,21 @@ async function salvarItemEstoque(nomeKey, dados) {
   });
 }
 
+async function registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor }) {
+  return db.collection('historico_contagem').add({
+    nomeKey, nome, unidade, qtd, contadoPor,
+    contadoEm: TS(),
+  });
+}
+
+async function listarHistoricoContagem(limite = 200) {
+  const snap = await db.collection('historico_contagem')
+    .orderBy('contadoEm', 'desc')
+    .limit(limite)
+    .get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
 /* Atualiza apenas os itens de uma festa (sem registrar alterações no histórico) */
 async function buscarTodasFestas() {
   const snap = await db.collection('festas').get();

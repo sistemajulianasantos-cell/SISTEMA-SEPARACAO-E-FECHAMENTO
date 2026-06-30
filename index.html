@@ -63,6 +63,7 @@
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirSidebarNovoUsuario()">&#43; Novo Usuário</button>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirUsuarios()">Gerenciar Usuários</button>
         <button class="sidebar-btn sidebar-btn-destaque" onclick="navegarSidebar(); abrirEstoque()">Controle de Estoque</button>
+        <button class="sidebar-btn" onclick="navegarSidebar(); abrirHistoricoContagem()">Histórico de Contagem</button>
         <button class="sidebar-btn sidebar-btn-compras" onclick="navegarSidebar(); abrirCompras()">Compras <span id="badge-compras" class="sidebar-badge hidden"></span></button>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirRelatorio()">Relatório por Período</button>
         <button class="sidebar-btn sidebar-btn-analise" onclick="navegarSidebar(); abrirAnalise()">Análise de Desempenho</button>
@@ -758,6 +759,18 @@
     </div>
   </div>
 
+  <!-- ══════════ TELA: HISTÓRICO DE CONTAGEM (CEO) ══════════ -->
+  <div id="tela-historico-contagem" class="tela hidden">
+    <div class="container">
+      <div class="secao-header">
+        <h2 class="titulo-tela">Histórico de Contagem</h2>
+        <button class="btn-secundario btn-sm" onclick="abrirHistoricoContagem()">&#8635; Atualizar</button>
+      </div>
+      <p class="desc-tela">Registro de todas as contagens realizadas pelos separadores.</p>
+      <div id="hist-cont-lista"></div>
+    </div>
+  </div>
+
   <!-- ══════════ TELA: ANÁLISE DE DESEMPENHO (CEO) ══════════ -->
   <div id="tela-analise" class="tela hidden">
     <div class="analise-hero">
@@ -938,8 +951,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-storage-compat.js"></script>
 
   <script src="js/config.js"></script>
-  <script src="js/firestore.js?v=28"></script>
-  <script src="js/app.js?v=28"></script>
+  <script src="js/firestore.js?v=29"></script>
+  <script src="js/app.js?v=29"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->
