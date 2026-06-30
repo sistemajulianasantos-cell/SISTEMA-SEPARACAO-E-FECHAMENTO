@@ -151,18 +151,9 @@ function renderizarPainelTV(festas) {
     .sort((a, b) => toDate(a.data) - toDate(b.data))
     .slice(0, 6);
 
-  /* Produção: agregar itens eProducao apenas de festas ainda a preparar */
-  const mapaProd = {};
-  festas.filter(f => f.status === 'agendada' || f.status === 'separando').forEach(f => {
-    (f.itens || []).forEach(item => {
-      const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
-      if (!cfg?.eProducao) return;
-      const key = normalizarNomeItem(item.nome);
-      if (!mapaProd[key]) mapaProd[key] = { nomeKey: key, nome: nomeBasDisplay(item.nome), total: 0, unidade: item.unidade || 'un', grupo: cfg.grupo || 'Geral' };
-      mapaProd[key].total += (item.qtdNecessaria || 0);
-    });
-  });
-  const producao = Object.values(mapaProd).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  /* Produção: mesma lógica do CEO — agrega por nomeBaseKey, festas agendada/separando */
+  const festasParaProducao = festas.filter(f => f.status === 'agendada' || f.status === 'separando');
+  const producao = agregarItensFestas(festasParaProducao);
 
   _tvRenderSeparando(separando);
   _tvRenderProducao(producao);
@@ -227,13 +218,15 @@ function _tvRenderProducao(producao) {
     return;
   }
 
-  /* Enriquecer com dados de estoque */
+  /* Enriquecer com dados de estoque e grupo do cadastro */
   const itens = producao.map(p => {
     const est    = estoqueCache[p.nomeKey] || estoqueCache[nomeBaseKey(p.nomeKey)] || {};
     const qtdEst = est.qtd || 0;
     const falta  = p.total - qtdEst;
     const pct    = p.total > 0 ? Math.min(100, Math.round((qtdEst / p.total) * 100)) : 100;
-    return { ...p, qtdEst, falta, pct };
+    const cfg    = buscarConfigItem(p.nomeKey);
+    const grupo  = cfg?.grupo || p.grupo || 'Geral';
+    return { ...p, qtdEst, falta, pct, grupo };
   });
 
   /* Dentro de cada grupo: falta sem compra → aguardando chegada → ok */
