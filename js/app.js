@@ -3521,23 +3521,25 @@ function renderizarInventario() {
       const est    = estoqueCache[key] || {};
       const qtdEst = est.qtd != null ? est.qtd : '';
       const un     = c.unidade || est.unidade || '';
-      const jaContado = _inventarioContados.has(key);
       return `
-        <div class="estoque-item-card" id="inv-card-${key}" style="margin-bottom:8px${jaContado ? ';opacity:.6' : ''}">
+        <div class="estoque-item-card" id="inv-card-${key}" style="margin-bottom:8px">
           <div class="estoque-item-header">
             <div class="estoque-item-nome">${c.nome}</div>
             ${un ? `<div class="estoque-item-total" style="font-size:12px;color:var(--cinza-500)">${un}</div>` : ''}
           </div>
           <div class="estoque-body-row">
-            <span class="estoque-body-label">Qtd. em estoque:</span>
+            <span class="estoque-body-label">Qtd.:</span>
             <div class="estoque-qty-wrap">
               <input type="number" class="estoque-qty-input"
                 id="inv-qty-${key}"
                 value="${qtdEst}" min="0" placeholder="0"
-                onchange="salvarInventarioQtd('${_esc(key)}','${_esc(c.nome)}','${_esc(un)}',this.value)"
               />
               ${un ? `<span class="estoque-qty-un">${un}</span>` : ''}
             </div>
+            <button class="btn-primario btn-sm" style="margin-left:8px;flex-shrink:0"
+              onclick="salvarInventarioQtd('${_esc(key)}','${_esc(c.nome)}','${_esc(un)}')">
+              ✓ Contar
+            </button>
           </div>
         </div>`;
     }).join('');
@@ -3549,14 +3551,14 @@ function renderizarInventario() {
   document.getElementById('inventario-conteudo').innerHTML = tabsHtml + itenHtml;
 }
 
-async function salvarInventarioQtd(nomeKey, nome, unidade, qtdStr) {
-  const qtd = parseFloat(qtdStr) || 0;
+async function salvarInventarioQtd(nomeKey, nome, unidade) {
+  const input = document.getElementById(`inv-qty-${nomeKey}`);
+  const qtd   = input ? (parseFloat(input.value) || 0) : 0;
   try {
     await salvarItemEstoque(nomeKey, { nome, unidade, qtd });
     estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey };
     _inventarioContados.add(nomeKey);
-    toast('Contado! Item movido para "Contados".', 'sucesso');
-    /* Remove o card da lista após salvar e atualiza as tabs */
+    toast(`${nome}: ${qtd} ${unidade} contado!`, 'sucesso');
     const card = document.getElementById(`inv-card-${nomeKey}`);
     if (card) card.remove();
     _atualizarTabsInventario();
