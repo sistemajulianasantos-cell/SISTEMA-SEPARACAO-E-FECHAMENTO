@@ -151,9 +151,24 @@ function renderizarPainelTV(festas) {
     .sort((a, b) => toDate(a.data) - toDate(b.data))
     .slice(0, 6);
 
-  /* Produção: mesma lógica do CEO — agrega por nomeBaseKey, festas agendada/separando */
-  const festasParaProducao = festas.filter(f => f.status === 'agendada' || f.status === 'separando');
-  const producao = agregarItensFestas(festasParaProducao);
+  /* Produção TV: apenas itens eProducao, agrega por nomeBaseKey */
+  const mapaProd = {};
+  festas.filter(f => f.status === 'agendada' || f.status === 'separando').forEach(f => {
+    (f.itens || []).forEach(item => {
+      const key = nomeBaseKey(normalizarNomeItem(item.nome));
+      const cfg = buscarConfigItem(key);
+      if (!cfg?.eProducao) return;
+      if (!mapaProd[key]) mapaProd[key] = {
+        nomeKey: key,
+        nome:    nomeBasDisplay(item.nome),
+        total:   0,
+        unidade: item.unidade || 'un',
+        grupo:   cfg.grupo || 'Geral',
+      };
+      mapaProd[key].total += (item.qtdNecessaria || 0);
+    });
+  });
+  const producao = Object.values(mapaProd).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
 
   _tvRenderSeparando(separando);
   _tvRenderProducao(producao);
@@ -218,15 +233,13 @@ function _tvRenderProducao(producao) {
     return;
   }
 
-  /* Enriquecer com dados de estoque e grupo do cadastro */
+  /* Enriquecer com dados de estoque */
   const itens = producao.map(p => {
     const est    = estoqueCache[p.nomeKey] || estoqueCache[nomeBaseKey(p.nomeKey)] || {};
     const qtdEst = est.qtd || 0;
     const falta  = p.total - qtdEst;
     const pct    = p.total > 0 ? Math.min(100, Math.round((qtdEst / p.total) * 100)) : 100;
-    const cfg    = buscarConfigItem(p.nomeKey);
-    const grupo  = cfg?.grupo || p.grupo || 'Geral';
-    return { ...p, qtdEst, falta, pct, grupo };
+    return { ...p, qtdEst, falta, pct };
   });
 
   /* Dentro de cada grupo: falta sem compra → aguardando chegada → ok */
