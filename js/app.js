@@ -3501,10 +3501,13 @@ function renderizarInventario() {
 
   const itenHtml = Object.keys(grupos).sort().map(g => {
     const linhas = grupos[g].map(c => {
-      const key    = c.nomeKey || normalizarNomeItem(c.nome);
-      const est    = estoqueCache[key] || {};
-      const qtdEst = est.qtd != null ? est.qtd : '';
-      const un     = c.unidade || est.unidade || '';
+      const key      = c.nomeKey || normalizarNomeItem(c.nome);
+      const est      = estoqueCache[key] || {};
+      const qtdEst   = est.qtd != null ? est.qtd : '';
+      const un       = c.unidade || est.unidade || '';
+      const contado  = _inventarioContados.has(key);
+      const btnLabel = contado ? '&#9998; Atualizar' : '&#10003; Contar';
+      const btnStyle = contado ? 'background:var(--cinza-600)' : '';
       return `
         <div class="estoque-item-card" id="inv-card-${key}" style="margin-bottom:8px">
           <div class="estoque-item-header">
@@ -3520,9 +3523,9 @@ function renderizarInventario() {
               />
               ${un ? `<span class="estoque-qty-un">${un}</span>` : ''}
             </div>
-            <button class="btn-primario btn-sm" style="margin-left:8px;flex-shrink:0"
+            <button class="btn-primario btn-sm" style="margin-left:8px;flex-shrink:0;${btnStyle}"
               onclick="salvarInventarioQtd('${_esc(key)}','${_esc(c.nome)}','${_esc(un)}')">
-              ✓ Contar
+              ${btnLabel}
             </button>
           </div>
         </div>`;
