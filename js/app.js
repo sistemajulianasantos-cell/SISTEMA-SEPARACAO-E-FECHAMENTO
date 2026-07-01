@@ -4994,18 +4994,25 @@ function lcRenderizarConteudo() {
     return { ...it, estoque, aComprar };
   });
 
-  /* Filtro permanente: excluir categorias marcadas como "não aparece no estoque" */
+  /* Filtro permanente: excluir categorias marcadas como "não aparece no estoque".
+     Usa apenas lookup EXATO (buscarConfigItem) para evitar que items sem match exato
+     sejam ocultados por correspondência fuzzy da categoria. */
   todosItens = todosItens.filter(it => {
-    const cat = it.cfg?.grupo ? categoriasCache.find(c => c.nome === it.cfg.grupo) : null;
+    const cfgExato = buscarConfigItem(it.nomeKey);
+    const cat = cfgExato?.grupo ? categoriasCache.find(c => c.nome === cfgExato.grupo) : null;
     return !cat || cat.exibirEstoque !== false;
   });
 
   /* Sumário calculado ANTES dos filtros de busca/status — mostra o quadro real */
+  const catsOcultas = categoriasCache.filter(c => c.exibirEstoque === false).map(c => c.nome);
   const elSum = document.getElementById('lc-sumario');
   if (elSum) {
     const totalItens = todosItens.length;
     const faltando   = todosItens.filter(i => i.aComprar > 0).length;
     const estoqueOk  = todosItens.filter(i => i.aComprar === 0).length;
+    const avisoOcultas = catsOcultas.length
+      ? `<div class="lc-aviso-ocultas">&#9888; Categorias ocultas nesta tela: <strong>${catsOcultas.join(', ')}</strong> — ajuste em Cadastro &gt; Categorias se necessário.</div>`
+      : '';
     elSum.innerHTML = `
       <div class="container lc-sumario-inner">
         <div class="rel-pill"><span class="rel-pill-num">${festas.length}</span><span class="rel-pill-lab">Festas no período</span></div>
@@ -5013,6 +5020,7 @@ function lcRenderizarConteudo() {
         <div class="rel-pill"><span class="rel-pill-num deficit-text">${faltando}</span><span class="rel-pill-lab">A Comprar</span></div>
         <div class="rel-pill"><span class="rel-pill-num ok-text">${estoqueOk}</span><span class="rel-pill-lab">Estoque OK</span></div>
       </div>
+      ${avisoOcultas}
     `;
   }
 
