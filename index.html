@@ -915,7 +915,7 @@
             </div>
           </div>
 
-          <!-- Linha 2: busca + categoria -->
+          <!-- Linha 2: busca + categoria + status -->
           <div class="lc-filtros-linha">
             <input type="search" id="lc-busca" class="barra-busca lc-busca-input" placeholder="Buscar item..."
               oninput="lcRenderizarConteudo()" />
@@ -928,7 +928,18 @@
             </select>
           </div>
 
-          <!-- Linha 3: sub-abas + ações -->
+          <!-- Linha 3: fornecimento -->
+          <div class="lc-filtros-linha">
+            <span class="lc-filtros-label">Fornecimento</span>
+            <div class="filtros-tabs" id="lc-forn-tabs">
+              <button class="tab ativo" onclick="lcSetFornecimento('todos',this)">Todos</button>
+              <button class="tab"       onclick="lcSetFornecimento('romero',this)">&#128230; Romero</button>
+              <button class="tab"       onclick="lcSetFornecimento('consignado',this)">&#128203; Consignado</button>
+              <button class="tab"       onclick="lcSetFornecimento('cliente',this)">&#128100; Cliente</button>
+            </div>
+          </div>
+
+          <!-- Linha 4: sub-abas + ações -->
           <div class="lc-filtros-linha lc-linha-acoes">
             <div class="filtros-tabs" id="lc-tabs">
               <button class="tab ativo" onclick="lcTrocarAba('sintetico',this)">Sintético</button>

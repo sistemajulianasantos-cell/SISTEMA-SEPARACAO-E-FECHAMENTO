@@ -4781,8 +4781,9 @@ function renderizarAnalise() {
    LISTA DE COMPRAS
 ══════════════════════════════════════════════════ */
 
-let _lcPeriodo    = 'semana';   /* 'semana' | '15dias' | 'mes' | 'tudo' | 'custom' */
-let _lcAba        = 'sintetico';
+let _lcPeriodo      = 'semana';   /* 'semana' | '15dias' | 'mes' | 'tudo' | 'custom' */
+let _lcAba          = 'sintetico';
+let _lcFornecimento = 'todos';    /* 'todos' | 'romero' | 'consignado' | 'cliente' */
 
 let _lcSecaoAtual = 'evento'; /* 'evento' | 'alertas' | 'pedidos' */
 
@@ -4818,8 +4819,10 @@ async function abrirListaCompras(secao) {
   _lcSecaoAtual = secaoAlvo;
 
   if (secaoAlvo === 'evento') {
-    _lcAba = 'sintetico';
+    _lcAba          = 'sintetico';
+    _lcFornecimento = 'todos';
     document.querySelectorAll('#lc-tabs .tab').forEach((b, i) => b.classList.toggle('ativo', i === 0));
+    document.querySelectorAll('#lc-forn-tabs .tab').forEach((b, i) => b.classList.toggle('ativo', i === 0));
     lcSetPeriodo('semana', document.querySelector('#lc-periodo-tabs .tab[data-lc-periodo="semana"]'));
     await lcRenderizar();
   } else {
@@ -4872,6 +4875,13 @@ function lcSetPeriodo(periodo, btn) {
 function lcTrocarAba(aba, btn) {
   _lcAba = aba;
   document.querySelectorAll('#lc-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  lcRenderizarConteudo();
+}
+
+function lcSetFornecimento(forn, btn) {
+  _lcFornecimento = forn;
+  document.querySelectorAll('#lc-forn-tabs .tab').forEach(b => b.classList.remove('ativo'));
   if (btn) btn.classList.add('ativo');
   lcRenderizarConteudo();
 }
@@ -4960,7 +4970,7 @@ function lcRenderizarConteudo() {
     return Object.values(itemConfigsCache).find(c => nomeBaseKey(c.nomeKey) === baseKey) || null;
   }
 
-  /* Agregar todos os itens das festas filtradas */
+  /* Agregar todos os itens das festas filtradas, rastreando fornecimento por item */
   const mapa = {};
   festas.forEach(festa => {
     (festa.itens || []).forEach(item => {
@@ -4971,28 +4981,48 @@ function lcRenderizarConteudo() {
           nome:    nomeBasDisplay(item.nome),
           unidade: item.unidade || 'un',
           necessario: 0,
+          qtdRomero: 0, qtdConsignado: 0, qtdCliente: 0, qtdOutro: 0,
           festas:  [],
           cfg:     _lcCfg(key),
         };
       }
-      const qtd = item.qtdNecessaria || 0;
+      const qtd  = item.qtdNecessaria || 0;
+      /* Detecta fornecimento: campo explícito → sufixo no nome → padrão romero */
+      const forn = item.fornecimento || extrairFornDoNome(item.nome) || 'romero';
       mapa[key].necessario += qtd;
+      if      (forn === 'consignado') mapa[key].qtdConsignado += qtd;
+      else if (forn === 'cliente')    mapa[key].qtdCliente    += qtd;
+      else if (forn === 'romero')     mapa[key].qtdRomero     += qtd;
+      else                            mapa[key].qtdOutro       += qtd;
       mapa[key].festas.push({
         festaId:   festa.id,
         festaNome: festa.nome,
         festaData: festa.data,
         festaStatus: festa.status,
-        qtd,
+        qtd, forn,
       });
     });
   });
 
-  /* Base de itens com estoque calculado */
+  /* Base de itens com estoque calculado.
+     "A Comprar" considera apenas qtd ROMERO (itens que precisamos comprar).
+     Consignado e Cliente não precisam de compra. */
   let todosItens = Object.values(mapa).map(it => {
     const estoque  = estBaseIdx[it.nomeKey] ?? 0;
-    const aComprar = Math.max(0, it.necessario - estoque);
-    return { ...it, estoque, aComprar };
+    const qtdComprar = it.qtdRomero + it.qtdOutro; /* só o que precisamos comprar */
+    const aComprar = Math.max(0, qtdComprar - estoque);
+    return { ...it, estoque, qtdComprar, aComprar };
   });
+
+  /* Filtro de fornecimento */
+  if (_lcFornecimento !== 'todos') {
+    todosItens = todosItens.filter(it => {
+      if (_lcFornecimento === 'romero')     return it.qtdRomero     > 0 || it.qtdOutro > 0;
+      if (_lcFornecimento === 'consignado') return it.qtdConsignado > 0;
+      if (_lcFornecimento === 'cliente')    return it.qtdCliente    > 0;
+      return true;
+    });
+  }
 
   /* Filtro permanente: excluir categorias marcadas como "não aparece no estoque".
      Usa apenas lookup EXATO (buscarConfigItem) para evitar que items sem match exato
@@ -5075,21 +5105,42 @@ function lcHtmlGrupoSintetico(g) {
       return oA - oB || a.nome.localeCompare(b.nome, 'pt-BR');
     })
     .map(it => {
-      const diff     = it.estoque - it.necessario;
-      const pct      = it.necessario > 0 ? Math.min(100, Math.round((it.estoque / it.necessario) * 100)) : 100;
-      const diffCls  = diff < 0 ? 'deficit-text' : 'ok-text';
-      const diffTxt  = diff < 0 ? `− ${Math.abs(diff)}` : `+${diff}`;
-      const badgeR   = it.cfg?.refrigerado ? '<span class="badge-refrigerado">&#10052;</span>' : '';
-      const badgeP   = it.cfg?.prioridade  ? `<span class="badge-prioridade prior-${it.cfg.prioridade}">${it.cfg.prioridade}</span>` : '';
+      /* Quantidade visível depende do filtro de fornecimento */
+      let qtdVis = it.necessario;
+      if (_lcFornecimento === 'romero')     qtdVis = it.qtdRomero + it.qtdOutro;
+      if (_lcFornecimento === 'consignado') qtdVis = it.qtdConsignado;
+      if (_lcFornecimento === 'cliente')    qtdVis = it.qtdCliente;
+
+      const diff    = it.estoque - qtdVis;
+      const pct     = qtdVis > 0 ? Math.min(100, Math.round((it.estoque / qtdVis) * 100)) : 100;
+      const diffCls = diff < 0 ? 'deficit-text' : 'ok-text';
+      const diffTxt = diff < 0 ? `− ${Math.abs(diff)}` : `+${diff}`;
+      const badgeR  = it.cfg?.refrigerado ? '<span class="badge-refrigerado">&#10052;</span>' : '';
+      const badgeP  = it.cfg?.prioridade  ? `<span class="badge-prioridade prior-${it.cfg.prioridade}">${it.cfg.prioridade}</span>` : '';
+
+      /* Badges de fornecimento — mostra breakdown quando houver mais de um tipo */
+      const fornParts = [];
+      if (it.qtdRomero     > 0) fornParts.push(`<span class="lc-forn-badge lc-forn-romero">R ${it.qtdRomero}</span>`);
+      if (it.qtdConsignado > 0) fornParts.push(`<span class="lc-forn-badge lc-forn-cons">C ${it.qtdConsignado}</span>`);
+      if (it.qtdCliente    > 0) fornParts.push(`<span class="lc-forn-badge lc-forn-cli">Cl ${it.qtdCliente}</span>`);
+      if (it.qtdOutro      > 0) fornParts.push(`<span class="lc-forn-badge lc-forn-outro">? ${it.qtdOutro}</span>`);
+      const fornHtml = fornParts.length > 1 ? `<div class="lc-forn-row">${fornParts.join('')}</div>` : '';
+
+      /* "A Comprar" só conta quando filtro é todos ou romero */
+      const mostraCompra = _lcFornecimento === 'todos' || _lcFornecimento === 'romero';
+      const compraHtml = mostraCompra
+        ? `<div class="lc-row-comprar ${it.aComprar > 0 ? 'lc-falta' : 'lc-ok'}">
+             ${it.aComprar > 0 ? `<strong>${it.aComprar} ${it.unidade}</strong>` : '&#10003; OK'}
+           </div>`
+        : `<div class="lc-row-comprar" style="color:var(--cinza-400);font-size:12px">—</div>`;
+
       return `
         <div class="lc-row">
-          <div class="lc-row-nome">${nomeBasDisplay(it.nome)} ${badgeR}${badgeP}</div>
-          <div class="lc-row-num">${it.necessario} <span class="lc-row-un">${it.unidade}</span></div>
+          <div class="lc-row-nome">${nomeBasDisplay(it.nome)} ${badgeR}${badgeP}${fornHtml}</div>
+          <div class="lc-row-num">${qtdVis} <span class="lc-row-un">${it.unidade}</span></div>
           <div class="lc-row-num">${it.estoque} <span class="lc-row-un">${it.unidade}</span></div>
           <div class="lc-row-num ${diffCls}">${diffTxt}</div>
-          <div class="lc-row-comprar ${it.aComprar > 0 ? 'lc-falta' : 'lc-ok'}">
-            ${it.aComprar > 0 ? `<strong>${it.aComprar} ${it.unidade}</strong>` : '&#10003; OK'}
-          </div>
+          ${compraHtml}
         </div>
         <div class="lc-row-bar">
           <div class="lc-bar-fill ${diff < 0 ? 'deficit' : 'ok'}" style="width:${pct}%"></div>

@@ -2612,6 +2612,14 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .lc-sumario-inner .rel-pill-lab { color: var(--cinza-500); opacity: 1; }
 .lc-aviso-ocultas { font-size: 12px; color: #92400E; background: #FEF3C7; border: 1px solid #F59E0B; border-radius: 6px; padding: 6px 12px; margin: 6px 16px 0; }
 
+/* Badges de fornecimento por item */
+.lc-forn-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.lc-forn-badge { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 10px; }
+.lc-forn-romero  { background: #DBEAFE; color: #1E40AF; }
+.lc-forn-cons    { background: #FEF3C7; color: #92400E; }
+.lc-forn-cli     { background: #F3E8FF; color: #6B21A8; }
+.lc-forn-outro   { background: #F3F4F6; color: #6B7280; }
+
 /* Grupos */
 .lc-grupo {
   margin-bottom: 12px;
