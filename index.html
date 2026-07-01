@@ -909,20 +909,20 @@
             </div>
             <div class="lc-filtros-grupo lc-custom-range hidden" id="lc-custom-range">
               <span class="lc-filtros-label">De</span>
-              <input type="date" id="lc-data-inicio" class="lc-date-input" onchange="lcRenderizar()" />
+              <input type="date" id="lc-data-inicio" class="lc-date-input" onchange="lcRenderizarConteudo()" />
               <span class="lc-filtros-label">Até</span>
-              <input type="date" id="lc-data-fim"    class="lc-date-input" onchange="lcRenderizar()" />
+              <input type="date" id="lc-data-fim"    class="lc-date-input" onchange="lcRenderizarConteudo()" />
             </div>
           </div>
 
           <!-- Linha 2: busca + categoria -->
           <div class="lc-filtros-linha">
             <input type="search" id="lc-busca" class="barra-busca lc-busca-input" placeholder="Buscar item..."
-              oninput="lcRenderizar()" />
-            <select id="lc-filtro-cat" class="lc-select" onchange="lcRenderizar()">
+              oninput="lcRenderizarConteudo()" />
+            <select id="lc-filtro-cat" class="lc-select" onchange="lcRenderizarConteudo()">
               <option value="">Todas as categorias</option>
             </select>
-            <select id="lc-filtro-status" class="lc-select" onchange="lcRenderizar()">
+            <select id="lc-filtro-status" class="lc-select" onchange="lcRenderizarConteudo()">
               <option value="comprar">Só o que falta comprar</option>
               <option value="todos">Todos os itens</option>
             </select>

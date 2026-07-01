@@ -4866,7 +4866,7 @@ function lcSetPeriodo(periodo, btn) {
   const range = document.getElementById('lc-custom-range');
   if (range) range.classList.toggle('hidden', periodo !== 'custom');
 
-  if (periodo !== 'custom') lcRenderizar();
+  if (periodo !== 'custom') lcRenderizarConteudo();
 }
 
 function lcTrocarAba(aba, btn) {
