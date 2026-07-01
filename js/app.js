@@ -3703,14 +3703,19 @@ async function salvarInventarioQtd(nomeKey, nome, unidade) {
   try {
     await salvarItemEstoque(nomeKey, { nome, unidade, qtd });
     estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey };
-    registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor: usuarioAtual?.nome || '—' })
-      .catch(e => console.error('Erro ao registrar histórico:', e));
     _inventarioContados.add(nomeKey);
     toast(`${nome}: ${qtd} ${unidade || 'un'} ✓`, 'sucesso');
     renderizarInventario();
   } catch (e) {
     console.error(e);
     toast('Erro ao salvar. Tente novamente.', 'erro');
+    return;
+  }
+  try {
+    await registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor: usuarioAtual?.nome || '—' });
+  } catch (e) {
+    console.error('Erro ao registrar histórico:', e);
+    toast('Aviso: não foi possível salvar no histórico de contagem.', 'erro');
   }
 }
 
@@ -3741,7 +3746,13 @@ async function _abrirHistoricoContagemLegado() {
 function renderizarHistoricoContagem(registros, containerId) {
   const el = document.getElementById(containerId || 'hist-cont-lista');
   if (!registros.length) {
-    el.innerHTML = estadoVazio('Nenhuma contagem registrada ainda.');
+    el.innerHTML = `<div class="estado-vazio">
+      <p>Nenhuma contagem registrada ainda.</p>
+      <p style="font-size:12px;color:var(--cinza-500);margin-top:8px">
+        O histórico é gerado ao salvar uma quantidade no<br>
+        <strong>Controle de Estoque</strong> (aba Sintético) ou no <strong>Inventário</strong> (separadores).
+      </p>
+    </div>`;
     return;
   }
 
@@ -3983,12 +3994,17 @@ async function salvarEstoqueQtd(nomeKey, nome, unidade, qtdStr) {
   try {
     await salvarItemEstoque(nomeKey, { nome, unidade, qtd });
     estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey };
-    registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor: usuarioAtual?.nome || '—' })
-      .catch(e => console.error('Erro ao registrar histórico:', e));
     toast('Estoque atualizado.', 'sucesso');
   } catch (e) {
     console.error(e);
     toast('Erro ao salvar estoque.', 'erro');
+    return;
+  }
+  try {
+    await registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor: usuarioAtual?.nome || '—' });
+  } catch (e) {
+    console.error('Erro ao registrar histórico:', e);
+    toast('Aviso: não foi possível salvar no histórico de contagem.', 'erro');
   }
 }
 
