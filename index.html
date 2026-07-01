@@ -364,7 +364,23 @@
         <button class="btn-secundario btn-sm" onclick="recarregarInventario()">&#8635; Atualizar</button>
       </div>
       <p class="desc-tela">Registre as quantidades atuais no estoque. Toque no número para editar.</p>
-      <div class="barra-busca-wrap">
+
+      <!-- Adicionar item avulso -->
+      <div class="inv-add-wrap">
+        <input type="text" id="inv-add-nome" list="inv-add-datalist"
+          class="inv-add-input" placeholder="Nome do produto..."
+          autocomplete="off"
+          oninput="invNomeInput(this.value)"
+          onkeydown="if(event.key==='Enter') invAdicionarItem()" />
+        <datalist id="inv-add-datalist"></datalist>
+        <input type="number" id="inv-add-qtd" class="inv-add-qtd"
+          min="0" placeholder="Qtd"
+          onkeydown="if(event.key==='Enter') invAdicionarItem()" />
+        <span id="inv-add-un" class="inv-add-un"></span>
+        <button class="btn-primario btn-sm" onclick="invAdicionarItem()">&#43; Adicionar</button>
+      </div>
+
+      <div class="barra-busca-wrap" style="margin-top:8px">
         <input type="search" class="barra-busca" placeholder="Buscar item..."
           oninput="filtrarInventario(this.value)" />
       </div>

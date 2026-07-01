@@ -3596,6 +3596,8 @@ async function recarregarInventario() {
     ]);
     estoqueCache       = estoqueMap;
     _inventarioConfigs = configs;
+    const dl = document.getElementById('inv-add-datalist');
+    if (dl) dl.innerHTML = configs.map(c => `<option value="${_esc(c.nome)}">`).join('');
     renderizarInventario();
   } catch (e) {
     console.error(e);
@@ -3608,6 +3610,44 @@ async function recarregarInventario() {
 function filtrarInventario(valor) {
   _buscaInventario = valor;
   renderizarInventario();
+}
+
+function invNomeInput(val) {
+  const cfg = _inventarioConfigs.find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(val));
+  const unEl = document.getElementById('inv-add-un');
+  if (unEl) unEl.textContent = cfg?.unidade || '';
+}
+
+async function invAdicionarItem() {
+  const nomeInput = document.getElementById('inv-add-nome');
+  const qtdInput  = document.getElementById('inv-add-qtd');
+  const nome = (nomeInput?.value || '').trim();
+  if (!nome) return toast('Informe o nome do produto.', 'erro');
+  const qtd = parseFloat(qtdInput?.value) || 0;
+  const cfg = _inventarioConfigs.find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(nome));
+  const nomeKey  = cfg ? (cfg.nomeKey || normalizarNomeItem(cfg.nome)) : normalizarNomeItem(nome);
+  const unidade  = cfg?.unidade || 'un';
+  const nomeReal = cfg?.nome || nome;
+  try {
+    await salvarItemEstoque(nomeKey, { nome: nomeReal, unidade, qtd });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome: nomeReal, unidade, qtd, nomeKey };
+    _inventarioContados.add(nomeKey);
+    if (nomeInput) nomeInput.value = '';
+    if (qtdInput)  qtdInput.value  = '';
+    const unEl = document.getElementById('inv-add-un');
+    if (unEl) unEl.textContent = '';
+    toast(`${nomeReal}: ${qtd} ${unidade} ✓`, 'sucesso');
+    renderizarInventario();
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao salvar.', 'erro');
+    return;
+  }
+  try {
+    await registrarContagemHistorico({ nomeKey, nome: nomeReal, unidade, qtd, contadoPor: usuarioAtual?.nome || '—' });
+  } catch (e) {
+    toast('Aviso: não foi possível salvar no histórico.', 'erro');
+  }
 }
 
 function trocarAbaInventario(aba, btn) {
