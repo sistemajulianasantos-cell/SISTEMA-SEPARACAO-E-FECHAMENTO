@@ -288,12 +288,17 @@ async function registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contado
   });
 }
 
-async function listarHistoricoContagem(limite = 200) {
+async function listarHistoricoContagem(limite = 300) {
   const snap = await db.collection('historico_contagem')
-    .orderBy('contadoEm', 'desc')
     .limit(limite)
     .get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => {
+      const da = a.contadoEm?.toDate ? a.contadoEm.toDate().getTime() : (a.contadoEm || 0);
+      const db_ = b.contadoEm?.toDate ? b.contadoEm.toDate().getTime() : (b.contadoEm || 0);
+      return db_ - da;
+    });
 }
 
 /* Atualiza apenas os itens de uma festa (sem registrar alterações no histórico) */
