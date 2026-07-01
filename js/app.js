@@ -3943,6 +3943,8 @@ async function salvarEstoqueQtd(nomeKey, nome, unidade, qtdStr) {
   try {
     await salvarItemEstoque(nomeKey, { nome, unidade, qtd });
     estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey };
+    registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor: usuarioAtual?.nome || '—' })
+      .catch(e => console.error('Erro ao registrar histórico:', e));
     toast('Estoque atualizado.', 'sucesso');
   } catch (e) {
     console.error(e);
