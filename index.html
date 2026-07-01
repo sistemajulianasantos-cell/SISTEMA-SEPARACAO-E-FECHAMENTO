@@ -65,6 +65,7 @@
         <button class="sidebar-btn sidebar-btn-destaque" onclick="navegarSidebar(); abrirEstoque()">Controle de Estoque</button>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirHistoricoContagem()">Histórico de Contagem</button>
         <button class="sidebar-btn sidebar-btn-compras" onclick="navegarSidebar(); abrirCompras()">Compras <span id="badge-compras" class="sidebar-badge hidden"></span></button>
+        <button class="sidebar-btn sidebar-btn-lc" onclick="navegarSidebar(); abrirListaCompras()">&#128722; Lista de Compras</button>
         <button class="sidebar-btn" onclick="navegarSidebar(); abrirRelatorio()">Relatório por Período</button>
         <button class="sidebar-btn sidebar-btn-analise" onclick="navegarSidebar(); abrirAnalise()">Análise de Desempenho</button>
       </div>
@@ -828,6 +829,70 @@
       <div id="rel-conteudo"></div>
     </div>
 
+  </div>
+
+  <!-- ══════════ TELA: LISTA DE COMPRAS ══════════ -->
+  <div id="tela-lista-compras" class="tela hidden">
+
+    <!-- Filtros -->
+    <div class="lc-filtros-hero">
+      <div class="container">
+
+        <!-- Linha 1: filtros de período -->
+        <div class="lc-filtros-linha">
+          <div class="lc-filtros-grupo">
+            <span class="lc-filtros-label">Período</span>
+            <div class="filtros-tabs" id="lc-periodo-tabs">
+              <button class="tab ativo" data-lc-periodo="semana"   onclick="lcSetPeriodo('semana',this)">Esta Semana</button>
+              <button class="tab"       data-lc-periodo="15dias"   onclick="lcSetPeriodo('15dias',this)">15 Dias</button>
+              <button class="tab"       data-lc-periodo="mes"      onclick="lcSetPeriodo('mes',this)">Este Mês</button>
+              <button class="tab"       data-lc-periodo="tudo"     onclick="lcSetPeriodo('tudo',this)">Todos Ativos</button>
+              <button class="tab"       data-lc-periodo="custom"   onclick="lcSetPeriodo('custom',this)">Personalizado</button>
+            </div>
+          </div>
+          <div class="lc-filtros-grupo lc-custom-range hidden" id="lc-custom-range">
+            <span class="lc-filtros-label">De</span>
+            <input type="date" id="lc-data-inicio" class="lc-date-input" onchange="lcRenderizar()" />
+            <span class="lc-filtros-label">Até</span>
+            <input type="date" id="lc-data-fim"    class="lc-date-input" onchange="lcRenderizar()" />
+          </div>
+        </div>
+
+        <!-- Linha 2: busca + categoria -->
+        <div class="lc-filtros-linha">
+          <input type="search" id="lc-busca" class="barra-busca lc-busca-input" placeholder="Buscar item..."
+            oninput="lcRenderizar()" />
+          <select id="lc-filtro-cat" class="lc-select" onchange="lcRenderizar()">
+            <option value="">Todas as categorias</option>
+          </select>
+          <select id="lc-filtro-status" class="lc-select" onchange="lcRenderizar()">
+            <option value="comprar">Só o que falta comprar</option>
+            <option value="todos">Todos os itens</option>
+          </select>
+        </div>
+
+        <!-- Linha 3: abas de visualização + ações -->
+        <div class="lc-filtros-linha lc-linha-acoes">
+          <div class="filtros-tabs" id="lc-tabs">
+            <button class="tab ativo" onclick="lcTrocarAba('sintetico',this)">Sintético</button>
+            <button class="tab"       onclick="lcTrocarAba('analitico',this)">Analítico</button>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn-secundario btn-sm" onclick="lcExportarCSV()">&#8595; Exportar CSV</button>
+            <button class="btn-secundario btn-sm" onclick="lcRenderizar()">&#8635; Atualizar</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Resumo rápido -->
+    <div id="lc-sumario" class="lc-sumario"></div>
+
+    <!-- Conteúdo da lista -->
+    <div class="container">
+      <div id="lc-conteudo"><div class="estado-vazio"><p>Carregando...</p></div></div>
+    </div>
   </div>
 
   <!-- ══════════ TELA: PAINEL TV ══════════ -->

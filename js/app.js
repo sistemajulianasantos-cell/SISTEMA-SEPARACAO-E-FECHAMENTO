@@ -3196,7 +3196,12 @@ function renderizarProducaoCEO() {
   const el = document.getElementById('producao-conteudo');
   if (!el) return;
 
-  const ativas = todasFestasCache.filter(f => f.status !== 'concluida');
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const ativas = todasFestasCache.filter(f => {
+    if (f.status === 'concluida') return false;
+    const d = toDate(f.data);
+    return !isNaN(d) && d >= hoje;
+  });
   const todosItens = agregarItensFestas(ativas);
 
   if (!todosItens.length) {
@@ -4666,6 +4671,392 @@ function renderizarAnalise() {
       }).join('')}
     </div>
   `;
+}
+
+/* ══════════════════════════════════════════════════
+   LISTA DE COMPRAS
+══════════════════════════════════════════════════ */
+
+let _lcPeriodo    = 'semana';   /* 'semana' | '15dias' | 'mes' | 'tudo' | 'custom' */
+let _lcAba        = 'sintetico';
+
+async function abrirListaCompras() {
+  navegarSidebar();
+  historico.push('tela-lista-compras');
+  mostrarTela('tela-lista-compras', 'Lista de Compras');
+
+  /* Popular dropdown de categorias */
+  const sel = document.getElementById('lc-filtro-cat');
+  if (sel) {
+    sel.innerHTML = '<option value="">Todas as categorias</option>';
+    const cats = categoriasCache.length ? categoriasCache : await listarCategorias();
+    cats.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.nome;
+      opt.textContent = c.nome;
+      sel.appendChild(opt);
+    });
+  }
+
+  /* Restaurar aba ativa */
+  document.querySelectorAll('#lc-tabs .tab').forEach((b, i) => b.classList.toggle('ativo', i === 0));
+  _lcAba = 'sintetico';
+
+  /* Período padrão: esta semana */
+  lcSetPeriodo('semana', document.querySelector('#lc-periodo-tabs .tab[data-lc-periodo="semana"]'));
+
+  await lcRenderizar();
+}
+
+function lcSetPeriodo(periodo, btn) {
+  _lcPeriodo = periodo;
+  document.querySelectorAll('#lc-periodo-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+
+  const range = document.getElementById('lc-custom-range');
+  if (range) range.classList.toggle('hidden', periodo !== 'custom');
+
+  if (periodo !== 'custom') lcRenderizar();
+}
+
+function lcTrocarAba(aba, btn) {
+  _lcAba = aba;
+  document.querySelectorAll('#lc-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  lcRenderizarConteudo();
+}
+
+async function lcRenderizar() {
+  const el = document.getElementById('lc-conteudo');
+  if (el) el.innerHTML = '<div class="estado-vazio"><p>Calculando...</p></div>';
+
+  try {
+    const [estoqueMap, festas, cfgs, cats] = await Promise.all([
+      buscarEstoque(),
+      todasFestasCache.length ? Promise.resolve(todasFestasCache) : buscarTodasFestas(),
+      listarItemConfigs(),
+      listarCategorias(),
+    ]);
+    estoqueCache     = estoqueMap;
+    todasFestasCache = festas;
+    itemConfigsCache = {};
+    cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    categoriasCache  = cats;
+
+    lcRenderizarConteudo();
+  } catch(e) {
+    console.error(e);
+    const el2 = document.getElementById('lc-conteudo');
+    if (el2) el2.innerHTML = estadoVazio('Erro ao carregar. Tente novamente.');
+  }
+}
+
+function _lcFiltrarFestas() {
+  const ativas = todasFestasCache.filter(f => f.status !== 'concluida');
+
+  if (_lcPeriodo === 'tudo') return ativas;
+
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+
+  if (_lcPeriodo === 'custom') {
+    const ini = document.getElementById('lc-data-inicio')?.value;
+    const fim = document.getElementById('lc-data-fim')?.value;
+    if (!ini || !fim) return ativas;
+    const dIni = new Date(ini + 'T00:00:00');
+    const dFim = new Date(fim + 'T23:59:59');
+    return ativas.filter(f => {
+      const d = toDate(f.data);
+      return !isNaN(d) && d >= dIni && d <= dFim;
+    });
+  }
+
+  let diasFuturo = 7;
+  if (_lcPeriodo === '15dias') diasFuturo = 15;
+  if (_lcPeriodo === 'mes') {
+    const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0, 23, 59, 59);
+    return ativas.filter(f => {
+      const d = toDate(f.data);
+      return !isNaN(d) && d >= hoje && d <= fim;
+    });
+  }
+
+  const fim = new Date(hoje); fim.setDate(hoje.getDate() + diasFuturo); fim.setHours(23,59,59);
+  return ativas.filter(f => {
+    const d = toDate(f.data);
+    return !isNaN(d) && d >= hoje && d <= fim;
+  });
+}
+
+function lcRenderizarConteudo() {
+  const el = document.getElementById('lc-conteudo');
+  if (!el) return;
+
+  const festas   = _lcFiltrarFestas();
+  const busca    = (document.getElementById('lc-busca')?.value || '').toLowerCase().trim();
+  const catFiltro = document.getElementById('lc-filtro-cat')?.value  || '';
+  const statusFiltro = document.getElementById('lc-filtro-status')?.value || 'comprar';
+
+  /* Agregar todos os itens das festas filtradas */
+  const mapa = {};
+  festas.forEach(festa => {
+    (festa.itens || []).forEach(item => {
+      const key = nomeBaseKey(normalizarNomeItem(item.nome));
+      if (!mapa[key]) {
+        mapa[key] = {
+          nomeKey: key,
+          nome:    nomeBasDisplay(item.nome),
+          unidade: item.unidade || 'un',
+          necessario: 0,
+          festas:  [],
+          cfg:     buscarConfigItem(key),
+        };
+      }
+      const qtd = item.qtdNecessaria || 0;
+      mapa[key].necessario += qtd;
+      mapa[key].festas.push({
+        festaId:   festa.id,
+        festaNome: festa.nome,
+        festaData: festa.data,
+        festaStatus: festa.status,
+        qtd,
+      });
+    });
+  });
+
+  let itens = Object.values(mapa).map(it => {
+    const est      = estoqueCache[it.nomeKey];
+    const estoque  = est?.qtd || 0;
+    const aComprar = Math.max(0, it.necessario - estoque);
+    return { ...it, estoque, aComprar };
+  });
+
+  /* Filtros */
+  if (busca)      itens = itens.filter(it => it.nome.toLowerCase().includes(busca));
+  if (catFiltro)  itens = itens.filter(it => it.cfg?.grupo === catFiltro);
+  if (statusFiltro === 'comprar') itens = itens.filter(it => it.aComprar > 0);
+
+  /* Sumário */
+  const elSum = document.getElementById('lc-sumario');
+  if (elSum) {
+    const total   = itens.length;
+    const falta   = itens.filter(i => i.aComprar > 0).length;
+    const ok      = itens.filter(i => i.aComprar === 0).length;
+    elSum.innerHTML = `
+      <div class="container lc-sumario-inner">
+        <div class="rel-pill"><span class="rel-pill-num">${festas.length}</span><span class="rel-pill-lab">Festas no período</span></div>
+        <div class="rel-pill"><span class="rel-pill-num">${total}</span><span class="rel-pill-lab">Itens</span></div>
+        <div class="rel-pill"><span class="rel-pill-num deficit-text">${falta}</span><span class="rel-pill-lab">A Comprar</span></div>
+        <div class="rel-pill"><span class="rel-pill-num ok-text">${ok}</span><span class="rel-pill-lab">Estoque OK</span></div>
+      </div>
+    `;
+  }
+
+  if (!itens.length) {
+    el.innerHTML = estadoVazio(
+      statusFiltro === 'comprar'
+        ? 'Nenhum item faltando no período selecionado. Estoque OK!'
+        : 'Nenhum item encontrado para o período selecionado.'
+    );
+    return;
+  }
+
+  /* Agrupar por categoria */
+  const catOrdem = {};
+  categoriasCache.forEach((c, i) => { catOrdem[c.nome] = c.ordem != null ? c.ordem : i + 1; });
+
+  const grupos = {};
+  itens.forEach(it => {
+    const g = it.cfg?.grupo || 'Sem Categoria';
+    if (!grupos[g]) grupos[g] = { ordem: catOrdem[g] ?? 999, itens: [] };
+    grupos[g].itens.push(it);
+  });
+
+  const gruposOrdenados = Object.entries(grupos)
+    .sort(([,a],[,b]) => a.ordem - b.ordem)
+    .map(([nome, g]) => ({ nome, ...g }));
+
+  if (_lcAba === 'sintetico') {
+    el.innerHTML = gruposOrdenados.map(g => lcHtmlGrupoSintetico(g)).join('');
+  } else {
+    el.innerHTML = gruposOrdenados.map(g => lcHtmlGrupoAnalitico(g)).join('');
+  }
+}
+
+function lcHtmlGrupoSintetico(g) {
+  const grupoKey = g.nome.replace(/[^a-z0-9]/gi,'_').toLowerCase();
+  const rows = g.itens
+    .slice()
+    .sort((a,b) => {
+      const oA = a.cfg?.ordemSeparacao ?? 999;
+      const oB = b.cfg?.ordemSeparacao ?? 999;
+      return oA - oB || a.nome.localeCompare(b.nome, 'pt-BR');
+    })
+    .map(it => {
+      const diff     = it.estoque - it.necessario;
+      const pct      = it.necessario > 0 ? Math.min(100, Math.round((it.estoque / it.necessario) * 100)) : 100;
+      const diffCls  = diff < 0 ? 'deficit-text' : 'ok-text';
+      const diffTxt  = diff < 0 ? `− ${Math.abs(diff)}` : `+${diff}`;
+      const badgeR   = it.cfg?.refrigerado ? '<span class="badge-refrigerado">&#10052;</span>' : '';
+      const badgeP   = it.cfg?.prioridade  ? `<span class="badge-prioridade prior-${it.cfg.prioridade}">${it.cfg.prioridade}</span>` : '';
+      return `
+        <div class="lc-row">
+          <div class="lc-row-nome">${nomeBasDisplay(it.nome)} ${badgeR}${badgeP}</div>
+          <div class="lc-row-num">${it.necessario} <span class="lc-row-un">${it.unidade}</span></div>
+          <div class="lc-row-num">${it.estoque} <span class="lc-row-un">${it.unidade}</span></div>
+          <div class="lc-row-num ${diffCls}">${diffTxt}</div>
+          <div class="lc-row-comprar ${it.aComprar > 0 ? 'lc-falta' : 'lc-ok'}">
+            ${it.aComprar > 0 ? `<strong>${it.aComprar} ${it.unidade}</strong>` : '&#10003; OK'}
+          </div>
+        </div>
+        <div class="lc-row-bar">
+          <div class="lc-bar-fill ${diff < 0 ? 'deficit' : 'ok'}" style="width:${pct}%"></div>
+        </div>
+      `;
+    }).join('');
+
+  const totalFalta = g.itens.reduce((s, it) => s + it.aComprar, 0);
+  const badge = totalFalta > 0 ? `<span class="lc-grupo-badge lc-falta">${g.itens.filter(i=>i.aComprar>0).length} faltam</span>` : `<span class="lc-grupo-badge lc-ok">OK</span>`;
+
+  return `
+    <div class="lc-grupo">
+      <div class="lc-grupo-header" onclick="toggleGrupo('lc_${grupoKey}')">
+        <span class="producao-grupo-seta">&#9660;</span>
+        <span class="lc-grupo-nome">${g.nome}</span>
+        ${badge}
+      </div>
+      <div class="lc-grupo-corpo" id="grupo-lc_${grupoKey}">
+        <div class="lc-table-header">
+          <span class="lc-row-nome">Item</span>
+          <span class="lc-row-num">Necessário</span>
+          <span class="lc-row-num">Estoque</span>
+          <span class="lc-row-num">Diferença</span>
+          <span class="lc-row-comprar">A Comprar</span>
+        </div>
+        ${rows}
+      </div>
+    </div>
+  `;
+}
+
+const MESES_ABR_LC = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+function lcHtmlGrupoAnalitico(g) {
+  const grupoKey = g.nome.replace(/[^a-z0-9]/gi,'_').toLowerCase();
+  const rows = g.itens
+    .slice()
+    .sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'))
+    .map(it => {
+      const diff    = it.estoque - it.necessario;
+      const diffCls = diff < 0 ? 'deficit-text' : 'ok-text';
+      const badgeR  = it.cfg?.refrigerado ? '<span class="badge-refrigerado">&#10052;</span>' : '';
+
+      const subRows = it.festas.map(f => {
+        let dataTxt = '';
+        if (f.festaData) {
+          const d = toDate(f.festaData);
+          if (!isNaN(d)) dataTxt = ` — ${String(d.getDate()).padStart(2,'0')} ${MESES_ABR_LC[d.getMonth()]}`;
+        }
+        return `
+          <div class="analitico-sub-row lc-sub-row">
+            <span class="analitico-sub-nome">${f.festaNome}${dataTxt}</span>
+            <span class="analitico-sub-qty">${f.qtd} ${it.unidade}</span>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="lc-analitico-item">
+          <div class="lc-analitico-resumo">
+            <div class="lc-row-nome">${nomeBasDisplay(it.nome)} ${badgeR}</div>
+            <div class="lc-analitico-nums">
+              <span>Necessário: <strong>${it.necessario}</strong> ${it.unidade}</span>
+              <span>Estoque: <strong>${it.estoque}</strong> ${it.unidade}</span>
+              <span class="${diffCls}">Dif: ${diff < 0 ? '−'+Math.abs(diff) : '+'+diff}</span>
+              <span class="lc-analitico-comprar ${it.aComprar > 0 ? 'lc-falta' : 'lc-ok'}">
+                ${it.aComprar > 0 ? `Comprar: <strong>${it.aComprar} ${it.unidade}</strong>` : '&#10003; Estoque OK'}
+              </span>
+            </div>
+          </div>
+          <div class="analitico-sub-lista">${subRows}</div>
+        </div>
+      `;
+    }).join('');
+
+  const totalFalta = g.itens.reduce((s, it) => s + it.aComprar, 0);
+  const badge = totalFalta > 0 ? `<span class="lc-grupo-badge lc-falta">${g.itens.filter(i=>i.aComprar>0).length} faltam</span>` : `<span class="lc-grupo-badge lc-ok">OK</span>`;
+
+  return `
+    <div class="lc-grupo">
+      <div class="lc-grupo-header" onclick="toggleGrupo('lc_${grupoKey}')">
+        <span class="producao-grupo-seta">&#9660;</span>
+        <span class="lc-grupo-nome">${g.nome}</span>
+        ${badge}
+      </div>
+      <div class="lc-grupo-corpo" id="grupo-lc_${grupoKey}">
+        ${rows}
+      </div>
+    </div>
+  `;
+}
+
+function lcExportarCSV() {
+  const festas   = _lcFiltrarFestas();
+  const busca    = (document.getElementById('lc-busca')?.value || '').toLowerCase().trim();
+  const catFiltro = document.getElementById('lc-filtro-cat')?.value || '';
+  const statusFiltro = document.getElementById('lc-filtro-status')?.value || 'comprar';
+
+  const mapa = {};
+  festas.forEach(festa => {
+    (festa.itens || []).forEach(item => {
+      const key = nomeBaseKey(normalizarNomeItem(item.nome));
+      if (!mapa[key]) {
+        mapa[key] = {
+          key, nome: nomeBasDisplay(item.nome), unidade: item.unidade || 'un',
+          necessario: 0, cfg: buscarConfigItem(key),
+        };
+      }
+      mapa[key].necessario += item.qtdNecessaria || 0;
+    });
+  });
+
+  let itens = Object.values(mapa).map(it => {
+    const est = estoqueCache[it.key];
+    const estoque = est?.qtd || 0;
+    return { ...it, estoque, aComprar: Math.max(0, it.necessario - estoque) };
+  });
+
+  if (busca)      itens = itens.filter(it => it.nome.toLowerCase().includes(busca));
+  if (catFiltro)  itens = itens.filter(it => it.cfg?.grupo === catFiltro);
+  if (statusFiltro === 'comprar') itens = itens.filter(it => it.aComprar > 0);
+
+  itens.sort((a,b) => {
+    const ga = a.cfg?.grupo || 'ZZZ';
+    const gb = b.cfg?.grupo || 'ZZZ';
+    return ga.localeCompare(gb,'pt-BR') || a.nome.localeCompare(b.nome,'pt-BR');
+  });
+
+  const header = ['Categoria','Item','Unidade','Necessário','Estoque','A Comprar'];
+  const rows   = itens.map(it => [
+    it.cfg?.grupo || 'Sem Categoria',
+    it.nome,
+    it.unidade,
+    it.necessario,
+    it.estoque,
+    it.aComprar,
+  ]);
+
+  const csv  = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  const now  = new Date();
+  a.href     = url;
+  a.download = `lista-compras-${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('CSV exportado!', 'ok');
 }
 
 /* ══════════════════════════════════════════════════
