@@ -4987,44 +4987,51 @@ function lcRenderizarConteudo() {
     });
   });
 
-  let itens = Object.values(mapa).map(it => {
+  /* Base de itens com estoque calculado */
+  let todosItens = Object.values(mapa).map(it => {
     const estoque  = estBaseIdx[it.nomeKey] ?? 0;
     const aComprar = Math.max(0, it.necessario - estoque);
     return { ...it, estoque, aComprar };
   });
 
-  /* Filtros */
-  /* Excluir categorias marcadas como "não aparece no estoque" */
-  itens = itens.filter(it => {
+  /* Filtro permanente: excluir categorias marcadas como "não aparece no estoque" */
+  todosItens = todosItens.filter(it => {
     const cat = it.cfg?.grupo ? categoriasCache.find(c => c.nome === it.cfg.grupo) : null;
     return !cat || cat.exibirEstoque !== false;
   });
-  if (busca)      itens = itens.filter(it => it.nome.toLowerCase().includes(busca));
-  if (catFiltro)  itens = itens.filter(it => it.cfg?.grupo === catFiltro);
-  if (statusFiltro === 'comprar') itens = itens.filter(it => it.aComprar > 0);
 
-  /* Sumário */
+  /* Sumário calculado ANTES dos filtros de busca/status — mostra o quadro real */
   const elSum = document.getElementById('lc-sumario');
   if (elSum) {
-    const total   = itens.length;
-    const falta   = itens.filter(i => i.aComprar > 0).length;
-    const ok      = itens.filter(i => i.aComprar === 0).length;
+    const totalItens = todosItens.length;
+    const faltando   = todosItens.filter(i => i.aComprar > 0).length;
+    const estoqueOk  = todosItens.filter(i => i.aComprar === 0).length;
     elSum.innerHTML = `
       <div class="container lc-sumario-inner">
         <div class="rel-pill"><span class="rel-pill-num">${festas.length}</span><span class="rel-pill-lab">Festas no período</span></div>
-        <div class="rel-pill"><span class="rel-pill-num">${total}</span><span class="rel-pill-lab">Itens</span></div>
-        <div class="rel-pill"><span class="rel-pill-num deficit-text">${falta}</span><span class="rel-pill-lab">A Comprar</span></div>
-        <div class="rel-pill"><span class="rel-pill-num ok-text">${ok}</span><span class="rel-pill-lab">Estoque OK</span></div>
+        <div class="rel-pill"><span class="rel-pill-num">${totalItens}</span><span class="rel-pill-lab">Itens totais</span></div>
+        <div class="rel-pill"><span class="rel-pill-num deficit-text">${faltando}</span><span class="rel-pill-lab">A Comprar</span></div>
+        <div class="rel-pill"><span class="rel-pill-num ok-text">${estoqueOk}</span><span class="rel-pill-lab">Estoque OK</span></div>
       </div>
     `;
   }
 
+  /* Filtros de visualização aplicados na lista exibida */
+  let itens = [...todosItens];
+  if (busca)      itens = itens.filter(it => it.nome.toLowerCase().includes(busca));
+  if (catFiltro)  itens = itens.filter(it => it.cfg?.grupo === catFiltro);
+  if (statusFiltro === 'comprar') itens = itens.filter(it => it.aComprar > 0);
+
   if (!itens.length) {
-    el.innerHTML = estadoVazio(
-      statusFiltro === 'comprar'
-        ? 'Nenhum item faltando no período selecionado. Estoque OK!'
-        : 'Nenhum item encontrado para o período selecionado.'
-    );
+    let msg = 'Nenhum item encontrado para o período selecionado.';
+    if (!todosItens.length && festas.length > 0) {
+      msg = 'As festas deste período não têm itens cadastrados.';
+    } else if (todosItens.length > 0 && statusFiltro === 'comprar') {
+      msg = `Estoque OK! Todos os ${todosItens.length} itens têm quantidade suficiente. Use "Todos os itens" para ver a lista completa.`;
+    } else if (todosItens.length > 0 && busca) {
+      msg = `Nenhum item com "${busca}" encontrado. Limpe a busca para ver todos os ${todosItens.length} itens.`;
+    }
+    el.innerHTML = estadoVazio(msg);
     return;
   }
 
