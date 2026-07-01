@@ -4946,6 +4946,20 @@ function lcRenderizarConteudo() {
   const catFiltro = document.getElementById('lc-filtro-cat')?.value  || '';
   const statusFiltro = document.getElementById('lc-filtro-status')?.value || 'comprar';
 
+  /* Índice estoque por chave base — agrega variantes (ex: "aperol" + "aperol_consignado" → "aperol") */
+  const estBaseIdx = {};
+  Object.values(estoqueCache).forEach(e => {
+    if (!e.nomeKey) return;
+    const baseK = nomeBaseKey(e.nomeKey);
+    estBaseIdx[baseK] = (estBaseIdx[baseK] || 0) + (e.qtd || 0);
+  });
+
+  /* Busca config por chave base, com fallback para busca linear pelo base key do catálogo */
+  function _lcCfg(baseKey) {
+    if (itemConfigsCache[baseKey]) return itemConfigsCache[baseKey];
+    return Object.values(itemConfigsCache).find(c => nomeBaseKey(c.nomeKey) === baseKey) || null;
+  }
+
   /* Agregar todos os itens das festas filtradas */
   const mapa = {};
   festas.forEach(festa => {
@@ -4958,7 +4972,7 @@ function lcRenderizarConteudo() {
           unidade: item.unidade || 'un',
           necessario: 0,
           festas:  [],
-          cfg:     buscarConfigItem(key),
+          cfg:     _lcCfg(key),
         };
       }
       const qtd = item.qtdNecessaria || 0;
@@ -4974,8 +4988,7 @@ function lcRenderizarConteudo() {
   });
 
   let itens = Object.values(mapa).map(it => {
-    const est      = estoqueCache[it.nomeKey];
-    const estoque  = est?.qtd || 0;
+    const estoque  = estBaseIdx[it.nomeKey] ?? 0;
     const aComprar = Math.max(0, it.necessario - estoque);
     return { ...it, estoque, aComprar };
   });
@@ -5160,14 +5173,24 @@ function lcExportarCSV() {
   const catFiltro = document.getElementById('lc-filtro-cat')?.value || '';
   const statusFiltro = document.getElementById('lc-filtro-status')?.value || 'comprar';
 
+  const estBaseIdx = {};
+  Object.values(estoqueCache).forEach(e => {
+    if (!e.nomeKey) return;
+    const baseK = nomeBaseKey(e.nomeKey);
+    estBaseIdx[baseK] = (estBaseIdx[baseK] || 0) + (e.qtd || 0);
+  });
+
   const mapa = {};
   festas.forEach(festa => {
     (festa.itens || []).forEach(item => {
       const key = nomeBaseKey(normalizarNomeItem(item.nome));
       if (!mapa[key]) {
+        const cfg = itemConfigsCache[key]
+          || Object.values(itemConfigsCache).find(c => nomeBaseKey(c.nomeKey) === key)
+          || null;
         mapa[key] = {
           key, nome: nomeBasDisplay(item.nome), unidade: item.unidade || 'un',
-          necessario: 0, cfg: buscarConfigItem(key),
+          necessario: 0, cfg,
         };
       }
       mapa[key].necessario += item.qtdNecessaria || 0;
@@ -5175,8 +5198,7 @@ function lcExportarCSV() {
   });
 
   let itens = Object.values(mapa).map(it => {
-    const est = estoqueCache[it.key];
-    const estoque = est?.qtd || 0;
+    const estoque = estBaseIdx[it.key] ?? 0;
     return { ...it, estoque, aComprar: Math.max(0, it.necessario - estoque) };
   });
 
