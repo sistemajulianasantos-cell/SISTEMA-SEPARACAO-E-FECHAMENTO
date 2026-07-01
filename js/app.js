@@ -27,7 +27,8 @@ let _solicitarContext  = null;
 let _receberContext    = null;
 let _buscaFestas       = '';
 let _buscaUsuarios     = '';
-let _buscaEstoque      = '';
+let _buscaEstoque          = '';
+let _estoqueFiltroCategoria = '';
 let _buscaCompras      = '';
 let _usuariosCache     = [];
 let itemConfigsCache   = {};   /* nomeKey → config */
@@ -3865,6 +3866,19 @@ async function recarregarEstoque() {
     ]);
     estoqueCache     = estoqueMap;
     todasFestasCache = festas;
+    const cats = categoriasCache.length ? categoriasCache : await listarCategorias();
+    if (!categoriasCache.length) categoriasCache = cats;
+    const selCat = document.getElementById('estoque-filtro-cat');
+    if (selCat) {
+      selCat.innerHTML = '<option value="">Todas as categorias</option>';
+      cats.filter(c => c.exibirEstoque !== false).forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.nome;
+        opt.textContent = c.nome;
+        if (c.nome === _estoqueFiltroCategoria) opt.selected = true;
+        selCat.appendChild(opt);
+      });
+    }
     renderizarEstoque(todasFestasCache, estoqueCache);
   } catch (e) {
     console.error(e);
@@ -3906,6 +3920,11 @@ function filtrarEstoque(valor) {
   renderizarEstoque(todasFestasCache, estoqueCache);
 }
 
+function filtrarEstoqueCat(val) {
+  _estoqueFiltroCategoria = val;
+  renderizarEstoque(todasFestasCache, estoqueCache);
+}
+
 function renderizarEstoque(festas, estoqueMap) {
   const todos = agregarItensFestas(festas);
   const busca = _buscaEstoque.toLowerCase().trim();
@@ -3915,6 +3934,12 @@ function renderizarEstoque(festas, estoqueMap) {
     if (cat && cat.exibirEstoque === false) return false;
     return true;
   });
+  if (_estoqueFiltroCategoria) {
+    itens = itens.filter(it => {
+      const cfg = buscarConfigItem(it.nomeKey);
+      return cfg?.grupo === _estoqueFiltroCategoria;
+    });
+  }
   if (busca) itens = itens.filter(it => (it.nome || '').toLowerCase().includes(busca));
   if (!itens.length) {
     document.getElementById('estoque-conteudo').innerHTML =

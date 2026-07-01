@@ -2365,6 +2365,36 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 }
 .barra-busca::placeholder { color: var(--cinza-400); }
 
+/* ── Filtro de categoria — Controle de Estoque */
+.est-filtros-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+.est-filtros-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cinza-500);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  white-space: nowrap;
+}
+.est-filtros-select {
+  padding: 7px 28px 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--cinza-300);
+  background: #fff;
+  color: var(--cinza-700);
+  font-size: 13px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7280'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
 /* ══ ANÁLISE DE DESEMPENHO ══════════════════════════ */
 .sidebar-btn-analise { color: #0f766e; border-color: rgba(15,118,110,.25); font-weight: 700; }
 .sidebar-btn-analise:hover { background: #F0FDFA; border-color: #0f766e; }

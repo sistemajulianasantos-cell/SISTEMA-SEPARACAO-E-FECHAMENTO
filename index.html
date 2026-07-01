@@ -809,6 +809,12 @@
         <input type="search" class="barra-busca" placeholder="Buscar item..."
           oninput="filtrarEstoque(this.value)" />
       </div>
+      <div class="est-filtros-row">
+        <span class="est-filtros-label">Categoria</span>
+        <select id="estoque-filtro-cat" class="est-filtros-select" onchange="filtrarEstoqueCat(this.value)">
+          <option value="">Todas as categorias</option>
+        </select>
+      </div>
       <div class="filtros-tabs" id="estoque-tabs">
         <button class="tab ativo" data-aba="sintetico" onclick="trocarAbaEstoque('sintetico',this)">Sintético</button>
         <button class="tab"       data-aba="analitico" onclick="trocarAbaEstoque('analitico',this)">Por Festa</button>
