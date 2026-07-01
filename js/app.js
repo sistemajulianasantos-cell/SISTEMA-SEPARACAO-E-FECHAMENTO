@@ -3126,6 +3126,15 @@ function navegarSidebar() {
   if (!sidebarPinada) fecharSidebar();
 }
 
+function toggleSidebarSecao(id) {
+  const corpo = document.getElementById(id);
+  if (!corpo) return;
+  const label = corpo.previousElementSibling;
+  const seta  = label?.querySelector('.sb-seta');
+  const collapsed = corpo.classList.toggle('sb-collapsed');
+  if (seta) seta.innerHTML = collapsed ? '&#9658;' : '&#9660;';
+}
+
 function renderizarSidebarAgenda(festas) {
   const el = document.getElementById('sidebar-agenda');
   if (!el) return;
@@ -3710,6 +3719,11 @@ async function salvarInventarioQtd(nomeKey, nome, unidade) {
 ══════════════════════════════════════════════════ */
 
 async function abrirHistoricoContagem() {
+  /* Redireciona para a aba Histórico dentro do Controle de Estoque */
+  await abrirEstoque('historico');
+}
+
+async function _abrirHistoricoContagemLegado() {
   historico.push('tela-historico-contagem');
   mostrarTela('tela-historico-contagem', 'Histórico de Contagem');
   document.getElementById('hist-cont-lista').innerHTML =
@@ -3724,8 +3738,8 @@ async function abrirHistoricoContagem() {
   }
 }
 
-function renderizarHistoricoContagem(registros) {
-  const el = document.getElementById('hist-cont-lista');
+function renderizarHistoricoContagem(registros, containerId) {
+  const el = document.getElementById(containerId || 'hist-cont-lista');
   if (!registros.length) {
     el.innerHTML = estadoVazio('Nenhuma contagem registrada ainda.');
     return;
@@ -3774,14 +3788,20 @@ function renderizarHistoricoContagem(registros) {
   `).join('');
 }
 
-async function abrirEstoque() {
+async function abrirEstoque(abaInicial) {
   historico.push('tela-estoque');
   mostrarTela('tela-estoque', 'Controle de Estoque');
-  abaEstoqueAtual = 'sintetico';
+  abaEstoqueAtual = abaInicial || 'sintetico';
+  const tabIndex  = { sintetico: 0, analitico: 1, historico: 2 }[abaEstoqueAtual] ?? 0;
   document.querySelectorAll('#estoque-tabs .tab').forEach((b, i) => {
-    b.classList.toggle('ativo', i === 0);
+    b.classList.toggle('ativo', i === tabIndex);
   });
-  await recarregarEstoque();
+  if (abaEstoqueAtual === 'historico') {
+    const btn = document.querySelector('#estoque-tabs .tab[data-aba="historico"]');
+    trocarAbaEstoque('historico', btn);
+  } else {
+    await recarregarEstoque();
+  }
 }
 
 async function recarregarEstoque() {
@@ -3807,7 +3827,27 @@ function trocarAbaEstoque(aba, btn) {
   abaEstoqueAtual = aba;
   document.querySelectorAll('#estoque-tabs .tab').forEach(b => b.classList.remove('ativo'));
   if (btn) btn.classList.add('ativo');
-  renderizarEstoque(todasFestasCache, estoqueCache);
+
+  const elConteudo  = document.getElementById('estoque-conteudo');
+  const elHistorico = document.getElementById('estoque-historico');
+
+  if (aba === 'historico') {
+    if (elConteudo)  elConteudo.classList.add('hidden');
+    if (elHistorico) {
+      elHistorico.classList.remove('hidden');
+      elHistorico.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
+      listarHistoricoContagem(300).then(registros => {
+        renderizarHistoricoContagem(registros, 'estoque-historico');
+      }).catch(e => {
+        console.error(e);
+        elHistorico.innerHTML = estadoVazio('Erro ao carregar histórico.');
+      });
+    }
+  } else {
+    if (elConteudo)  elConteudo.classList.remove('hidden');
+    if (elHistorico) elHistorico.classList.add('hidden');
+    renderizarEstoque(todasFestasCache, estoqueCache);
+  }
 }
 
 function filtrarEstoque(valor) {
@@ -4688,12 +4728,16 @@ function renderizarAnalise() {
 let _lcPeriodo    = 'semana';   /* 'semana' | '15dias' | 'mes' | 'tudo' | 'custom' */
 let _lcAba        = 'sintetico';
 
-async function abrirListaCompras() {
+let _lcSecaoAtual = 'evento'; /* 'evento' | 'alertas' | 'pedidos' */
+
+async function abrirListaCompras(secao) {
   navegarSidebar();
   historico.push('tela-lista-compras');
-  mostrarTela('tela-lista-compras', 'Lista de Compras');
+  mostrarTela('tela-lista-compras', 'Compras & Lista');
 
-  /* Popular dropdown de categorias */
+  const secaoAlvo = secao || 'evento';
+
+  /* Popular dropdown de categorias (só para seção evento) */
   const sel = document.getElementById('lc-filtro-cat');
   if (sel) {
     sel.innerHTML = '<option value="">Todas as categorias</option>';
@@ -4706,14 +4750,56 @@ async function abrirListaCompras() {
     });
   }
 
-  /* Restaurar aba ativa */
-  document.querySelectorAll('#lc-tabs .tab').forEach((b, i) => b.classList.toggle('ativo', i === 0));
-  _lcAba = 'sintetico';
+  /* Ativar seção correta */
+  document.querySelectorAll('.lc-secao-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  const tabIdx = { evento: 0, alertas: 1, pedidos: 2 }[secaoAlvo] ?? 0;
+  const tabs = document.querySelectorAll('.lc-secao-tabs .tab');
+  if (tabs[tabIdx]) tabs[tabIdx].classList.add('ativo');
+  ['evento','alertas','pedidos'].forEach(s => {
+    const el = document.getElementById(`lc-secao-${s}`);
+    if (el) el.classList.toggle('hidden', s !== secaoAlvo);
+  });
+  _lcSecaoAtual = secaoAlvo;
 
-  /* Período padrão: esta semana */
-  lcSetPeriodo('semana', document.querySelector('#lc-periodo-tabs .tab[data-lc-periodo="semana"]'));
+  if (secaoAlvo === 'evento') {
+    _lcAba = 'sintetico';
+    document.querySelectorAll('#lc-tabs .tab').forEach((b, i) => b.classList.toggle('ativo', i === 0));
+    lcSetPeriodo('semana', document.querySelector('#lc-periodo-tabs .tab[data-lc-periodo="semana"]'));
+    await lcRenderizar();
+  } else {
+    await recarregarCompras();
+    if (secaoAlvo === 'pedidos') {
+      _abaCompras = 'andamento';
+      trocarAbaCompras('andamento', document.querySelector('#compras-tabs .tab'));
+    }
+  }
+}
 
-  await lcRenderizar();
+function lcAtualizar() {
+  if (_lcSecaoAtual === 'evento') {
+    lcRenderizar();
+  } else {
+    recarregarCompras();
+  }
+}
+
+function lcTrocarSecao(secao, btn) {
+  _lcSecaoAtual = secao;
+  document.querySelectorAll('.lc-secao-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  ['evento','alertas','pedidos'].forEach(s => {
+    const el = document.getElementById(`lc-secao-${s}`);
+    if (el) el.classList.toggle('hidden', s !== secao);
+  });
+  if (secao === 'evento') {
+    lcRenderizar();
+  } else {
+    recarregarCompras();
+    if (secao === 'pedidos') {
+      _abaCompras = 'andamento';
+      trocarAbaCompras('andamento', document.querySelector('#compras-tabs .tab'));
+    }
+  }
 }
 
 function lcSetPeriodo(periodo, btn) {
@@ -5656,10 +5742,7 @@ async function confirmarDeletarCategoria(id, nome) {
 ══════════════════════════════════════════════════ */
 
 async function abrirCompras() {
-  historico.push('tela-compras');
-  mostrarTela('tela-compras', 'Compras');
-  _abaCompras = 'alertas';
-  await recarregarCompras();
+  await abrirListaCompras('alertas');
 }
 
 async function recarregarCompras() {
@@ -5714,7 +5797,8 @@ function trocarAbaCompras(aba, btn) {
   _abaCompras = aba;
   document.querySelectorAll('#compras-tabs .tab').forEach(b => b.classList.remove('ativo'));
   if (btn) btn.classList.add('ativo');
-  ['alertas','andamento','historico'].forEach(id => {
+  /* Controla só andamento/historico (alertas é seção separada) */
+  ['andamento','historico'].forEach(id => {
     const el = document.getElementById(`compras-${id}`);
     if (el) el.classList.toggle('hidden', id !== aba);
   });

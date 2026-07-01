@@ -57,23 +57,37 @@
         <div id="sidebar-agenda" class="sidebar-agenda-lista"></div>
       </div>
 
-      <!-- Administração -->
+      <!-- Estoque & Compras -->
       <div class="sidebar-secao">
-        <div class="sidebar-secao-label">Administração</div>
-        <button class="sidebar-btn" onclick="navegarSidebar(); abrirSidebarNovoUsuario()">&#43; Novo Usuário</button>
-        <button class="sidebar-btn" onclick="navegarSidebar(); abrirUsuarios()">Gerenciar Usuários</button>
-        <button class="sidebar-btn sidebar-btn-destaque" onclick="navegarSidebar(); abrirEstoque()">Controle de Estoque</button>
-        <button class="sidebar-btn" onclick="navegarSidebar(); abrirHistoricoContagem()">Histórico de Contagem</button>
-        <button class="sidebar-btn sidebar-btn-compras" onclick="navegarSidebar(); abrirCompras()">Compras <span id="badge-compras" class="sidebar-badge hidden"></span></button>
-        <button class="sidebar-btn sidebar-btn-lc" onclick="navegarSidebar(); abrirListaCompras()">&#128722; Lista de Compras</button>
-        <button class="sidebar-btn" onclick="navegarSidebar(); abrirRelatorio()">Relatório por Período</button>
-        <button class="sidebar-btn sidebar-btn-analise" onclick="navegarSidebar(); abrirAnalise()">Análise de Desempenho</button>
+        <div class="sidebar-secao-label sidebar-secao-toggle" onclick="toggleSidebarSecao('sb-estoque')">
+          Estoque &amp; Compras <span class="sb-seta">&#9660;</span>
+        </div>
+        <div id="sb-estoque" class="sidebar-secao-corpo">
+          <button class="sidebar-btn sidebar-btn-destaque" onclick="navegarSidebar(); abrirEstoque()">Controle de Estoque</button>
+          <button class="sidebar-btn sidebar-btn-compras" onclick="navegarSidebar(); abrirListaCompras()">&#128722; Compras &amp; Lista <span id="badge-compras" class="sidebar-badge hidden"></span></button>
+        </div>
+      </div>
+
+      <!-- Relatórios -->
+      <div class="sidebar-secao">
+        <div class="sidebar-secao-label sidebar-secao-toggle" onclick="toggleSidebarSecao('sb-relatorios')">
+          Relatórios <span class="sb-seta">&#9660;</span>
+        </div>
+        <div id="sb-relatorios" class="sidebar-secao-corpo">
+          <button class="sidebar-btn" onclick="navegarSidebar(); abrirRelatorio()">Relatório por Período</button>
+          <button class="sidebar-btn sidebar-btn-analise" onclick="navegarSidebar(); abrirAnalise()">Análise de Desempenho</button>
+        </div>
       </div>
 
       <!-- Cadastro -->
       <div class="sidebar-secao">
-        <div class="sidebar-secao-label">Cadastro</div>
-        <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroItens()">Cadastro</button>
+        <div class="sidebar-secao-label sidebar-secao-toggle" onclick="toggleSidebarSecao('sb-cadastro')">
+          Cadastro <span class="sb-seta">&#9660;</span>
+        </div>
+        <div id="sb-cadastro" class="sidebar-secao-corpo">
+          <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroItens()">Itens &amp; Categorias</button>
+          <button class="sidebar-btn" onclick="navegarSidebar(); abrirUsuarios()">Usuários</button>
+        </div>
       </div>
 
       <!-- Stats rápidos -->
@@ -782,8 +796,10 @@
       <div class="filtros-tabs" id="estoque-tabs">
         <button class="tab ativo" data-aba="sintetico" onclick="trocarAbaEstoque('sintetico',this)">Sintético</button>
         <button class="tab"       data-aba="analitico" onclick="trocarAbaEstoque('analitico',this)">Por Festa</button>
+        <button class="tab"       data-aba="historico" onclick="trocarAbaEstoque('historico',this)">Histórico de Contagem</button>
       </div>
       <div id="estoque-conteudo"></div>
+      <div id="estoque-historico" class="hidden"></div>
     </div>
   </div>
 
@@ -843,68 +859,109 @@
 
   </div>
 
-  <!-- ══════════ TELA: LISTA DE COMPRAS ══════════ -->
+  <!-- ══════════ TELA: COMPRAS & LISTA ══════════ -->
   <div id="tela-lista-compras" class="tela hidden">
 
-    <!-- Filtros -->
-    <div class="lc-filtros-hero">
-      <div class="container">
+    <!-- Abas principais da tela -->
+    <div class="lc-secao-tabs-wrap">
+      <div class="lc-secao-tabs">
+        <button class="tab ativo" onclick="lcTrocarSecao('evento',this)">&#128203; Por Evento</button>
+        <button class="tab"       onclick="lcTrocarSecao('alertas',this)">&#128276; Alertas <span id="badge-alertas-tab" class="sep-badge"></span></button>
+        <button class="tab"       onclick="lcTrocarSecao('pedidos',this)">&#128230; Pedidos <span id="badge-andamento-tab" class="sep-badge sep-badge-ok"></span></button>
+      </div>
+      <button class="btn-secundario btn-sm" onclick="lcAtualizar()">&#8635; Atualizar</button>
+    </div>
 
-        <!-- Linha 1: filtros de período -->
-        <div class="lc-filtros-linha">
-          <div class="lc-filtros-grupo">
-            <span class="lc-filtros-label">Período</span>
-            <div class="filtros-tabs" id="lc-periodo-tabs">
-              <button class="tab ativo" data-lc-periodo="semana"   onclick="lcSetPeriodo('semana',this)">Esta Semana</button>
-              <button class="tab"       data-lc-periodo="15dias"   onclick="lcSetPeriodo('15dias',this)">15 Dias</button>
-              <button class="tab"       data-lc-periodo="mes"      onclick="lcSetPeriodo('mes',this)">Este Mês</button>
-              <button class="tab"       data-lc-periodo="tudo"     onclick="lcSetPeriodo('tudo',this)">Todos Ativos</button>
-              <button class="tab"       data-lc-periodo="custom"   onclick="lcSetPeriodo('custom',this)">Personalizado</button>
+    <!-- ── SEÇÃO: POR EVENTO ── -->
+    <div id="lc-secao-evento">
+
+      <!-- Filtros -->
+      <div class="lc-filtros-hero">
+        <div class="container">
+
+          <!-- Linha 1: filtros de período -->
+          <div class="lc-filtros-linha">
+            <div class="lc-filtros-grupo">
+              <span class="lc-filtros-label">Período</span>
+              <div class="filtros-tabs" id="lc-periodo-tabs">
+                <button class="tab ativo" data-lc-periodo="semana"   onclick="lcSetPeriodo('semana',this)">Esta Semana</button>
+                <button class="tab"       data-lc-periodo="15dias"   onclick="lcSetPeriodo('15dias',this)">15 Dias</button>
+                <button class="tab"       data-lc-periodo="mes"      onclick="lcSetPeriodo('mes',this)">Este Mês</button>
+                <button class="tab"       data-lc-periodo="tudo"     onclick="lcSetPeriodo('tudo',this)">Todos Ativos</button>
+                <button class="tab"       data-lc-periodo="custom"   onclick="lcSetPeriodo('custom',this)">Personalizado</button>
+              </div>
+            </div>
+            <div class="lc-filtros-grupo lc-custom-range hidden" id="lc-custom-range">
+              <span class="lc-filtros-label">De</span>
+              <input type="date" id="lc-data-inicio" class="lc-date-input" onchange="lcRenderizar()" />
+              <span class="lc-filtros-label">Até</span>
+              <input type="date" id="lc-data-fim"    class="lc-date-input" onchange="lcRenderizar()" />
             </div>
           </div>
-          <div class="lc-filtros-grupo lc-custom-range hidden" id="lc-custom-range">
-            <span class="lc-filtros-label">De</span>
-            <input type="date" id="lc-data-inicio" class="lc-date-input" onchange="lcRenderizar()" />
-            <span class="lc-filtros-label">Até</span>
-            <input type="date" id="lc-data-fim"    class="lc-date-input" onchange="lcRenderizar()" />
-          </div>
-        </div>
 
-        <!-- Linha 2: busca + categoria -->
-        <div class="lc-filtros-linha">
-          <input type="search" id="lc-busca" class="barra-busca lc-busca-input" placeholder="Buscar item..."
-            oninput="lcRenderizar()" />
-          <select id="lc-filtro-cat" class="lc-select" onchange="lcRenderizar()">
-            <option value="">Todas as categorias</option>
-          </select>
-          <select id="lc-filtro-status" class="lc-select" onchange="lcRenderizar()">
-            <option value="comprar">Só o que falta comprar</option>
-            <option value="todos">Todos os itens</option>
-          </select>
-        </div>
-
-        <!-- Linha 3: abas de visualização + ações -->
-        <div class="lc-filtros-linha lc-linha-acoes">
-          <div class="filtros-tabs" id="lc-tabs">
-            <button class="tab ativo" onclick="lcTrocarAba('sintetico',this)">Sintético</button>
-            <button class="tab"       onclick="lcTrocarAba('analitico',this)">Analítico</button>
+          <!-- Linha 2: busca + categoria -->
+          <div class="lc-filtros-linha">
+            <input type="search" id="lc-busca" class="barra-busca lc-busca-input" placeholder="Buscar item..."
+              oninput="lcRenderizar()" />
+            <select id="lc-filtro-cat" class="lc-select" onchange="lcRenderizar()">
+              <option value="">Todas as categorias</option>
+            </select>
+            <select id="lc-filtro-status" class="lc-select" onchange="lcRenderizar()">
+              <option value="comprar">Só o que falta comprar</option>
+              <option value="todos">Todos os itens</option>
+            </select>
           </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn-secundario btn-sm" onclick="lcExportarCSV()">&#8595; Exportar CSV</button>
-            <button class="btn-secundario btn-sm" onclick="lcRenderizar()">&#8635; Atualizar</button>
-          </div>
-        </div>
 
+          <!-- Linha 3: sub-abas + ações -->
+          <div class="lc-filtros-linha lc-linha-acoes">
+            <div class="filtros-tabs" id="lc-tabs">
+              <button class="tab ativo" onclick="lcTrocarAba('sintetico',this)">Sintético</button>
+              <button class="tab"       onclick="lcTrocarAba('analitico',this)">Analítico</button>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn-secundario btn-sm" onclick="lcExportarCSV()">&#8595; CSV</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Resumo rápido -->
+      <div id="lc-sumario" class="lc-sumario"></div>
+
+      <!-- Conteúdo da lista -->
+      <div class="container">
+        <div id="lc-conteudo"><div class="estado-vazio"><p>Carregando...</p></div></div>
       </div>
     </div>
 
-    <!-- Resumo rápido -->
-    <div id="lc-sumario" class="lc-sumario"></div>
-
-    <!-- Conteúdo da lista -->
-    <div class="container">
-      <div id="lc-conteudo"><div class="estado-vazio"><p>Carregando...</p></div></div>
+    <!-- ── SEÇÃO: ALERTAS DE ESTOQUE ── -->
+    <div id="lc-secao-alertas" class="hidden">
+      <div class="container" style="padding-top:16px">
+        <div class="barra-busca-wrap">
+          <input type="search" class="barra-busca" id="compras-busca-alertas" placeholder="Buscar item..."
+            oninput="filtrarCompras(this.value)" />
+        </div>
+        <div id="compras-alertas"></div>
+      </div>
     </div>
+
+    <!-- ── SEÇÃO: PEDIDOS ── -->
+    <div id="lc-secao-pedidos" class="hidden">
+      <div class="container" style="padding-top:16px">
+        <div class="tab-row" id="compras-tabs">
+          <button class="tab ativo" onclick="trocarAbaCompras('andamento',this)">Em Andamento <span id="badge-andamento-tab2" class="sep-badge sep-badge-ok"></span></button>
+          <button class="tab"       onclick="trocarAbaCompras('historico',this)">Histórico</button>
+        </div>
+        <div class="barra-busca-wrap">
+          <input type="search" class="barra-busca" id="compras-busca-pedidos" placeholder="Buscar item..."
+            oninput="filtrarCompras(this.value)" />
+        </div>
+        <div id="compras-andamento"></div>
+        <div id="compras-historico" class="hidden"></div>
+      </div>
+    </div>
+
   </div>
 
   <!-- ══════════ TELA: PAINEL TV ══════════ -->
@@ -958,27 +1015,8 @@
     </div>
   </div>
 
-  <!-- ══════════ TELA: COMPRAS ══════════ -->
-  <div id="tela-compras" class="tela hidden">
-    <div class="container">
-      <div class="secao-header">
-        <h2 class="titulo-tela">Compras</h2>
-        <button class="btn-secundario" onclick="recarregarCompras()">↻ Atualizar</button>
-      </div>
-      <div class="tab-row" id="compras-tabs">
-        <button class="tab ativo" onclick="trocarAbaCompras('alertas',this)">Alertas <span id="badge-alertas-tab" class="sep-badge"></span></button>
-        <button class="tab"       onclick="trocarAbaCompras('andamento',this)">Em Andamento <span id="badge-andamento-tab" class="sep-badge sep-badge-ok"></span></button>
-        <button class="tab"       onclick="trocarAbaCompras('historico',this)">Histórico</button>
-      </div>
-      <div class="barra-busca-wrap">
-        <input type="search" class="barra-busca" placeholder="Buscar item..."
-          oninput="filtrarCompras(this.value)" />
-      </div>
-      <div id="compras-alertas"></div>
-      <div id="compras-andamento" class="hidden"></div>
-      <div id="compras-historico" class="hidden"></div>
-    </div>
-  </div>
+  <!-- tela-compras redirecionada para tela-lista-compras -->
+  <div id="tela-compras" class="tela hidden"></div>
 
   <!-- MODAL: SOLICITAR COMPRA -->
   <div id="modal-solicitar-compra" class="modal-overlay hidden" onclick="fecharModalSolicitarCompra()">
