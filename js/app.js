@@ -4954,7 +4954,7 @@ function lcRenderizarConteudo() {
   const festas   = _lcFiltrarFestas();
   const busca    = (document.getElementById('lc-busca')?.value || '').toLowerCase().trim();
   const catFiltro = document.getElementById('lc-filtro-cat')?.value  || '';
-  const statusFiltro = document.getElementById('lc-filtro-status')?.value || 'comprar';
+  const statusFiltro = document.getElementById('lc-filtro-status')?.value || 'todos';
 
   /* Índice estoque por chave base — agrega variantes (ex: "aperol" + "aperol_consignado" → "aperol") */
   const estBaseIdx = {};
@@ -5024,25 +5024,16 @@ function lcRenderizarConteudo() {
     });
   }
 
-  /* Filtro permanente: excluir categorias marcadas como "não aparece no estoque".
-     Usa apenas lookup EXATO (buscarConfigItem) para evitar que items sem match exato
-     sejam ocultados por correspondência fuzzy da categoria. */
-  todosItens = todosItens.filter(it => {
-    const cfgExato = buscarConfigItem(it.nomeKey);
-    const cat = cfgExato?.grupo ? categoriasCache.find(c => c.nome === cfgExato.grupo) : null;
-    return !cat || cat.exibirEstoque !== false;
-  });
+  /* Na visão "Por Evento" todos os itens das festas aparecem, independente da
+     configuração exibirEstoque da categoria. O flag exibirEstoque é usado apenas
+     no Controle de Estoque e nos Alertas de estoque mínimo. */
 
   /* Sumário calculado ANTES dos filtros de busca/status — mostra o quadro real */
-  const catsOcultas = categoriasCache.filter(c => c.exibirEstoque === false).map(c => c.nome);
   const elSum = document.getElementById('lc-sumario');
   if (elSum) {
     const totalItens = todosItens.length;
     const faltando   = todosItens.filter(i => i.aComprar > 0).length;
     const estoqueOk  = todosItens.filter(i => i.aComprar === 0).length;
-    const avisoOcultas = catsOcultas.length
-      ? `<div class="lc-aviso-ocultas">&#9888; Categorias ocultas nesta tela: <strong>${catsOcultas.join(', ')}</strong> — ajuste em Cadastro &gt; Categorias se necessário.</div>`
-      : '';
     elSum.innerHTML = `
       <div class="container lc-sumario-inner">
         <div class="rel-pill"><span class="rel-pill-num">${festas.length}</span><span class="rel-pill-lab">Festas no período</span></div>
@@ -5050,7 +5041,6 @@ function lcRenderizarConteudo() {
         <div class="rel-pill"><span class="rel-pill-num deficit-text">${faltando}</span><span class="rel-pill-lab">A Comprar</span></div>
         <div class="rel-pill"><span class="rel-pill-num ok-text">${estoqueOk}</span><span class="rel-pill-lab">Estoque OK</span></div>
       </div>
-      ${avisoOcultas}
     `;
   }
 
@@ -5065,9 +5055,11 @@ function lcRenderizarConteudo() {
     if (!todosItens.length && festas.length > 0) {
       msg = 'As festas deste período não têm itens cadastrados.';
     } else if (todosItens.length > 0 && statusFiltro === 'comprar') {
-      msg = `Estoque OK! Todos os ${todosItens.length} itens têm quantidade suficiente. Use "Todos os itens" para ver a lista completa.`;
+      msg = `Estoque OK! Todos os ${todosItens.length} itens têm quantidade suficiente. Mude o filtro para "Todos os itens" para ver a lista completa.`;
     } else if (todosItens.length > 0 && busca) {
       msg = `Nenhum item com "${busca}" encontrado. Limpe a busca para ver todos os ${todosItens.length} itens.`;
+    } else if (!festas.length) {
+      msg = 'Nenhuma festa ativa no período selecionado. Tente "Todos Ativos".';
     }
     el.innerHTML = estadoVazio(msg);
     return;
@@ -5237,7 +5229,7 @@ function lcExportarCSV() {
   const festas   = _lcFiltrarFestas();
   const busca    = (document.getElementById('lc-busca')?.value || '').toLowerCase().trim();
   const catFiltro = document.getElementById('lc-filtro-cat')?.value || '';
-  const statusFiltro = document.getElementById('lc-filtro-status')?.value || 'comprar';
+  const statusFiltro = document.getElementById('lc-filtro-status')?.value || 'todos';
 
   const estBaseIdx = {};
   Object.values(estoqueCache).forEach(e => {
