@@ -3818,7 +3818,13 @@ function filtrarEstoque(valor) {
 function renderizarEstoque(festas, estoqueMap) {
   const todos = agregarItensFestas(festas);
   const busca = _buscaEstoque.toLowerCase().trim();
-  const itens = busca ? todos.filter(it => (it.nome || '').toLowerCase().includes(busca)) : todos;
+  let itens = todos.filter(it => {
+    const cfg = buscarConfigItem(it.nomeKey);
+    const cat = cfg?.grupo ? categoriasCache.find(c => c.nome === cfg.grupo) : null;
+    if (cat && cat.exibirEstoque === false) return false;
+    return true;
+  });
+  if (busca) itens = itens.filter(it => (it.nome || '').toLowerCase().includes(busca));
   if (!itens.length) {
     document.getElementById('estoque-conteudo').innerHTML =
       estadoVazio('Nenhum item encontrado nas festas ativas.');
@@ -4690,7 +4696,7 @@ async function abrirListaCompras() {
   if (sel) {
     sel.innerHTML = '<option value="">Todas as categorias</option>';
     const cats = categoriasCache.length ? categoriasCache : await listarCategorias();
-    cats.forEach(c => {
+    cats.filter(c => c.exibirEstoque !== false).forEach(c => {
       const opt = document.createElement('option');
       opt.value = c.nome;
       opt.textContent = c.nome;
@@ -4831,6 +4837,11 @@ function lcRenderizarConteudo() {
   });
 
   /* Filtros */
+  /* Excluir categorias marcadas como "não aparece no estoque" */
+  itens = itens.filter(it => {
+    const cat = it.cfg?.grupo ? categoriasCache.find(c => c.nome === it.cfg.grupo) : null;
+    return !cat || cat.exibirEstoque !== false;
+  });
   if (busca)      itens = itens.filter(it => it.nome.toLowerCase().includes(busca));
   if (catFiltro)  itens = itens.filter(it => it.cfg?.grupo === catFiltro);
   if (statusFiltro === 'comprar') itens = itens.filter(it => it.aComprar > 0);
@@ -5583,12 +5594,14 @@ async function abrirFormCategoria(id) {
     document.getElementById('cat-nome').value       = cat.nome  || '';
     document.getElementById('cat-ordem').value      = cat.ordem || '';
     document.getElementById('cat-separacao').checked = cat.exibirSeparacao !== false;
+    document.getElementById('cat-estoque').checked   = cat.exibirEstoque   !== false;
     historico.push('tela-form-categoria');
     mostrarTela('tela-form-categoria', 'Editar Categoria');
   } else {
-    document.getElementById('cat-nome').value       = '';
-    document.getElementById('cat-ordem').value      = '';
+    document.getElementById('cat-nome').value        = '';
+    document.getElementById('cat-ordem').value       = '';
     document.getElementById('cat-separacao').checked = true;
+    document.getElementById('cat-estoque').checked   = true;
     historico.push('tela-form-categoria');
     mostrarTela('tela-form-categoria', 'Nova Categoria');
   }
@@ -5599,11 +5612,13 @@ async function salvarCategoria() {
   if (!nome) return toast('Informe o nome da categoria.', 'erro');
   const ordemStr        = document.getElementById('cat-ordem').value.trim();
   const exibirSeparacao = document.getElementById('cat-separacao').checked;
+  const exibirEstoque   = document.getElementById('cat-estoque').checked;
   const dados = {
     nome,
     nomeKey:          normalizarNomeItem(nome),
     ordem:            ordemStr ? parseInt(ordemStr) : 999,
     exibirSeparacao,
+    exibirEstoque,
   };
   try {
     await salvarCategoriaDB(dados);
