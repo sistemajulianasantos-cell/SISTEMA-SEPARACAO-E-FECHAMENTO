@@ -1672,9 +1672,13 @@ function carregarCoord(status) {
   pararListeners();
   filtroAtualCoord = status;
   unsubFestas = escutarFestas({ status }, festas => {
+    /* Coordenador só vê festas ativas (data de hoje em diante) — festas com
+       data passada, esquecidas numa etapa, ficam só para o CEO resolver. */
+    const hojeKey = normalizarData(new Date());
+    const ativas  = festas.filter(f => normalizarData(f.data) >= hojeKey);
     const el = document.getElementById('coord-lista');
-    el.innerHTML = festas.length
-      ? festas.map(f => htmlCardFesta(f, 'coordenador')).join('')
+    el.innerHTML = ativas.length
+      ? ativas.map(f => htmlCardFesta(f, 'coordenador')).join('')
       : estadoVazio('Nenhuma festa nesta etapa.');
   });
 }
