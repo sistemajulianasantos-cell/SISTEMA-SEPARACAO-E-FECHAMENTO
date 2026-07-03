@@ -446,6 +446,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('login-lembrar').checked = true;
   }
 
+  /* Link de convite: ?cadastro=coordenador abre direto o auto-cadastro */
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('cadastro') === 'coordenador') {
+    mostrarTela('tela-primeiro-acesso');
+    return;
+  }
+
   try {
     const total = await contarUsuarios();
     if (total === 0) {
@@ -473,7 +480,7 @@ function mostrarTela(id, subtitulo = '') {
   const btnBack = document.getElementById('btn-back');
   const sub     = document.getElementById('header-subtitulo');
 
-  const telasAuth      = ['tela-setup', 'tela-login', 'tela-tv'];
+  const telasAuth      = ['tela-setup', 'tela-login', 'tela-primeiro-acesso', 'tela-tv'];
   const telasPrincipais= ['tela-ceo', 'tela-colaborador', 'tela-coordenador'];
 
   if (telasAuth.includes(id)) {
@@ -651,6 +658,62 @@ async function doLogin() {
   } finally {
     btn.disabled    = false;
     btn.textContent = 'Entrar';
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   PRIMEIRO ACESSO (auto-cadastro como Coordenador)
+══════════════════════════════════════════════════ */
+
+function abrirPrimeiroAcesso() {
+  document.getElementById('pa-nome').value     = '';
+  document.getElementById('pa-senha').value    = '';
+  document.getElementById('pa-confirma').value = '';
+  document.getElementById('pa-erro').classList.add('hidden');
+  mostrarTela('tela-primeiro-acesso');
+}
+
+async function submitPrimeiroAcesso() {
+  const nome     = document.getElementById('pa-nome').value.trim();
+  const senha    = document.getElementById('pa-senha').value;
+  const confirma = document.getElementById('pa-confirma').value;
+  const erro     = document.getElementById('pa-erro');
+  const btn      = document.getElementById('btn-pa-entrar');
+
+  const mostrarErro = msg => { erro.textContent = msg; erro.classList.remove('hidden'); };
+  erro.classList.add('hidden');
+
+  if (!nome || nome.trim().split(/\s+/).length < 2) {
+    return mostrarErro('Informe nome e sobrenome completos.');
+  }
+  if (senha.length < 4)   return mostrarErro('Senha deve ter ao menos 4 caracteres.');
+  if (senha !== confirma) return mostrarErro('As senhas não coincidem.');
+
+  btn.disabled    = true;
+  btn.textContent = 'Cadastrando...';
+
+  try {
+    const existente = await buscarUsuarioPorNome(nome);
+    if (existente) {
+      mostrarErro('Já existe um usuário com esse nome. Faça login ou contate o administrador.');
+      return;
+    }
+
+    await criarUsuario(nome, senha, ['coordenador']);
+    const usuario = await autenticarUsuario(nome, senha);
+
+    usuarioAtual = usuario;
+    roleAtivo    = 'coordenador';
+    document.getElementById('header-usuario').textContent = usuario.nome;
+
+    toast(`Bem-vindo(a), ${usuario.nome}!`, 'sucesso');
+    irParaPrincipal();
+  } catch (e) {
+    console.error(e);
+    mostrarErro('Erro ao cadastrar. Tente novamente.');
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Cadastrar e Entrar';
   }
 }
 

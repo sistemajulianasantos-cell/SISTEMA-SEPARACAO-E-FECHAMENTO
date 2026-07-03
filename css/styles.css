@@ -272,6 +272,20 @@ body {
   cursor: pointer;
 }
 
+.auth-link-wrap {
+  text-align: center;
+  font-size: 13px;
+  color: var(--cinza-500);
+  margin-top: 18px;
+}
+.auth-link-wrap a {
+  color: var(--roxo);
+  font-weight: 700;
+  text-decoration: none;
+  margin-left: 4px;
+}
+.auth-link-wrap a:hover { text-decoration: underline; }
+
 .rodape-form {
   display: flex;
   gap: 12px;

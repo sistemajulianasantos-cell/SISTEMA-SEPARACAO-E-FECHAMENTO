@@ -155,6 +155,42 @@
       </label>
 
       <button class="btn-primario btn-full" id="btn-entrar" onclick="doLogin()">Entrar</button>
+
+      <p class="auth-link-wrap">
+        Primeiro acesso?
+        <a href="javascript:void(0)" onclick="abrirPrimeiroAcesso()">Cadastre-se aqui</a>
+      </p>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: PRIMEIRO ACESSO (auto-cadastro Coordenador) ══════════ -->
+  <div id="tela-primeiro-acesso" class="tela hidden">
+    <div class="auth-container">
+      <div class="auth-marca">Romero Coquetéis</div>
+      <h2 class="auth-titulo">Primeiro Acesso</h2>
+      <p class="auth-desc">Cadastre-se como Coordenador para realizar a conferência. Informe seu nome e sobrenome.</p>
+
+      <div class="form-group">
+        <label>Nome completo</label>
+        <input type="text" id="pa-nome" placeholder="Nome e sobrenome" autocomplete="name" />
+      </div>
+      <div class="form-group">
+        <label>Senha</label>
+        <input type="password" id="pa-senha" placeholder="Crie uma senha" autocomplete="new-password" />
+      </div>
+      <div class="form-group">
+        <label>Confirmar senha</label>
+        <input type="password" id="pa-confirma" placeholder="Repita a senha" autocomplete="new-password"
+          onkeydown="if(event.key==='Enter') submitPrimeiroAcesso()" />
+      </div>
+      <div id="pa-erro" class="msg-erro hidden"></div>
+
+      <button class="btn-primario btn-full" id="btn-pa-entrar" onclick="submitPrimeiroAcesso()">Cadastrar e Entrar</button>
+
+      <p class="auth-link-wrap">
+        Já tem conta?
+        <a href="javascript:void(0)" onclick="mostrarTela('tela-login')">Fazer login</a>
+      </p>
     </div>
   </div>
 
