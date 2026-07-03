@@ -1546,8 +1546,13 @@ async function concluirSeparacao() {
   try {
     let fotoUrls = [];
     if (fotosCache.separacao.filter(Boolean).length) {
-      toast('Enviando fotos...', 'info');
-      fotoUrls = await uploadFotos(fotosCache.separacao, festaAtual.id, 'separacao');
+      try {
+        toast('Enviando fotos...', 'info');
+        fotoUrls = await uploadFotos(fotosCache.separacao, festaAtual.id, 'separacao');
+      } catch (e) {
+        console.error('Erro ao enviar fotos da separação:', e);
+        toast('Não foi possível enviar as fotos, mas a separação será salva.', 'aviso');
+      }
     }
 
     await concluirEtapa(festaAtual.id, 'separacao', {
@@ -1782,7 +1787,8 @@ function renderizarConferencia(festa) {
           <input type="number" class="qty-input" id="conf-qty-${ri}"
             value="${confVal !== undefined ? confVal : ''}"
             min="0" placeholder="0"
-            oninput="checarConf(${ri}, ${sepVal})" />
+            oninput="checarConf(${ri}, ${sepVal})"
+            onchange="salvarQtdConf(${ri})" />
           <span class="item-unidade">${item.unidade || 'un'}</span>
         </div>
         <div id="conf-msg-${ri}">${msgInicial}</div>
@@ -1792,22 +1798,66 @@ function renderizarConferencia(festa) {
   }).join('');
 }
 
-/* Captura foto por item na conferência */
-function onFotoItemConf(idx, input) {
+/* Grava um campo de um item específico da festa no Firestore sem perder o resto,
+   mantendo festaAtual local em sincronia (evita perder dados já salvos ao atualizar a página) */
+async function persistirItemFesta(idx, patch) {
+  if (!festaAtual) return;
+  const itens = (festaAtual.itens || []).map((it, i) => i === idx ? { ...it, ...patch } : it);
+  festaAtual = { ...festaAtual, itens };
+  await atualizarFesta(festaAtual.id, { itens });
+}
+
+/* Salva a quantidade conferida assim que o coordenador sai do campo,
+   para não perder o valor caso a página seja atualizada antes de concluir */
+async function salvarQtdConf(idx) {
+  if (!festaAtual) return;
+  const val = parseFloat(document.getElementById(`conf-qty-${idx}`)?.value) || 0;
+  try {
+    await persistirItemFesta(idx, { qtdConferida: val });
+  } catch (e) {
+    console.error('Erro ao salvar quantidade conferida:', e);
+    toast('Não foi possível salvar a quantidade. Verifique a conexão.', 'erro');
+  }
+}
+
+/* Captura foto por item na conferência — envia para o Firebase imediatamente,
+   para não depender do botão final e não perder a foto se algo der errado depois */
+async function onFotoItemConf(idx, input) {
   if (!input.files[0]) return;
-  fotosCache.confItens[idx] = input.files[0];
-  /* Atualizar a área de foto sem re-renderizar tudo */
+  const file = input.files[0];
+  fotosCache.confItens[idx] = file;
+
   const area = document.getElementById(`conf-foto-area-${idx}`);
   if (!area) return;
   area.classList.add('ok');
   area.querySelector('.item-foto-preview').innerHTML =
-    `<img src="${URL.createObjectURL(input.files[0])}" alt="foto">`;
-  area.querySelector('.item-foto-label-titulo').className = 'item-foto-label-titulo ok';
-  area.querySelector('.item-foto-label-titulo').textContent = '✓ Foto anexada';
-  area.querySelector('.item-foto-label-desc').textContent = 'Toque para trocar';
-  const btn = area.querySelector('.btn-foto-item');
+    `<img src="${URL.createObjectURL(file)}" alt="foto">`;
+  const titulo = area.querySelector('.item-foto-label-titulo');
+  const desc   = area.querySelector('.item-foto-label-desc');
+  const btn    = area.querySelector('.btn-foto-item');
+  titulo.className = 'item-foto-label-titulo ok';
+  titulo.textContent = 'Enviando...';
+  desc.textContent   = 'Salvando foto...';
   btn.className = 'btn-foto-item ok';
-  btn.textContent = '✓ OK';
+  btn.textContent = '⏳';
+
+  try {
+    const urls = await uploadFotos([file], festaAtual.id, `conf_item_${idx}`);
+    await persistirItemFesta(idx, { fotoConferencia: urls[0] });
+    fotosCache.confItens[idx] = null; /* já persistida, não precisa reenviar no final */
+    titulo.textContent = '✓ Foto anexada';
+    desc.textContent   = 'Toque para trocar';
+    btn.textContent    = '✓ OK';
+  } catch (e) {
+    console.error('Erro ao enviar foto do item:', e);
+    toast('Falha ao enviar a foto. Tente novamente.', 'erro');
+    titulo.className  = 'item-foto-label-titulo';
+    titulo.textContent = 'Foto obrigatória';
+    desc.textContent   = 'Falha no envio — toque para tentar novamente';
+    area.classList.remove('ok');
+    btn.className = 'btn-foto-item';
+    btn.textContent = '📷 Anexar';
+  }
 }
 
 /* Edição rápida de nome de item (coordenador e separador) */
@@ -1884,7 +1934,10 @@ async function concluirConferencia() {
   btn.textContent = 'Salvando...';
 
   try {
-    /* Montar itens com qtdConferida; itens sem conferência do coord mantêm qtdSeparada */
+    /* Montar itens com qtdConferida; itens sem conferência do coord mantêm qtdSeparada.
+       Cada foto é enviada isoladamente — se uma falhar, as demais e o resto da
+       conferência (quantidades, etc.) não são perdidos. */
+    const falhasFoto = [];
     const itens = await Promise.all((festaAtual.itens || []).map(async (item, i) => {
       const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
       if (cfg && cfg.conferirCoord === false) {
@@ -1894,11 +1947,30 @@ async function concluirConferencia() {
       const fotoFile     = fotosCache.confItens[i];
       let fotoConferencia = item.fotoConferencia || null;
       if (fotoFile) {
-        const urls = await uploadFotos([fotoFile], festaAtual.id, `conf_item_${i}`);
-        fotoConferencia = urls[0] || fotoConferencia;
+        try {
+          const urls = await uploadFotos([fotoFile], festaAtual.id, `conf_item_${i}`);
+          fotoConferencia = urls[0] || fotoConferencia;
+        } catch (e) {
+          console.error(`Erro ao enviar foto do item "${item.nome}":`, e);
+          falhasFoto.push(item.nome);
+        }
       }
       return { ...item, qtdConferida, ...(fotoConferencia ? { fotoConferencia } : {}) };
     }));
+
+    /* Se algum item obrigatório continua sem foto após a tentativa, avisa e não
+       finaliza — mas as quantidades já digitadas continuam salvas nos inputs. */
+    const aindaSemFoto = itens.filter((item) => {
+      const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+      if (cfg && cfg.conferirCoord === false) return false;
+      return cfg?.exigeFoto && !item.fotoConferencia;
+    });
+    if (aindaSemFoto.length) {
+      toast(`Falha ao enviar foto de: ${aindaSemFoto.map(i => i.nome).join(', ')}. Tente novamente.`, 'erro');
+      btn.disabled    = false;
+      btn.textContent = 'Confirmar Conferência — Liberar para Festa';
+      return;
+    }
 
     const divergencias = itens
       .filter(it => {
@@ -1910,8 +1982,17 @@ async function concluirConferencia() {
 
     let fotoUrls = [];
     if (fotosCache.conferencia.filter(Boolean).length) {
-      toast('Enviando fotos gerais...', 'info');
-      fotoUrls = await uploadFotos(fotosCache.conferencia, festaAtual.id, 'conferencia');
+      try {
+        toast('Enviando fotos gerais...', 'info');
+        fotoUrls = await uploadFotos(fotosCache.conferencia, festaAtual.id, 'conferencia');
+      } catch (e) {
+        console.error('Erro ao enviar fotos gerais:', e);
+        toast('Não foi possível enviar as fotos gerais, mas a conferência será salva.', 'aviso');
+      }
+    }
+
+    if (falhasFoto.length) {
+      toast(`Aviso: não foi possível enviar a foto de "${falhasFoto.join(', ')}", mas o restante da conferência foi salvo.`, 'aviso');
     }
 
     await concluirEtapa(festaAtual.id, 'conferencia', {
@@ -2000,8 +2081,13 @@ async function concluirRetorno() {
 
     let fotoUrls = [];
     if (fotosCache.retorno.filter(Boolean).length) {
-      toast('Enviando fotos...', 'info');
-      fotoUrls = await uploadFotos(fotosCache.retorno, festaAtual.id, 'retorno');
+      try {
+        toast('Enviando fotos...', 'info');
+        fotoUrls = await uploadFotos(fotosCache.retorno, festaAtual.id, 'retorno');
+      } catch (e) {
+        console.error('Erro ao enviar fotos do retorno:', e);
+        toast('Não foi possível enviar as fotos, mas o retorno será salvo.', 'aviso');
+      }
     }
 
     await concluirEtapa(festaAtual.id, 'retorno', {
@@ -2119,8 +2205,13 @@ async function concluirGalpao() {
 
     let fotoUrls = [];
     if (fotosCache.galpao.filter(Boolean).length) {
-      toast('Enviando fotos...', 'info');
-      fotoUrls = await uploadFotos(fotosCache.galpao, festaAtual.id, 'galpao');
+      try {
+        toast('Enviando fotos...', 'info');
+        fotoUrls = await uploadFotos(fotosCache.galpao, festaAtual.id, 'galpao');
+      } catch (e) {
+        console.error('Erro ao enviar fotos do galpão:', e);
+        toast('Não foi possível enviar as fotos, mas o registro será salvo.', 'aviso');
+      }
     }
 
     await concluirEtapa(festaAtual.id, 'galpao', {
