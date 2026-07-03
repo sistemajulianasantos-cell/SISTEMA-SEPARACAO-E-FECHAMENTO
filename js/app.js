@@ -1725,16 +1725,7 @@ async function abrirConferencia(id) {
 function renderizarConferencia(festa) {
   document.getElementById('conf-info').innerHTML = htmlInfoFesta(festa);
 
-  const itensOcultosConf = (festa.itens || []).filter((item) => {
-    const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
-    return cfg && cfg.conferirCoord === false;
-  });
-
   document.getElementById('conf-itens').innerHTML =
-    (itensOcultosConf.length ? `
-      <div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#6B7280;">
-        ${itensOcultosConf.length} item(s) sem conferência do coordenador: ${itensOcultosConf.map(i => i.nome).join(', ')}
-      </div>` : '') +
     (festa.itens || []).filter((item) => {
       const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
       return !cfg || cfg.conferirCoord !== false;
