@@ -136,13 +136,12 @@ function renderizarPainelTV(festas) {
   const hojeKey  = normalizarData(new Date());
   const hojeDate = new Date(); hojeDate.setHours(0, 0, 0, 0);
 
-  const separando     = festas.filter(f => f.status === 'separando');
-  const agendadasHoje = festas.filter(f => f.status === 'agendada' && normalizarData(f.data) === hojeKey);
-  const atrasadas     = festas.filter(f => {
-    if (!['agendada', 'separando'].includes(f.status)) return false;
+  const separando     = festas.filter(f => {
+    if (f.status !== 'separando') return false;
     const fd = toDate(f.data); fd.setHours(0, 0, 0, 0);
-    return fd < hojeDate && normalizarData(f.data) !== hojeKey;
+    return fd >= hojeDate;
   });
+  const agendadasHoje = festas.filter(f => f.status === 'agendada' && normalizarData(f.data) === hojeKey);
   const proximas = festas
     .filter(f => {
       if (f.status !== 'agendada') return false;
@@ -154,7 +153,12 @@ function renderizarPainelTV(festas) {
 
   /* Produção TV: apenas itens eProducao, agrega por nomeBaseKey */
   const mapaProd = {};
-  festas.filter(f => f.status === 'agendada' || f.status === 'separando').forEach(f => {
+  festas.filter(f => {
+    if (f.status === 'agendada') return true;
+    if (f.status !== 'separando') return false;
+    const fd = toDate(f.data); fd.setHours(0, 0, 0, 0);
+    return fd >= hojeDate;
+  }).forEach(f => {
     (f.itens || []).forEach(item => {
       const key = nomeBaseKey(normalizarNomeItem(item.nome));
       const cfg = buscarConfigItem(key);
@@ -173,7 +177,7 @@ function renderizarPainelTV(festas) {
 
   _tvRenderSeparando(separando);
   _tvRenderProducao(producao);
-  _tvRenderAgenda(agendadasHoje, atrasadas, proximas, hojeKey);
+  _tvRenderAgenda(agendadasHoje, proximas, hojeKey);
 
   /* Reinicia o auto-scroll após o DOM atualizar */
   if (_tvScrollDelay) clearTimeout(_tvScrollDelay);
@@ -377,25 +381,11 @@ function _tvRenderEstoque(producao) {
                + (okItems.length  ? `<div class="tv-secao-titulo">OK (${okItems.length})</div>`      + okItems.map(renderItem).join('')  : '');
 }
 
-function _tvRenderAgenda(agendadasHoje, atrasadas, proximas, hojeKey) {
+function _tvRenderAgenda(agendadasHoje, proximas, hojeKey) {
   const el = document.getElementById('tv-agenda');
   if (!el) return;
 
   let html = '';
-
-  if (atrasadas.length) {
-    html += `<div class="tv-secao-titulo">⚠ Atrasadas (${atrasadas.length})</div>`;
-    html += atrasadas.map(f => {
-      const pend = (f.itens || []).filter(it => deveExibirNaSeparacao(it) && !it.separado).length;
-      return `
-        <div class="tv-agenda-item urgente">
-          <span class="tv-agenda-badge urgente">ATRASADA · ${formatarData(f.data)}</span>
-          <div class="tv-agenda-nome">${f.nome}</div>
-          <div class="tv-agenda-meta">${f.cliente}${f.hora ? ' · ' + f.hora : ''} · ${pend} pendentes</div>
-        </div>
-      `;
-    }).join('');
-  }
 
   if (agendadasHoje.length) {
     html += `<div class="tv-secao-titulo">Hoje (${agendadasHoje.length})</div>`;
