@@ -539,6 +539,10 @@ function papelAtual() {
   return roles.includes('ceo') ? 'ceo' : (roleAtivo || roles[0]);
 }
 
+function souCeo() {
+  return !!(usuarioAtual?.roles?.includes('ceo') || usuarioAtual?.role === 'ceo');
+}
+
 function irParaPrincipal() {
   historico = [];
   pararListeners();
@@ -1939,6 +1943,9 @@ function renderizarConferencia(festa) {
 
   document.getElementById('conf-itens').innerHTML =
     (festa.itens || []).filter((item) => {
+      /* CEO vê todos os itens da festa; demais perfis só os configurados
+         para aparecer na conferência (descartáveis/decoração ficam ocultos) */
+      if (souCeo()) return true;
       const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
       return !cfg || cfg.conferirCoord !== false;
     }).map((item) => {
