@@ -610,7 +610,6 @@ function renderizarInicio(papel) {
           <div class="inicio-card-nome">Usuários</div>
         </div>
       </div>
-      <button class="inicio-btn-novafesta" onclick="historico=['tela-inicial']; abrirCriarFesta()">&#43; Nova Festa</button>
     `;
   } else if (papel === 'coordenador') {
     el.innerHTML = `
