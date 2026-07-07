@@ -1684,7 +1684,13 @@ async function separarItem(i) {
   if (!festaAtual) return;
   const itens = (festaAtual.itens || []).map(it => ({ ...it }));
   const qtd   = parseFloat(document.getElementById(`qty-ajuste-${i}`)?.value) ?? itens[i].qtdNecessaria;
-  itens[i]    = { ...itens[i], separado: true, qtdSeparada: qtd };
+  itens[i]    = {
+    ...itens[i],
+    separado:    true,
+    qtdSeparada: qtd,
+    separadoPor: usuarioAtual?.nome || null,
+    separadoEm:  new Date(),
+  };
 
   const ehPrimeiro = !festaAtual.primeiroItemEm &&
     itens.filter((it, idx) => idx !== i && it.separado).length === 0;
@@ -1700,7 +1706,7 @@ async function separarItem(i) {
 async function desfazerItem(i) {
   if (!festaAtual) return;
   const itens = (festaAtual.itens || []).map(it => ({ ...it }));
-  itens[i]    = { ...itens[i], separado: false, qtdSeparada: undefined };
+  itens[i]    = { ...itens[i], separado: false, qtdSeparada: undefined, separadoPor: undefined, separadoEm: undefined };
   try {
     await marcarItemSeparado(festaAtual.id, itens, false);
   } catch (e) {
@@ -1801,6 +1807,11 @@ function formatarTempo(s) {
 function formatarDataHora(val) {
   if (!val) return '—';
   return toDate(val).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+function formatarHora(val) {
+  if (!val) return '';
+  return toDate(val).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatarDuracao(inicio, fim) {
@@ -1976,10 +1987,15 @@ function renderizarConferencia(festa) {
               <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${ri})">✏️</button>
             </div>
             ${htmlBadgeForn(item) || ''}
+            ${item.separado && item.qtdSeparada !== undefined ? `
+              <div class="item-sub">
+                Separado: <strong>${item.qtdSeparada} ${item.unidade || 'un'}</strong>${item.separadoPor ? ` por <strong>${item.separadoPor}</strong>` : ''}${item.separadoEm ? ` às ${formatarHora(item.separadoEm)}` : ''}
+              </div>
+            ` : ''}
           </div>
         </div>
         <div class="item-entrada">
-          <label>Quantidade:</label>
+          <label>Quantidade conferida:</label>
           <input type="number" class="qty-input" id="conf-qty-${ri}"
             value="${confVal !== undefined ? confVal : ''}"
             min="0" placeholder="0"
