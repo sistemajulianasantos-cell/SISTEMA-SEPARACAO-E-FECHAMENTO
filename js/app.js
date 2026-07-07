@@ -36,7 +36,6 @@ let categoriasCache    = [];   /* [{id, nome, nomeKey, ordem}] */
 let _comprarContext    = null;
 let _itemConfigEditId  = null;
 let _categoriaEditId   = null;
-let sidebarPinada      = false;
 let _modoSelecaoCadastro = false;
 let _itensSelecionados   = new Set();
 let _buscaCadastro       = '';
@@ -471,7 +470,7 @@ function mostrarTela(id, subtitulo = '') {
   const sub     = document.getElementById('header-subtitulo');
 
   const telasAuth      = ['tela-setup', 'tela-login', 'tela-primeiro-acesso', 'tela-tv'];
-  const telasPrincipais= ['tela-ceo', 'tela-colaborador', 'tela-coordenador'];
+  const telasPrincipais= ['tela-inicial'];
 
   if (telasAuth.includes(id)) {
     header.classList.add('hidden');
@@ -485,15 +484,13 @@ function mostrarTela(id, subtitulo = '') {
     }
   }
 
-  /* Menu button: visível apenas para CEO em telas autenticadas */
-  const btnMenu = document.getElementById('btn-menu');
-  if (btnMenu) {
-    const ehCeo = usuarioAtual &&
-      (usuarioAtual.roles || [usuarioAtual.role || '']).includes('ceo');
-    if (!telasAuth.includes(id) && ehCeo) {
-      btnMenu.classList.remove('hidden');
+  /* Botão Início: visível em qualquer tela autenticada, exceto o próprio hub */
+  const btnInicio = document.getElementById('btn-inicio');
+  if (btnInicio) {
+    if (!telasAuth.includes(id) && id !== 'tela-inicial') {
+      btnInicio.classList.remove('hidden');
     } else {
-      btnMenu.classList.add('hidden');
+      btnInicio.classList.add('hidden');
     }
   }
 
@@ -525,10 +522,17 @@ function goBack() {
       if (anterior === 'tela-coordenador')          carregarCoord(filtroAtualCoord);
       if (anterior === 'tela-usuarios')             carregarUsuarios();
       if (anterior === 'tela-historico-contagem')   abrirHistoricoContagem();
+      if (anterior === 'tela-inicial')              renderizarInicio(papelAtual());
     }
   } else {
     irParaPrincipal();
   }
+}
+
+/* Papel (perfil) em uso no momento, considerando múltiplos papéis */
+function papelAtual() {
+  const roles = usuarioAtual?.roles || [usuarioAtual?.role || ''];
+  return roles.includes('ceo') ? 'ceo' : (roleAtivo || roles[0]);
 }
 
 function irParaPrincipal() {
@@ -536,24 +540,144 @@ function irParaPrincipal() {
   pararListeners();
   if (!usuarioAtual) { mostrarTela('tela-login'); return; }
 
-  const roles = usuarioAtual.roles || [usuarioAtual.role];
-  const papel = roles.includes('ceo') ? 'ceo' : (roleAtivo || roles[0]);
+  const papel = papelAtual();
 
-  if (papel === 'ceo') {
-    initSidebarPin();
-    mostrarTela('tela-ceo');
-    carregarCEO();
-  } else if (papel === 'coordenador') {
-    mostrarTela('tela-coordenador');
-    carregarCoord(filtroAtualCoord);
-  } else if (papel === 'tv') {
+  if (papel === 'tv') {
     mostrarTela('tela-tv');
     carregarTV();
+    return;
+  }
+
+  historico = ['tela-inicial'];
+  mostrarTela('tela-inicial');
+  renderizarInicio(papel);
+
+  /* Pré-carrega os dados da tela principal de cada papel (alertas, badges) */
+  if (papel === 'ceo')                  carregarCEO();
+  else if (papel === 'coordenador')     carregarCoord(filtroAtualCoord);
+  else                                  carregarColab();
+}
+
+/* ══════════════════════════════════════════════════
+   TELA INICIAL — HUB DE CARDS (pós-login)
+══════════════════════════════════════════════════ */
+
+function renderizarInicio(papel) {
+  const el = document.getElementById('inicio-conteudo');
+  if (!el) return;
+  const nome = (usuarioAtual?.nome || '').split(' ')[0] || '';
+  const saudacao = `<div class="inicio-saudacao">Olá${nome ? ', ' + nome : ''}!</div>`;
+
+  if (papel === 'ceo') {
+    el.innerHTML = `
+      ${saudacao}
+      <div class="inicio-secao-label">Principal</div>
+      <div class="inicio-grid">
+        <div class="inicio-card" onclick="irInicioProducao()">
+          <div class="inicio-card-icone">🍸</div>
+          <div class="inicio-card-nome">Produção</div>
+        </div>
+        <div class="inicio-card" onclick="irInicioAgenda()">
+          <div class="inicio-card-icone">📅</div>
+          <div class="inicio-card-nome">Agenda</div>
+        </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEstoque()">
+          <div class="inicio-card-icone">📦</div>
+          <div class="inicio-card-nome">Estoque</div>
+        </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirListaCompras()">
+          <div class="inicio-card-icone">🛒</div>
+          <div class="inicio-card-nome">Compras &amp; Lista</div>
+          <span id="badge-compras" class="inicio-card-badge hidden"></span>
+        </div>
+      </div>
+      <div class="inicio-secao-label">Administrativo</div>
+      <div class="inicio-grid">
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirRelatorio()">
+          <div class="inicio-card-icone">📊</div>
+          <div class="inicio-card-nome">Relatórios</div>
+        </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirAnalise()">
+          <div class="inicio-card-icone">📈</div>
+          <div class="inicio-card-nome">Análise</div>
+        </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirCadastroItens()">
+          <div class="inicio-card-icone">🗂️</div>
+          <div class="inicio-card-nome">Cadastro</div>
+        </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirUsuarios()">
+          <div class="inicio-card-icone">👤</div>
+          <div class="inicio-card-nome">Usuários</div>
+        </div>
+      </div>
+      <button class="inicio-btn-novafesta" onclick="historico=['tela-inicial']; abrirCriarFesta()">&#43; Nova Festa</button>
+    `;
+  } else if (papel === 'coordenador') {
+    el.innerHTML = `
+      ${saudacao}
+      <div class="inicio-grid">
+        <div class="inicio-card" onclick="irInicioCoord('conferencia')">
+          <div class="inicio-card-icone">✅</div>
+          <div class="inicio-card-nome">Conferência</div>
+        </div>
+        <div class="inicio-card" onclick="irInicioCoord('retorno')">
+          <div class="inicio-card-icone">🔙</div>
+          <div class="inicio-card-nome">Retorno</div>
+        </div>
+        <div class="inicio-card" onclick="irInicioCoord('galpao')">
+          <div class="inicio-card-icone">🏭</div>
+          <div class="inicio-card-nome">Galpão</div>
+        </div>
+      </div>
+    `;
   } else {
     /* separador, colaborador ou qualquer outro papel */
-    mostrarTela('tela-colaborador');
-    carregarColab();
+    el.innerHTML = `
+      ${saudacao}
+      <div class="inicio-grid">
+        <div class="inicio-card" onclick="irInicioColab()">
+          <div class="inicio-card-icone">🧾</div>
+          <div class="inicio-card-nome">Festas para Separar</div>
+        </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirInventario()">
+          <div class="inicio-card-icone">📋</div>
+          <div class="inicio-card-nome">Inventário</div>
+        </div>
+      </div>
+    `;
   }
+}
+
+function irInicioProducao() {
+  historico = ['tela-inicial'];
+  navegar('tela-ceo');
+  carregarCEO();
+}
+
+function irInicioAgenda() {
+  filtroData     = null;
+  filtroAtualCEO = 'todas';
+  document.querySelectorAll('#ceo-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  const todasTab = document.querySelector('#ceo-tabs .tab[data-filtro="todas"]');
+  if (todasTab) todasTab.classList.add('ativo');
+  historico = ['tela-inicial', 'tela-ceo'];
+  navegar('tela-lista-festas', subtituloListaFestas());
+  if (!unsubFestas) carregarCEO(); else atualizarVisaoCEO();
+}
+
+function irInicioCoord(status) {
+  historico = ['tela-inicial'];
+  navegar('tela-coordenador');
+  document.querySelectorAll('#tela-coordenador .tab').forEach(b => b.classList.remove('ativo'));
+  const btn = document.querySelector(`#tela-coordenador .tab[data-status="${status}"]`);
+  if (btn) btn.classList.add('ativo');
+  carregarCoord(status);
+}
+
+function irInicioColab() {
+  historico = ['tela-inicial'];
+  navegar('tela-colaborador');
+  carregarColab();
 }
 
 function pararListeners() {
@@ -731,14 +855,6 @@ function logout() {
   festaAtual   = null;
   fotosCache   = { separacao: [], conferencia: [], retorno: [], galpao: [] };
   historico    = [];
-  /* Fechar e desafixar sidebar */
-  sidebarPinada = false;
-  const sb = document.getElementById('sidebar');
-  if (sb) sb.classList.remove('aberto', 'pinada');
-  const ov = document.getElementById('sidebar-overlay');
-  if (ov) ov.classList.add('hidden');
-  document.body.classList.remove('sidebar-pinada');
-  document.body.style.overflow = '';
   document.getElementById('login-nome').value  = '';
   document.getElementById('login-senha').value = '';
   document.getElementById('login-erro').classList.add('hidden');
@@ -772,24 +888,7 @@ async function carregarCEO() {
 }
 
 function renderizarStatsCEO(festas) {
-  const c = s => festas.filter(f => f.status === s).length;
-  const cores  = { agendada:'#0284C7', separando:'#D97706', conferencia:'#1D4ED8', festa:'#7C3AED', retorno:'#DC2626', galpao:'#78716C', concluida:'#166534' };
-  const nomes  = { agendada:'Agendadas', separando:'Separando', conferencia:'Conferência', festa:'Em Festa', retorno:'Retorno', galpao:'Galpão', concluida:'Concluídas' };
-  const status = ['agendada','separando','conferencia','festa','retorno','galpao','concluida'];
-
-  /* Stats agora ficam no sidebar */
-  const sidebarStats = document.getElementById('sidebar-stats');
-  if (sidebarStats) {
-    sidebarStats.innerHTML = status.map(s => `
-      <div class="sidebar-stat">
-        <div class="sidebar-stat-num" style="color:${cores[s]}">${c(s)}</div>
-        <div class="sidebar-stat-label">${nomes[s]}</div>
-      </div>
-    `).join('');
-  }
-
   renderizarTiraData(festas);
-  renderizarSidebarAgenda(festas);
   renderizarAlertaHoje(festas, 'alerta-hoje-ceo');
 }
 
@@ -921,7 +1020,7 @@ function renderizarAgendaStripCEO(festas) {
 
     return `
       <button class="agenda-card${isHj ? ' agenda-card-hoje' : ''}"
-        onclick="navegarSidebar(); filtrarPorData('${d}', null)">
+        onclick="filtrarPorData('${d}', null)">
         <div class="agenda-card-dia">${num}</div>
         <div class="agenda-card-mes">${mes}</div>
         <div class="agenda-card-sem">${sem}</div>
@@ -2258,7 +2357,7 @@ async function abrirCriarFesta() {
     { nome: 'Guardanapos',        qtd: 200, un: 'un' },
   ].forEach(p => addItemCriar(p));
 
-  historico = ['tela-ceo', 'tela-lista-festas'];
+  historico = ['tela-inicial', 'tela-ceo', 'tela-lista-festas'];
   mostrarTela('tela-criar', 'Nova Festa');
 }
 
@@ -2691,7 +2790,7 @@ async function avancarParaRetorno(id) {
 const ROLE_LABELS = { colaborador: 'Colaborador', coordenador: 'Coordenador', ceo: 'CEO / Administrador' };
 
 function abrirUsuarios() {
-  historico = ['tela-ceo', 'tela-lista-festas'];
+  historico = ['tela-inicial', 'tela-ceo', 'tela-lista-festas'];
   mostrarTela('tela-usuarios', 'Usuários');
   carregarUsuarios();
 }
@@ -3196,127 +3295,6 @@ function toast(msg, tipo = '') {
   el.classList.remove('hidden');
   clearTimeout(_toastTimer);
   _toastTimer = setTimeout(() => el.classList.add('hidden'), 3500);
-}
-
-/* ══════════════════════════════════════════════════
-   SIDEBAR
-══════════════════════════════════════════════════ */
-
-function initSidebarPin() {
-  sidebarPinada = localStorage.getItem('rc_sidebar_pinada') === '1';
-  const sb     = document.getElementById('sidebar');
-  const btnPin = document.getElementById('btn-pin-sidebar');
-  if (sidebarPinada) {
-    sb.classList.add('aberto', 'pinada');
-    document.body.classList.add('sidebar-pinada');
-    if (btnPin) btnPin.classList.add('ativo');
-  } else {
-    sb.classList.remove('pinada');
-    document.body.classList.remove('sidebar-pinada');
-    if (btnPin) btnPin.classList.remove('ativo');
-  }
-}
-
-function abrirSidebar() {
-  const sb = document.getElementById('sidebar');
-  const ov = document.getElementById('sidebar-overlay');
-  sb.classList.add('aberto');
-  if (!sidebarPinada) {
-    ov.classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
-  }
-}
-
-function fecharSidebar(forca) {
-  if (sidebarPinada && !forca) return;
-  if (forca && sidebarPinada) {
-    /* Botão X: desafixar também */
-    sidebarPinada = false;
-    localStorage.setItem('rc_sidebar_pinada', '0');
-    document.body.classList.remove('sidebar-pinada');
-    const btn = document.getElementById('btn-pin-sidebar');
-    if (btn) btn.classList.remove('ativo');
-    document.getElementById('sidebar').classList.remove('pinada');
-  }
-  document.getElementById('sidebar').classList.remove('aberto');
-  document.getElementById('sidebar-overlay').classList.add('hidden');
-  document.body.style.overflow = '';
-}
-
-function togglePinSidebar() {
-  sidebarPinada = !sidebarPinada;
-  localStorage.setItem('rc_sidebar_pinada', sidebarPinada ? '1' : '0');
-  const sb  = document.getElementById('sidebar');
-  const ov  = document.getElementById('sidebar-overlay');
-  const btn = document.getElementById('btn-pin-sidebar');
-  if (sidebarPinada) {
-    sb.classList.add('pinada');
-    ov.classList.add('hidden');
-    document.body.classList.add('sidebar-pinada');
-    document.body.style.overflow = '';
-    if (btn) btn.classList.add('ativo');
-  } else {
-    sb.classList.remove('pinada');
-    document.body.classList.remove('sidebar-pinada');
-    if (btn) btn.classList.remove('ativo');
-  }
-}
-
-function navegarSidebar() {
-  if (!sidebarPinada) fecharSidebar();
-}
-
-function toggleSidebarSecao(id) {
-  const corpo = document.getElementById(id);
-  if (!corpo) return;
-  const label = corpo.previousElementSibling;
-  const seta  = label?.querySelector('.sb-seta');
-  const collapsed = corpo.classList.toggle('sb-collapsed');
-  if (seta) seta.innerHTML = collapsed ? '&#9658;' : '&#9660;';
-}
-
-function renderizarSidebarAgenda(festas) {
-  const el = document.getElementById('sidebar-agenda');
-  if (!el) return;
-
-  const contagemPorDia = {};
-  festas.forEach(f => {
-    const key = normalizarData(f.data);
-    if (key) contagemPorDia[key] = (contagemPorDia[key] || 0) + 1;
-  });
-
-  const dias = Object.keys(contagemPorDia).sort();
-  const MESES     = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const DIAS_SEM  = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-
-  el.innerHTML = `
-    <button class="sidebar-data-btn todas"
-      onclick="navegarSidebar(); filtrarPorData(null, null)">Ver Todas as Festas</button>
-    ${dias.map(d => {
-      const dt  = new Date(d + 'T12:00:00');
-      const num = String(dt.getDate()).padStart(2,'0');
-      const mes = MESES[dt.getMonth()];
-      const sem = DIAS_SEM[dt.getDay()];
-      const qtd = contagemPorDia[d];
-      return `
-        <button class="sidebar-data-btn"
-          onclick="navegarSidebar(); filtrarPorData('${d}', null)">
-          <span class="sidebar-data-dia">${num}</span>
-          <span class="sidebar-data-info">
-            <span class="sidebar-data-texto">${sem}, ${num} ${mes}</span>
-            <span class="sidebar-data-qtd">${qtd} festa${qtd !== 1 ? 's' : ''}</span>
-          </span>
-        </button>
-      `;
-    }).join('')}
-  `;
-}
-
-/* Atalho "Novo Usuário" pela sidebar: garante navegação correta após salvar */
-function abrirSidebarNovoUsuario() {
-  navegarSidebar();
-  historico = ['tela-ceo', 'tela-lista-festas', 'tela-usuarios'];
-  abrirFormUsuario();
 }
 
 /* ══════════════════════════════════════════════════
@@ -4282,7 +4260,6 @@ async function confirmarCompra() {
 ══════════════════════════════════════════════════ */
 
 async function abrirCadastroItens(aba) {
-  navegarSidebar();
   historico.push('tela-cadastro-itens');
   mostrarTela('tela-cadastro-itens', 'Cadastro');
   _buscaCadastro = '';
@@ -4952,7 +4929,6 @@ let _lcFornecimento = 'todos';    /* 'todos' | 'romero' | 'consignado' | 'client
 let _lcSecaoAtual = 'evento'; /* 'evento' | 'alertas' | 'pedidos' */
 
 async function abrirListaCompras(secao) {
-  navegarSidebar();
   historico.push('tela-lista-compras');
   mostrarTela('tela-lista-compras', 'Compras & Lista');
 
@@ -5467,7 +5443,6 @@ let relPeriodoMes = new Date().getMonth();
 let abaRelAtual   = 'item';
 
 async function abrirRelatorio() {
-  navegarSidebar();
   historico.push('tela-relatorio');
   mostrarTela('tela-relatorio', 'Relatório por Período');
   relPeriodoAno = new Date().getFullYear();

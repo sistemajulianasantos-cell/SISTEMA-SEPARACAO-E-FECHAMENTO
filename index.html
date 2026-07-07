@@ -23,8 +23,8 @@
         </div>
       </div>
       <div class="header-right">
-        <button id="btn-menu" class="btn-menu hidden" onclick="abrirSidebar()">
-          &#9776;<span id="menu-badge" class="menu-badge hidden"></span>
+        <button id="btn-inicio" class="btn-inicio hidden" onclick="irParaPrincipal()" title="Início">
+          &#127968;<span id="menu-badge" class="menu-badge hidden"></span>
         </button>
         <span id="header-usuario" class="header-usuario"></span>
         <button class="btn-sair" onclick="logout()">Sair</button>
@@ -32,69 +32,12 @@
     </div>
   </header>
 
-  <!-- SIDEBAR OVERLAY -->
-  <div id="sidebar-overlay" class="sidebar-overlay hidden" onclick="fecharSidebar()"></div>
-
-  <!-- SIDEBAR (esquerdo) -->
-  <aside id="sidebar" class="sidebar">
-    <div class="sidebar-topo">
-      <span class="sidebar-logo">Romero Coquetéis</span>
-      <div class="sidebar-topo-acoes">
-        <button id="btn-pin-sidebar" class="sidebar-pin" onclick="togglePinSidebar()" title="Fixar menu aberto">&#128204;</button>
-        <button class="sidebar-close" onclick="fecharSidebar(true)">&#10005;</button>
-      </div>
+  <!-- ══════════ TELA: INÍCIO (HUB DE CARDS) ══════════ -->
+  <div id="tela-inicial" class="tela hidden">
+    <div class="container">
+      <div id="inicio-conteudo"></div>
     </div>
-    <nav class="sidebar-corpo">
-
-      <!-- Ação rápida -->
-      <div class="sidebar-secao sidebar-secao-topo">
-        <button class="sidebar-btn sidebar-btn-primario" onclick="navegarSidebar(); abrirCriarFesta()">&#43; Nova Festa</button>
-      </div>
-
-      <!-- Agenda -->
-      <div class="sidebar-secao">
-        <div class="sidebar-secao-label">Agenda</div>
-        <div id="sidebar-agenda" class="sidebar-agenda-lista"></div>
-      </div>
-
-      <!-- Estoque & Compras -->
-      <div class="sidebar-secao">
-        <div class="sidebar-secao-label sidebar-secao-toggle" onclick="toggleSidebarSecao('sb-estoque')">
-          Estoque &amp; Compras <span class="sb-seta">&#9660;</span>
-        </div>
-        <div id="sb-estoque" class="sidebar-secao-corpo">
-          <button class="sidebar-btn sidebar-btn-destaque" onclick="navegarSidebar(); abrirEstoque()">Controle de Estoque</button>
-          <button class="sidebar-btn sidebar-btn-compras" onclick="navegarSidebar(); abrirListaCompras()">&#128722; Compras &amp; Lista <span id="badge-compras" class="sidebar-badge hidden"></span></button>
-        </div>
-      </div>
-
-      <!-- Relatórios -->
-      <div class="sidebar-secao">
-        <div class="sidebar-secao-label sidebar-secao-toggle" onclick="toggleSidebarSecao('sb-relatorios')">
-          Relatórios <span class="sb-seta">&#9660;</span>
-        </div>
-        <div id="sb-relatorios" class="sidebar-secao-corpo">
-          <button class="sidebar-btn" onclick="navegarSidebar(); abrirRelatorio()">Relatório por Período</button>
-          <button class="sidebar-btn sidebar-btn-analise" onclick="navegarSidebar(); abrirAnalise()">Análise de Desempenho</button>
-        </div>
-      </div>
-
-      <!-- Cadastro -->
-      <div class="sidebar-secao">
-        <div class="sidebar-secao-label sidebar-secao-toggle" onclick="toggleSidebarSecao('sb-cadastro')">
-          Cadastro <span class="sb-seta">&#9660;</span>
-        </div>
-        <div id="sb-cadastro" class="sidebar-secao-corpo">
-          <button class="sidebar-btn" onclick="navegarSidebar(); abrirCadastroItens()">Itens &amp; Categorias</button>
-          <button class="sidebar-btn" onclick="navegarSidebar(); abrirUsuarios()">Usuários</button>
-        </div>
-      </div>
-
-      <!-- Stats rápidos -->
-      <div id="sidebar-stats" class="sidebar-stats"></div>
-
-    </nav>
-  </aside>
+  </div>
 
   <!-- ══════════ TELA: SELEÇÃO DE PAPEL ══════════ -->
   <div id="tela-roles" class="tela hidden">
@@ -461,9 +404,9 @@
     <div class="container">
       <h2 class="titulo-tela">Painel do Coordenador</h2>
       <div class="filtros-tabs">
-        <button class="tab ativo" onclick="filtrarCoord('conferencia',this)">Conferência</button>
-        <button class="tab"       onclick="filtrarCoord('retorno',this)">Retorno</button>
-        <button class="tab"       onclick="filtrarCoord('galpao',this)">Galpão</button>
+        <button class="tab ativo" data-status="conferencia" onclick="filtrarCoord('conferencia',this)">Conferência</button>
+        <button class="tab"       data-status="retorno"     onclick="filtrarCoord('retorno',this)">Retorno</button>
+        <button class="tab"       data-status="galpao"      onclick="filtrarCoord('galpao',this)">Galpão</button>
       </div>
       <div id="coord-lista" class="lista-festas"></div>
     </div>
