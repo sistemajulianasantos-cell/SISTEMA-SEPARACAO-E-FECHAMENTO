@@ -1188,6 +1188,58 @@ input, select, textarea { font-size: 16px !important; }
   padding: 0 5px;
 }
 
+/* ══ AGENDA — CARDS DE MÊS E DE DATA ══════════════════ */
+.agenda-ver-todas {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: none; border: none; padding: 16px 0 4px;
+  color: var(--roxo); font-size: 14px; font-weight: 700;
+  cursor: pointer;
+}
+.agenda-ver-todas:hover { text-decoration: underline; }
+
+.agenda-meses-grid, .agenda-datas-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr);
+  gap: 12px; margin-top: 10px;
+}
+.agenda-mes-card, .agenda-data-card {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 4px;
+  padding: 20px 10px;
+  border-radius: var(--raio);
+  border: var(--borda);
+  background: var(--branco);
+  cursor: pointer;
+  text-align: center;
+  transition: all .15s;
+}
+.agenda-mes-card:hover, .agenda-data-card:hover { background: var(--cinza-50); border-color: var(--roxo); }
+.agenda-mes-card.atual, .agenda-data-card.hoje { background: var(--roxo); border-color: var(--roxo); }
+.agenda-mes-card.atual .agenda-mes-nome, .agenda-mes-card.atual .agenda-mes-ano, .agenda-mes-card.atual .agenda-mes-qtd,
+.agenda-data-card.hoje .agenda-data-dia, .agenda-data-card.hoje .agenda-data-mes, .agenda-data-card.hoje .agenda-data-sem {
+  color: var(--branco);
+}
+
+.agenda-mes-nome { font-size: 16px; font-weight: 800; color: var(--cinza-900); }
+.agenda-mes-ano  { font-size: 12px; color: var(--cinza-400); }
+.agenda-mes-qtd  {
+  font-size: 11px; font-weight: 700; color: var(--roxo);
+  background: #F9F5F0; border-radius: 10px; padding: 2px 9px; margin-top: 4px;
+}
+.agenda-mes-card.atual .agenda-mes-qtd { background: rgba(255,255,255,.2); color: var(--branco); }
+
+.agenda-data-dia  { font-size: 24px; font-weight: 900; color: var(--roxo-escuro); line-height: 1; }
+.agenda-data-mes  { font-size: 11px; font-weight: 700; color: var(--cinza-500); text-transform: uppercase; }
+.agenda-data-sem  { font-size: 11px; color: var(--cinza-400); }
+.agenda-data-qtd  {
+  font-size: 11px; font-weight: 700; color: var(--roxo);
+  background: #F9F5F0; border-radius: 10px; padding: 2px 9px; margin-top: 4px;
+}
+.agenda-data-card.hoje .agenda-data-qtd { background: rgba(255,255,255,.2); color: var(--branco); }
+.agenda-data-hoje-label {
+  font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px;
+  margin-top: 2px; color: #FFD700;
+}
+
 /* ══ AGENDA STRIP (cards de festa no topo do home CEO) ═ */
 .producao-agenda-wrap {
   background: var(--roxo); padding: 12px 0 12px 16px;

@@ -523,6 +523,8 @@ function goBack() {
       if (anterior === 'tela-usuarios')             carregarUsuarios();
       if (anterior === 'tela-historico-contagem')   abrirHistoricoContagem();
       if (anterior === 'tela-inicial')              renderizarInicio(papelAtual());
+      if (anterior === 'tela-agenda-meses')         renderizarAgendaMeses();
+      if (anterior === 'tela-agenda-datas')         renderizarAgendaDatas(_agendaMesSelecionado);
     }
   } else {
     irParaPrincipal();
@@ -654,12 +656,114 @@ function irInicioProducao() {
 }
 
 function irInicioAgenda() {
+  historico = ['tela-inicial'];
+  navegar('tela-agenda-meses', 'Agenda');
+  if (!unsubFestas) carregarCEO();
+  renderizarAgendaMeses();
+}
+
+function irAgendaTodas() {
   filtroData     = null;
   filtroAtualCEO = 'todas';
   document.querySelectorAll('#ceo-tabs .tab').forEach(b => b.classList.remove('ativo'));
   const todasTab = document.querySelector('#ceo-tabs .tab[data-filtro="todas"]');
   if (todasTab) todasTab.classList.add('ativo');
-  historico = ['tela-inicial', 'tela-ceo'];
+  navegar('tela-lista-festas', subtituloListaFestas());
+  if (!unsubFestas) carregarCEO(); else atualizarVisaoCEO();
+}
+
+let _agendaMesSelecionado = null;
+const MESES_NOME_COMPLETO = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+function renderizarAgendaMeses() {
+  const el = document.getElementById('agenda-meses-conteudo');
+  if (!el) return;
+
+  const porMes = {};
+  todasFestasCache.forEach(f => {
+    const key = normalizarData(f.data);
+    if (!key) return;
+    const mesKey = key.slice(0, 7);
+    porMes[mesKey] = (porMes[mesKey] || 0) + 1;
+  });
+
+  const meses   = Object.keys(porMes).sort();
+  const hojeMes = normalizarData(new Date()).slice(0, 7);
+
+  if (!meses.length) {
+    el.innerHTML = estadoVazio('Nenhuma festa cadastrada.');
+    return;
+  }
+
+  el.innerHTML = meses.map(m => {
+    const [ano, mesNum] = m.split('-');
+    const nome  = MESES_NOME_COMPLETO[parseInt(mesNum, 10) - 1];
+    const qtd   = porMes[m];
+    const atual = m === hojeMes;
+    return `
+      <div class="agenda-mes-card${atual ? ' atual' : ''}" onclick="abrirAgendaMes('${m}')">
+        <div class="agenda-mes-nome">${nome}</div>
+        <div class="agenda-mes-ano">${ano}</div>
+        <div class="agenda-mes-qtd">${qtd} festa${qtd !== 1 ? 's' : ''}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function abrirAgendaMes(mesKey) {
+  _agendaMesSelecionado = mesKey;
+  const [ano, mesNum] = mesKey.split('-');
+  const subtitulo = `${MESES_NOME_COMPLETO[parseInt(mesNum, 10) - 1]} ${ano}`;
+  navegar('tela-agenda-datas', subtitulo);
+  renderizarAgendaDatas(mesKey);
+}
+
+function renderizarAgendaDatas(mesKey) {
+  const el = document.getElementById('agenda-datas-conteudo');
+  if (!el || !mesKey) return;
+
+  const porDia = {};
+  todasFestasCache.forEach(f => {
+    const key = normalizarData(f.data);
+    if (!key || !key.startsWith(mesKey)) return;
+    porDia[key] = (porDia[key] || 0) + 1;
+  });
+
+  const dias     = Object.keys(porDia).sort();
+  const hojeKey  = normalizarData(new Date());
+  const MESES    = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const DIAS_SEM = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+  if (!dias.length) {
+    el.innerHTML = estadoVazio('Nenhuma festa neste mês.');
+    return;
+  }
+
+  el.innerHTML = dias.map(d => {
+    const dt   = new Date(d + 'T12:00:00');
+    const num  = String(dt.getDate()).padStart(2, '0');
+    const mes  = MESES[dt.getMonth()];
+    const sem  = DIAS_SEM[dt.getDay()];
+    const qtd  = porDia[d];
+    const isHj = d === hojeKey;
+    return `
+      <div class="agenda-data-card${isHj ? ' hoje' : ''}" onclick="abrirDataAgenda('${d}')">
+        <div class="agenda-data-dia">${num}</div>
+        <div class="agenda-data-mes">${mes}</div>
+        <div class="agenda-data-sem">${sem}</div>
+        <div class="agenda-data-qtd">${qtd} festa${qtd !== 1 ? 's' : ''}</div>
+        ${isHj ? '<div class="agenda-data-hoje-label">Hoje</div>' : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function abrirDataAgenda(dia) {
+  filtroData     = dia;
+  filtroAtualCEO = 'todas';
+  document.querySelectorAll('#ceo-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  const todasTab = document.querySelector('#ceo-tabs .tab[data-filtro="todas"]');
+  if (todasTab) todasTab.classList.add('ativo');
   navegar('tela-lista-festas', subtituloListaFestas());
   if (!unsubFestas) carregarCEO(); else atualizarVisaoCEO();
 }
@@ -883,6 +987,8 @@ async function carregarCEO() {
     renderizarAgendaStripCEO(festas);
     renderizarProducaoCEO();
     atualizarBadgeCompras();
+    if (!document.getElementById('tela-agenda-meses').classList.contains('hidden')) renderizarAgendaMeses();
+    if (!document.getElementById('tela-agenda-datas').classList.contains('hidden')) renderizarAgendaDatas(_agendaMesSelecionado);
   });
 }
 

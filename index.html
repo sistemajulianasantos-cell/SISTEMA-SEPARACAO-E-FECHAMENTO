@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#2B3B2A">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=23">
+  <link rel="stylesheet" href="css/styles.css?v=24">
 </head>
 <body>
 
@@ -197,6 +197,21 @@
           oninput="filtrarFestas(this.value)" />
       </div>
       <div id="ceo-lista" class="lista-festas"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: AGENDA — MESES ══════════ -->
+  <div id="tela-agenda-meses" class="tela hidden">
+    <div class="container">
+      <button class="agenda-ver-todas" onclick="irAgendaTodas()">Ver Todas as Festas &#8250;</button>
+      <div id="agenda-meses-conteudo" class="agenda-meses-grid"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: AGENDA — DATAS DO MÊS ══════════ -->
+  <div id="tela-agenda-datas" class="tela hidden">
+    <div class="container">
+      <div id="agenda-datas-conteudo" class="agenda-datas-grid"></div>
     </div>
   </div>
 
@@ -1094,7 +1109,7 @@
 
   <script src="js/config.js"></script>
   <script src="js/firestore.js?v=34"></script>
-  <script src="js/app.js?v=36"></script>
+  <script src="js/app.js?v=37"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->
