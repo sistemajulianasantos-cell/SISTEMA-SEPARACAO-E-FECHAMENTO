@@ -339,17 +339,27 @@ async function deletarCompraDB(id) {
 }
 
 /* ════════════════════════════════════════
-   STORAGE — fotos
+   CLOUDINARY — fotos
 ════════════════════════════════════════ */
 
 async function uploadFotos(files, festaId, tipo) {
   const validos = files.filter(Boolean);
   const urls = [];
   for (const file of validos) {
-    const caminho = `festas/${festaId}/${tipo}/${Date.now()}_${file.name}`;
-    const ref = storage.ref(caminho);
-    await ref.put(file);
-    urls.push(await ref.getDownloadURL());
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+    formData.append('folder', `festas/${festaId}/${tipo}`);
+
+    const resp = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.secure_url) {
+      throw new Error(data.error?.message || 'Falha no upload da foto');
+    }
+    urls.push(data.secure_url);
   }
   return urls;
 }
