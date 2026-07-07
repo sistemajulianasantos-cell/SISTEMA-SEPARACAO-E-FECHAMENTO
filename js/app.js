@@ -426,6 +426,8 @@ function _tvRenderAgenda(agendadasHoje, proximas, hojeKey) {
 ══════════════════════════════════════════════════ */
 
 document.addEventListener('DOMContentLoaded', async () => {
+  await authReady;
+
   /* Restaurar credenciais salvas */
   const savedNome  = localStorage.getItem('rc_nome');
   const savedSenha = localStorage.getItem('rc_senha');
