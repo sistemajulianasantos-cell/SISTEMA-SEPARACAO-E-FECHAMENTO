@@ -10,7 +10,7 @@ firebase.initializeApp(firebaseConfig);
 
 /* App Check (reCAPTCHA v3). Cole sua site key do console → App Check.
    Enquanto estiver vazia, não ativa nada (app segue normal). */
-const APPCHECK_SITE_KEY = '';   // ex.: '6Lc_xxxxxxxxxxxxxxxxxxxx'
+const APPCHECK_SITE_KEY = '6Ldz808tAAAAAH2Nn62Ot8ilQ5PohvU-RzgpBBde';   // ex.: '6Lc_xxxxxxxxxxxxxxxxxxxx'
 if (APPCHECK_SITE_KEY) {
   firebase.appCheck().activate(APPCHECK_SITE_KEY, /* autoRefresh */ true);
 }
