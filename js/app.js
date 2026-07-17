@@ -971,6 +971,60 @@ function logout() {
 }
 
 /* ══════════════════════════════════════════════════
+   TROCAR SENHA (autoatendimento)
+══════════════════════════════════════════════════ */
+
+function abrirModalTrocarSenha() {
+  if (!usuarioAtual) return;
+  document.getElementById('ts-senha-atual').value    = '';
+  document.getElementById('ts-senha-nova').value      = '';
+  document.getElementById('ts-senha-confirma').value  = '';
+  document.getElementById('ts-erro').classList.add('hidden');
+  document.getElementById('modal-trocar-senha').classList.remove('hidden');
+}
+
+function fecharModalTrocarSenha() {
+  document.getElementById('modal-trocar-senha').classList.add('hidden');
+}
+
+async function confirmarTrocarSenha() {
+  const atual    = document.getElementById('ts-senha-atual').value;
+  const nova     = document.getElementById('ts-senha-nova').value;
+  const confirma = document.getElementById('ts-senha-confirma').value;
+  const erro     = document.getElementById('ts-erro');
+  const btn      = document.getElementById('btn-ts-salvar');
+
+  const mostrarErro = msg => { erro.textContent = msg; erro.classList.remove('hidden'); };
+  erro.classList.add('hidden');
+
+  if (!atual || !nova)     return mostrarErro('Preencha todos os campos.');
+  if (nova.length < 4)     return mostrarErro('A nova senha deve ter ao menos 4 caracteres.');
+  if (nova !== confirma)   return mostrarErro('As senhas não coincidem.');
+
+  btn.disabled    = true;
+  btn.textContent = 'Salvando...';
+
+  try {
+    await trocarSenhaUsuarioAtual(atual, nova);
+    fecharModalTrocarSenha();
+    toast('Senha alterada com sucesso.', 'sucesso');
+  } catch (e) {
+    const CODIGOS_SENHA_ATUAL_INCORRETA = [
+      'auth/wrong-password', 'auth/invalid-credential', 'auth/invalid-login-credentials',
+    ];
+    if (CODIGOS_SENHA_ATUAL_INCORRETA.includes(e.code)) {
+      mostrarErro('Senha atual incorreta.');
+    } else {
+      console.error(e);
+      mostrarErro('Erro ao trocar senha. Tente novamente.');
+    }
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Salvar nova senha';
+  }
+}
+
+/* ══════════════════════════════════════════════════
    CEO — DASHBOARD
 ══════════════════════════════════════════════════ */
 

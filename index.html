@@ -46,6 +46,7 @@
           &#127968;<span id="menu-badge" class="menu-badge hidden"></span>
         </button>
         <span id="header-usuario" class="header-usuario"></span>
+        <button class="btn-sair" onclick="abrirModalTrocarSenha()" title="Trocar minha senha">&#128273;</button>
         <button class="btn-sair" onclick="logout()">Sair</button>
       </div>
     </div>
@@ -1079,6 +1080,30 @@
       <div class="rodape-form" style="margin-top:16px">
         <button class="btn-secundario" onclick="fecharModalSolicitarCompra()">Cancelar</button>
         <button class="btn-primario"   onclick="confirmarSolicitacaoCompra()">Solicitar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: TROCAR SENHA -->
+  <div id="modal-trocar-senha" class="modal-overlay hidden" onclick="fecharModalTrocarSenha()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-titulo">Trocar minha senha</div>
+      <div class="form-group" style="margin-top:16px">
+        <label>Senha atual</label>
+        <input type="password" id="ts-senha-atual" style="width:100%" autocomplete="current-password">
+      </div>
+      <div class="form-group">
+        <label>Nova senha</label>
+        <input type="password" id="ts-senha-nova" style="width:100%" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label>Confirmar nova senha</label>
+        <input type="password" id="ts-senha-confirma" style="width:100%" autocomplete="new-password">
+      </div>
+      <div id="ts-erro" class="msg-erro hidden"></div>
+      <div class="rodape-form" style="margin-top:16px">
+        <button class="btn-secundario" onclick="fecharModalTrocarSenha()">Cancelar</button>
+        <button class="btn-primario" id="btn-ts-salvar" onclick="confirmarTrocarSenha()">Salvar nova senha</button>
       </div>
     </div>
   </div>

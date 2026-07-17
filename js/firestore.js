@@ -176,8 +176,22 @@ async function migrarUsuarioLegado(usuarioLegado, senha) {
   };
   await db.collection('usuarios').doc(uid).set(dados);
   await db.collection('usuarios').doc(usuarioLegado.id).delete();
-
   return { id: uid, ...dados };
+}
+
+/* Troca a senha do usuário atualmente logado. Reautentica com a senha
+   atual antes (o Firebase exige login "recente" para trocar senha, e
+   isso já serve para validar que a senha atual está correta). Como não
+   há e-mail real nem backend, esta é a única forma de redefinição de
+   senha disponível hoje — quem esquecer a senha precisa que o CEO
+   cadastre um usuário novo. */
+async function trocarSenhaUsuarioAtual(senhaAtual, novaSenha) {
+  const user = firebase.auth().currentUser;
+  if (!user || !user.email) throw new Error('Sem sessão ativa.');
+
+  const cred = firebase.auth.EmailAuthProvider.credential(user.email, senhaAtual);
+  await user.reauthenticateWithCredential(cred);
+  await user.updatePassword(novaSenha);
 }
 
 async function listarUsuarios() {
