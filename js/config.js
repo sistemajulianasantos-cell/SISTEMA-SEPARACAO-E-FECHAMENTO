@@ -19,11 +19,13 @@ const db = firebase.firestore();
 
 db.settings({ ignoreUndefinedProperties: true });
 
-/* Autenticação anônima: exige que o cliente passe pelo Firebase Auth
-   antes de poder ler/escrever no banco (as regras do Firestore passam
-   a checar request.auth != null). Sem isso, request.auth nunca é
-   preenchido e não há como as regras distinguirem o app de um acesso
-   direto à API. */
+/* Sessão anônima inicial: usada SOMENTE para (a) a checagem de "existe
+   algum usuário cadastrado?" na tela de setup e (b) localizar, durante o
+   login, uma conta antiga ainda não migrada para o Firebase Authentication
+   (ver js/firestore.js). Ela NÃO dá acesso a dados de negócio — as regras
+   do Firestore (firestore.rules) exigem uma conta real (não anônima) para
+   ler/escrever festas, estoque, compras etc. Ao fazer login, essa sessão
+   anônima é substituída pela sessão real do usuário. */
 const authReady = firebase.auth().signInAnonymously()
   .catch(e => console.error('Erro na autenticação anônima:', e));
 

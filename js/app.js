@@ -209,9 +209,9 @@ function _tvRenderSeparando(separando) {
 
     return `
       <div class="tv-festa-card">
-        <div class="tv-festa-nome">${f.nome}</div>
-        <div class="tv-festa-meta">${f.cliente}${f.hora ? ' · ' + f.hora : ''}</div>
-        ${f.colaborador ? `<div><span class="tv-separador-badge">👤 ${f.colaborador}</span></div>` : ''}
+        <div class="tv-festa-nome">${_escHtml(f.nome)}</div>
+        <div class="tv-festa-meta">${_escHtml(f.cliente)}${f.hora ? ' · ' + _escHtml(f.hora) : ''}</div>
+        ${f.colaborador ? `<div><span class="tv-separador-badge">👤 ${_escHtml(f.colaborador)}</span></div>` : ''}
         <div class="tv-progresso-barra-wrap">
           <div class="tv-progresso-barra${completo ? ' completo' : ''}" style="width:${pct}%"></div>
         </div>
@@ -219,7 +219,7 @@ function _tvRenderSeparando(separando) {
         ${pendentes.length > 0 ? `
           <div class="tv-pendentes-titulo">Pendentes (${pendentes.length}):</div>
           <ul class="tv-pendentes-lista">
-            ${mostrar.map(it => `<li>${nomeBasDisplay(it.nome)} — ${it.qtdNecessaria} ${it.unidade || 'un'}</li>`).join('')}
+            ${mostrar.map(it => `<li>${_escHtml(nomeBasDisplay(it.nome))} — ${it.qtdNecessaria} ${_escHtml(it.unidade || 'un')}</li>`).join('')}
             ${resto > 0 ? `<li style="color:#475569;font-size:11px">... e mais ${resto} itens</li>` : ''}
           </ul>
         ` : `<div class="tv-tudo-separado">✓ Todos os itens separados!</div>`}
@@ -278,10 +278,10 @@ function _tvRenderProducao(producao) {
       return `
         <div class="tv-prod-item tv-prod-aguardando">
           <div class="tv-prod-item-topo">
-            <div class="tv-prod-nome">${p.nome}</div>
+            <div class="tv-prod-nome">${_escHtml(p.nome)}</div>
             <div style="text-align:right">
               <div class="tv-prod-falta-num" style="color:#1d4ed8">${compra.qtdSolicitada}</div>
-              <div class="tv-prod-falta-label" style="color:#1d4ed8">${p.unidade} a chegar</div>
+              <div class="tv-prod-falta-label" style="color:#1d4ed8">${_escHtml(p.unidade)} a chegar</div>
             </div>
           </div>
           <div class="tv-prod-detalhe">Estoque: ${p.qtdEst} &nbsp;|&nbsp; Falta: ${p.falta}</div>
@@ -295,10 +295,10 @@ function _tvRenderProducao(producao) {
       return `
         <div class="tv-prod-item tv-prod-falta">
           <div class="tv-prod-item-topo">
-            <div class="tv-prod-nome">${p.nome}</div>
+            <div class="tv-prod-nome">${_escHtml(p.nome)}</div>
             <div style="text-align:right">
               <div class="tv-prod-falta-num">${p.falta}</div>
-              <div class="tv-prod-falta-label">${p.unidade} falta</div>
+              <div class="tv-prod-falta-label">${_escHtml(p.unidade)} falta</div>
             </div>
           </div>
           <div class="tv-prod-detalhe">Estoque: ${p.qtdEst}</div>
@@ -310,7 +310,7 @@ function _tvRenderProducao(producao) {
     return `
       <div class="tv-prod-item">
         <div class="tv-prod-item-topo">
-          <div class="tv-prod-nome">${p.nome}</div>
+          <div class="tv-prod-nome">${_escHtml(p.nome)}</div>
           <div style="text-align:right">
             <div class="tv-prod-qty">${p.total}</div>
             <div class="tv-prod-ok-label">✓ ok</div>
@@ -324,7 +324,7 @@ function _tvRenderProducao(producao) {
   const ordemGrupos = Object.keys(grupos).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   el.innerHTML = ordemGrupos.map(g => `
     <div class="tv-prod-grupo">
-      <div class="tv-prod-grupo-header">${g}</div>
+      <div class="tv-prod-grupo-header">${_escHtml(g)}</div>
       ${grupos[g].map(renderItem).join('')}
     </div>
   `).join('');
@@ -354,20 +354,20 @@ function _tvRenderEstoque(producao) {
     if (p.falta > 0) {
       return `
         <div class="tv-est-item">
-          <div class="tv-est-nome">${p.nome}</div>
+          <div class="tv-est-nome">${_escHtml(p.nome)}</div>
           <div class="tv-est-nums">
             <span>Pedido: <strong>${p.total}</strong></span>
             <span>Estoque: <strong>${p.qtdEst}</strong></span>
           </div>
           <div style="display:flex;align-items:baseline;gap:4px">
             <div class="tv-est-produzir">${p.falta}</div>
-            <div class="tv-est-produzir-label">${p.unidade} a produzir</div>
+            <div class="tv-est-produzir-label">${_escHtml(p.unidade)} a produzir</div>
           </div>
         </div>`;
     }
     return `
       <div class="tv-est-item" style="border-left-color:#15803d;background:#F0FDF4">
-        <div class="tv-est-nome">${p.nome}</div>
+        <div class="tv-est-nome">${_escHtml(p.nome)}</div>
         <div class="tv-est-nums">
           <span>Pedido: <strong>${p.total}</strong></span>
           <span>Estoque: <strong>${p.qtdEst}</strong></span>
@@ -392,9 +392,9 @@ function _tvRenderAgenda(agendadasHoje, proximas, hojeKey) {
       const total = (f.itens || []).filter(it => deveExibirNaSeparacao(it)).length;
       return `
         <div class="tv-agenda-item hoje">
-          <span class="tv-agenda-badge hoje">HOJE${f.hora ? ' · ' + f.hora : ''}</span>
-          <div class="tv-agenda-nome">${f.nome}</div>
-          <div class="tv-agenda-meta">${f.cliente} · ${total} itens</div>
+          <span class="tv-agenda-badge hoje">HOJE${f.hora ? ' · ' + _escHtml(f.hora) : ''}</span>
+          <div class="tv-agenda-nome">${_escHtml(f.nome)}</div>
+          <div class="tv-agenda-meta">${_escHtml(f.cliente)} · ${total} itens</div>
         </div>
       `;
     }).join('');
@@ -410,8 +410,8 @@ function _tvRenderAgenda(agendadasHoje, proximas, hojeKey) {
       return `
         <div class="tv-agenda-item">
           <span class="tv-agenda-badge ${isAmanha ? 'amanha' : 'futuro'}">${isAmanha ? 'AMANHÃ' : formatarData(f.data)}</span>
-          <div class="tv-agenda-nome">${f.nome}</div>
-          <div class="tv-agenda-meta">${f.cliente}${f.hora ? ' · ' + f.hora : ''}</div>
+          <div class="tv-agenda-nome">${_escHtml(f.nome)}</div>
+          <div class="tv-agenda-meta">${_escHtml(f.cliente)}${f.hora ? ' · ' + _escHtml(f.hora) : ''}</div>
         </div>
       `;
     }).join('');
@@ -428,12 +428,13 @@ function _tvRenderAgenda(agendadasHoje, proximas, hojeKey) {
 document.addEventListener('DOMContentLoaded', async () => {
   await authReady;
 
-  /* Restaurar credenciais salvas */
-  const savedNome  = localStorage.getItem('rc_nome');
-  const savedSenha = localStorage.getItem('rc_senha');
-  if (savedNome && savedSenha) {
+  /* Remove senha eventualmente salva por versões antigas do app */
+  localStorage.removeItem('rc_senha');
+
+  /* Restaurar nome de usuário salvo (a senha nunca é persistida) */
+  const savedNome = localStorage.getItem('rc_nome');
+  if (savedNome) {
     document.getElementById('login-nome').value    = savedNome;
-    document.getElementById('login-senha').value   = savedSenha;
     document.getElementById('login-lembrar').checked = true;
   }
 
@@ -853,13 +854,11 @@ async function doLogin() {
     roleAtivo    = null;
     document.getElementById('header-usuario').textContent = usuario.nome;
 
-    /* Salvar ou limpar credenciais conforme checkbox */
+    /* Salvar ou limpar nome de usuário conforme checkbox (a senha nunca é persistida) */
     if (document.getElementById('login-lembrar').checked) {
-      localStorage.setItem('rc_nome',  nome);
-      localStorage.setItem('rc_senha', senha);
+      localStorage.setItem('rc_nome', nome);
     } else {
       localStorage.removeItem('rc_nome');
-      localStorage.removeItem('rc_senha');
     }
     document.getElementById('login-senha').value = '';
 
@@ -960,6 +959,7 @@ function logout() {
   pararListeners();
   pararTimers();
   if (_tvClockTimer) { clearInterval(_tvClockTimer); _tvClockTimer = null; }
+  firebase.auth().signOut().catch(() => {});
   usuarioAtual = null;
   festaAtual   = null;
   fotosCache   = { separacao: [], conferencia: [], retorno: [], galpao: [] };
@@ -1073,8 +1073,8 @@ function renderizarAlertaHoje(festas, containerId) {
           return `
             <div class="alerta-hoje-item">
               <div class="alerta-hoje-info">
-                <div class="alerta-hoje-nome">${f.nome || f.tipo || 'Festa'}</div>
-                <div class="alerta-hoje-sub">${sub}${f.hora ? ' · ' + f.hora : ''}</div>
+                <div class="alerta-hoje-nome">${_escHtml(f.nome || f.tipo || 'Festa')}</div>
+                <div class="alerta-hoje-sub">${sub}${f.hora ? ' · ' + _escHtml(f.hora) : ''}</div>
               </div>
               <span class="${badgeClass}">${badgeLabel}</span>
               <button class="${btnClass}" onclick="abrirSeparacao('${f.id}')">${btnLabel}</button>
@@ -1344,7 +1344,7 @@ function renderizarSeparacao(festa) {
     document.getElementById('sep-itens').innerHTML = `
       <div class="aviso-editando">
         <div class="aviso-editando-icone">✏️</div>
-        <strong>${festa.editandoAgora} está editando as quantidades</strong>
+        <strong>${_escHtml(festa.editandoAgora)} está editando as quantidades</strong>
         <p>Aguarde enquanto o administrador finaliza as alterações. A tela será atualizada automaticamente.</p>
       </div>
     `;
@@ -1357,7 +1357,7 @@ function renderizarSeparacao(festa) {
     const ultima = alteracoes[alteracoes.length - 1];
     const detalhes = (ultima.campos || [])
       .filter(c => c.campo !== 'Data' && c.campo !== 'Horario')
-      .map(c => `${c.campo}: ${c.de} → ${c.para}`)
+      .map(c => `${_escHtml(c.campo)}: ${_escHtml(c.de)} → ${_escHtml(c.para)}`)
       .join(', ');
     const quando = ultima.alteradoEm
       ? new Date(ultima.alteradoEm).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
@@ -1365,7 +1365,7 @@ function renderizarSeparacao(festa) {
     avisoHTML = `
       <div class="aviso-alteracao">
         <strong>⚠ Quantidades alteradas pelo administrador</strong>
-        <p>${ultima.alteradoPor}${quando ? ' em ' + quando : ''}${detalhes ? ': ' + detalhes : ''}. Verifique os itens antes de continuar.</p>
+        <p>${_escHtml(ultima.alteradoPor)}${quando ? ' em ' + quando : ''}${detalhes ? ': ' + detalhes : ''}. Verifique os itens antes de continuar.</p>
       </div>
     `;
   }
@@ -1401,8 +1401,8 @@ function renderizarSeparacao(festa) {
             <div class="item-standby-card producao-bloqueada">
               <span class="item-standby-icone" style="display:none"></span>
               <div class="item-standby-corpo">
-                <div class="item-standby-nome">${it.nome}</div>
-                <div class="item-standby-msg">${info.msg} &mdash; Qtd: <strong>${it.qtdNecessaria}</strong> ${it.unidade || 'un'}</div>
+                <div class="item-standby-nome">${_escHtml(it.nome)}</div>
+                <div class="item-standby-msg">${_escHtml(info.msg)} &mdash; Qtd: <strong>${it.qtdNecessaria}</strong> ${_escHtml(it.unidade || 'un')}</div>
               </div>
             </div>
           `;
@@ -1416,8 +1416,8 @@ function renderizarSeparacao(festa) {
             <div class="item-standby-card">
               <span class="item-standby-icone">&#10052;</span>
               <div class="item-standby-corpo">
-                <div class="item-standby-nome">${it.nome}</div>
-                <div class="item-standby-msg">${info.msg} &mdash; Qtd: <strong>${it.qtdNecessaria}</strong> ${it.unidade || 'un'}</div>
+                <div class="item-standby-nome">${_escHtml(it.nome)}</div>
+                <div class="item-standby-msg">${_escHtml(info.msg)} &mdash; Qtd: <strong>${it.qtdNecessaria}</strong> ${_escHtml(it.unidade || 'un')}</div>
               </div>
             </div>
           `;
@@ -1428,7 +1428,7 @@ function renderizarSeparacao(festa) {
 
   const avisoOcultos = ocultos.length
     ? `<div style="background:#F9FAFB;border:1px dashed #D1D5DB;border-radius:6px;padding:8px 12px;margin-bottom:8px;font-size:12px;color:#6B7280;">
-        ${ocultos.length} item(s) oculto(s) da separação (Equipe / Coquetéis): ${ocultos.map(i=>i.nome).join(', ')}
+        ${ocultos.length} item(s) oculto(s) da separação (Equipe / Coquetéis): ${_escHtml(ocultos.map(i=>i.nome).join(', '))}
        </div>`
     : '';
 
@@ -1540,14 +1540,14 @@ function htmlBadgeForn(item) {
   if (!forn) return '';
   const cls = ['consignado','cliente','romero','reserva','proprio','terceiro'].includes(forn)
     ? `forn-card-${forn}` : 'forn-card-default';
-  return `<div class="forn-card ${cls}"><span class="forn-card-label">Fornecimento</span><span class="forn-card-valor">${forn}</span></div>`;
+  return `<div class="forn-card ${cls}"><span class="forn-card-label">Fornecimento</span><span class="forn-card-valor">${_escHtml(forn)}</span></div>`;
 }
 
 function htmlItemPendente(item, i) {
   const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
   const locParts = [cfg?.setor, cfg?.prateleira].filter(Boolean);
   const locHtml  = locParts.length
-    ? `<div class="item-localizacao"><span class="item-localizacao-icone">📍</span>${locParts.join(' / ')}</div>`
+    ? `<div class="item-localizacao"><span class="item-localizacao-icone">📍</span>${_escHtml(locParts.join(' / '))}</div>`
     : '';
   const badgeForn = htmlBadgeForn(item);
   return `
@@ -1555,11 +1555,11 @@ function htmlItemPendente(item, i) {
       <div class="item-pend-esquerda">
         <div class="item-pend-info">
           <div class="item-nome">
-            ${nomeBasDisplay(item.nome)}
+            ${_escHtml(nomeBasDisplay(item.nome))}
             <button class="btn-editar-nome" title="Substituir / editar nome" onclick="editarNomeItem(${i})">✏️</button>
           </div>
           ${badgeForn || ''}
-          <div class="item-sub">${item.unidade || 'un'} &mdash; total: <strong>${item.qtdNecessaria}</strong></div>
+          <div class="item-sub">${_escHtml(item.unidade || 'un')} &mdash; total: <strong>${item.qtdNecessaria}</strong></div>
           ${locHtml}
         </div>
         <div class="item-pend-acoes">
@@ -1586,10 +1586,10 @@ function htmlItemSeparado(item, i) {
   return `
     <div class="item-sep-card${parcial ? ' item-sep-parcial' : ''}">
       <div class="item-pend-info">
-        <div class="item-nome">${nomeBasDisplay(item.nome)}</div>
+        <div class="item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
         ${badgeForn || ''}
         <div class="item-sub">
-          Separado: <strong>${item.qtdSeparada}</strong> de <strong>${item.qtdNecessaria}</strong> ${item.unidade || 'un'}
+          Separado: <strong>${item.qtdSeparada}</strong> de <strong>${item.qtdNecessaria}</strong> ${_escHtml(item.unidade || 'un')}
           ${parcial ? '<span class="badge-parcial">⚠ Parcial</span>' : ''}
         </div>
       </div>
@@ -1653,7 +1653,7 @@ function htmlItensPorGrupo(itens, tipo) {
     ).join('');
     return `
       <div class="sep-grupo-header">
-        <span class="sep-grupo-nome">${nome}</span>
+        <span class="sep-grupo-nome">${_escHtml(nome)}</span>
         <span class="sep-grupo-badge">${lista.length} item${lista.length !== 1 ? 'ns' : ''}</span>
       </div>
       ${html}
@@ -1990,13 +1990,13 @@ function renderizarConferencia(festa) {
         <div class="item-topo">
           <div>
             <div class="item-nome">
-              ${nomeBasDisplay(item.nome)}
+              ${_escHtml(nomeBasDisplay(item.nome))}
               <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${ri})">✏️</button>
             </div>
             ${htmlBadgeForn(item) || ''}
             ${item.separado && item.qtdSeparada !== undefined ? `
               <div class="item-sub">
-                Separado: <strong>${item.qtdSeparada} ${item.unidade || 'un'}</strong>${item.separadoPor ? ` por <strong>${item.separadoPor}</strong>` : ''}${item.separadoEm ? ` às ${formatarHora(item.separadoEm)}` : ''}
+                Separado: <strong>${item.qtdSeparada} ${_escHtml(item.unidade || 'un')}</strong>${item.separadoPor ? ` por <strong>${_escHtml(item.separadoPor)}</strong>` : ''}${item.separadoEm ? ` às ${formatarHora(item.separadoEm)}` : ''}
               </div>
             ` : ''}
           </div>
@@ -2008,7 +2008,7 @@ function renderizarConferencia(festa) {
             min="0" placeholder="0"
             oninput="checarConf(${ri}, ${sepVal})"
             onchange="salvarQtdConf(${ri})" />
-          <span class="item-unidade">${item.unidade || 'un'}</span>
+          <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
         </div>
         <div id="conf-msg-${ri}">${msgInicial}</div>
         ${fotoAreaHtml}
@@ -2127,7 +2127,7 @@ function atualizarBoxDivConf() {
   if (divs.length) {
     box.classList.remove('hidden');
     lista.innerHTML = divs.map(d =>
-      `<div class="div-linha">${d.item}: separado ${d.separado}, conferido ${d.conferido}</div>`
+      `<div class="div-linha">${_escHtml(d.item)}: separado ${d.separado}, conferido ${d.conferido}</div>`
     ).join('');
   } else {
     box.classList.add('hidden');
@@ -2261,9 +2261,9 @@ function renderizarRetorno(festa) {
     <div class="item-row">
       <div class="item-topo">
         <div>
-          <div class="item-nome">${nomeBasDisplay(item.nome)}</div>
+          <div class="item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
           ${badgeForn || ''}
-          <div class="item-sub">Enviado: <strong>${item.qtdConferida || item.qtdSeparada || 0}</strong> ${item.unidade || 'un'}</div>
+          <div class="item-sub">Enviado: <strong>${item.qtdConferida || item.qtdSeparada || 0}</strong> ${_escHtml(item.unidade || 'un')}</div>
         </div>
       </div>
       <div class="item-entrada" style="margin-bottom:8px">
@@ -2271,14 +2271,14 @@ function renderizarRetorno(festa) {
         <input type="number" class="qty-input" id="ret-qty-${i}"
           value="${item.qtdRetorno !== undefined ? item.qtdRetorno : ''}"
           min="0" placeholder="0" />
-        <span class="item-unidade">${item.unidade || 'un'}</span>
+        <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
       </div>
       <div class="item-entrada">
         <label>Danificado:</label>
         <input type="number" class="qty-input" id="ret-dan-${i}"
           value="${item.qtdDanificada || 0}"
           min="0" placeholder="0" style="width:70px" />
-        <span class="item-unidade">${item.unidade || 'un'}</span>
+        <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
       </div>
     </div>
   `;
@@ -2351,12 +2351,12 @@ function renderizarGalpao(festa) {
     <div class="item-row">
       <div class="item-topo">
         <div>
-          <div class="item-nome">${nomeBasDisplay(item.nome)}</div>
+          <div class="item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
           ${badgeForn || ''}
           <div class="item-sub">
             Retornou: <strong>${item.qtdRetorno || 0}</strong>
             ${item.qtdDanificada ? ` — Danificado: <strong>${item.qtdDanificada}</strong>` : ''}
-            ${item.unidade || 'un'}
+            ${_escHtml(item.unidade || 'un')}
           </div>
         </div>
       </div>
@@ -2366,7 +2366,7 @@ function renderizarGalpao(festa) {
           value="${item.qtdGalpao !== undefined ? item.qtdGalpao : (item.qtdRetorno || '')}"
           min="0" placeholder="0"
           oninput="checarGal(${i}, ${item.qtdRetorno || 0})" />
-        <span class="item-unidade">${item.unidade || 'un'}</span>
+        <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
       </div>
       <div id="gal-msg-${i}"></div>
     </div>
@@ -2399,7 +2399,7 @@ function atualizarBoxDivGal() {
   if (divs.length) {
     box.classList.remove('hidden');
     lista.innerHTML = divs.map(d =>
-      `<div class="div-linha">${d.item}: retornou ${d.retorno}, galpao ${d.galpao}</div>`
+      `<div class="div-linha">${_escHtml(d.item)}: retornou ${d.retorno}, galpao ${d.galpao}</div>`
     ).join('');
   } else {
     box.classList.add('hidden');
@@ -2642,7 +2642,7 @@ function renderizarDetalhe(festa) {
   document.getElementById('detalhe-content').innerHTML = `
     <div class="card-festa-info" style="margin-bottom:16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
-        <h2>${festa.nome}</h2>
+        <h2>${_escHtml(festa.nome)}</h2>
         <div class="detalhe-status-col">
           <span class="badge badge-${festa.status}">${STATUS_LABELS[festa.status] || festa.status}</span>
           <div class="status-editor">
@@ -2665,8 +2665,8 @@ function renderizarDetalhe(festa) {
       <h3>Itens (${itens.length})</h3>
       ${itens.map(it => `
         <div class="detalhe-linha">
-          <span>${it.nome}</span>
-          <span>Nec: ${it.qtdNecessaria} | Sep: ${it.qtdSeparada || 0} | Conf: ${it.qtdConferida || 0} | Ret: ${it.qtdRetorno !== undefined ? it.qtdRetorno : '—'} ${it.unidade || 'un'}</span>
+          <span>${_escHtml(it.nome)}</span>
+          <span>Nec: ${it.qtdNecessaria} | Sep: ${it.qtdSeparada || 0} | Conf: ${it.qtdConferida || 0} | Ret: ${it.qtdRetorno !== undefined ? it.qtdRetorno : '—'} ${_escHtml(it.unidade || 'un')}</span>
         </div>
       `).join('')}
     </div>
@@ -2676,7 +2676,7 @@ function renderizarDetalhe(festa) {
         <h3 style="color:var(--vermelho)">Divergencias na Conferencia (${divs.length})</h3>
         ${divs.map(d => `
           <div class="detalhe-linha">
-            <span>${d.item}</span>
+            <span>${_escHtml(d.item)}</span>
             <span>Separado: ${d.separado} / Conferido: ${d.conferido}</span>
           </div>
         `).join('')}
@@ -2688,16 +2688,16 @@ function renderizarDetalhe(festa) {
         <h3 style="color:var(--amarelo)">Divergencias no Galpao (${divsGal.length})</h3>
         ${divsGal.map(d => `
           <div class="detalhe-linha">
-            <span>${d.item}</span>
+            <span>${_escHtml(d.item)}</span>
             <span>Retornou: ${d.retorno} / Galpao: ${d.galpao}</span>
           </div>
         `).join('')}
       </div>
     ` : ''}
 
-    ${festa.obsSeparacao ? `<div class="detalhe-card"><h3>Obs. Separacao</h3><p style="font-size:13px">${festa.obsSeparacao}</p></div>` : ''}
-    ${festa.obsConferencia ? `<div class="detalhe-card"><h3>Obs. Conferencia</h3><p style="font-size:13px">${festa.obsConferencia}</p></div>` : ''}
-    ${festa.obsRetorno ? `<div class="detalhe-card"><h3>Obs. Retorno</h3><p style="font-size:13px">${festa.obsRetorno}</p></div>` : ''}
+    ${festa.obsSeparacao ? `<div class="detalhe-card"><h3>Obs. Separacao</h3><p style="font-size:13px">${_escHtml(festa.obsSeparacao)}</p></div>` : ''}
+    ${festa.obsConferencia ? `<div class="detalhe-card"><h3>Obs. Conferencia</h3><p style="font-size:13px">${_escHtml(festa.obsConferencia)}</p></div>` : ''}
+    ${festa.obsRetorno ? `<div class="detalhe-card"><h3>Obs. Retorno</h3><p style="font-size:13px">${_escHtml(festa.obsRetorno)}</p></div>` : ''}
 
     ${festa.fotosSeparacao?.length ? `
       <div class="detalhe-card"><h3>Fotos da Separacao</h3>
@@ -2778,8 +2778,8 @@ function renderizarEditarFesta(festa) {
     <div class="item-row">
       <div class="item-topo">
         <div>
-          <div class="item-nome">${item.nome}</div>
-          <div class="item-sub">Unidade: ${item.unidade || 'un'}</div>
+          <div class="item-nome">${_escHtml(item.nome)}</div>
+          <div class="item-sub">Unidade: ${_escHtml(item.unidade || 'un')}</div>
         </div>
         ${item._novo ? `<button class="btn-del-item" onclick="removerItemExtraEdicao(${i - itens.length})">x</button>` : ''}
       </div>
@@ -2787,7 +2787,7 @@ function renderizarEditarFesta(festa) {
         <label>Quantidade necessaria:</label>
         <input type="number" class="qty-input" id="ef-qty-${i}"
           value="${item.qtdNecessaria}" min="0" />
-        <span class="item-unidade">${item.unidade || 'un'}</span>
+        <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
       </div>
     </div>
   `).join('');
@@ -2943,12 +2943,12 @@ function renderizarListaUsuarios() {
     return `
       <div class="usuario-row">
         <div class="usuario-info">
-          <div class="usuario-nome">${u.nome}</div>
-          <div class="usuario-role">${rolesTexto}</div>
+          <div class="usuario-nome">${_escHtml(u.nome)}</div>
+          <div class="usuario-role">${_escHtml(rolesTexto)}</div>
         </div>
         <div class="usuario-acoes">
           ${u.id !== usuarioAtual.id
-            ? `<button class="btn-perigo" onclick="confirmarDeletarUsuario('${u.id}','${u.nome}')">Remover</button>`
+            ? `<button class="btn-perigo" onclick="confirmarDeletarUsuario('${u.id}','${_esc(u.nome)}')">Remover</button>`
             : '<span style="font-size:12px;color:var(--cinza-400)">Você</span>'
           }
         </div>
@@ -3264,13 +3264,13 @@ function preencherFormularioImport(dados) {
     row.dataset.fornecimento = item.fornecimento || '';
 
     const badgeForn = item.fornecimento
-      ? `<span class="badge-fornecimento badge-forn-${item.fornecimento}">${item.fornecimento}</span>`
+      ? `<span class="badge-fornecimento badge-forn-${_escHtml(item.fornecimento)}">${_escHtml(item.fornecimento)}</span>`
       : '';
 
     row.innerHTML = `
-      <input type="text"   value="${item.nome.replace(/"/g, '&quot;')}" placeholder="Nome do item" />
+      <input type="text"   value="${_escHtml(item.nome)}" placeholder="Nome do item" />
       <input type="number" value="${item.qtdNecessaria}" placeholder="0" />
-      <input type="text"   value="${item.unidade}" placeholder="un" />
+      <input type="text"   value="${_escHtml(item.unidade)}" placeholder="un" />
       ${badgeForn}
       <button class="btn-del-item" onclick="this.closest('.item-criar-row').remove()">x</button>
     `;
@@ -3362,14 +3362,14 @@ function htmlCardFesta(f, contexto) {
         </div>
         <div class="card-corpo">
           <div class="card-festa-topo">
-            <div class="card-festa-nome">${f.nome}</div>
-            <span class="badge badge-${f.status}">${STATUS_LABELS[f.status] || f.status}</span>
+            <div class="card-festa-nome">${_escHtml(f.nome)}</div>
+            <span class="badge badge-${f.status}">${_escHtml(STATUS_LABELS[f.status] || f.status)}</span>
           </div>
-          <div class="card-festa-meta">${f.cliente}${f.hora ? ' — ' + f.hora : ''}</div>
-          ${f.local ? `<div class="card-festa-meta">${f.local}</div>` : ''}
+          <div class="card-festa-meta">${_escHtml(f.cliente)}${f.hora ? ' — ' + _escHtml(f.hora) : ''}</div>
+          ${f.local ? `<div class="card-festa-meta">${_escHtml(f.local)}</div>` : ''}
           <div class="card-festa-rodape">
             <span>${(f.itens || []).length} itens</span>
-            ${f.colaborador ? `<span>${f.colaborador}</span>` : ''}
+            ${f.colaborador ? `<span>${_escHtml(f.colaborador)}</span>` : ''}
             ${(f.divergencias?.length > 0) ? `<span class="badge-divergencia-card">⚠ ${f.divergencias.length} divergência${f.divergencias.length !== 1 ? 's' : ''}</span>` : ''}
           </div>
         </div>
@@ -3389,11 +3389,11 @@ function htmlInfoFesta(f) {
        </div>`
     : '';
   return `
-    <h2>${f.nome}</h2>
-    <div class="info-linha">${f.cliente}${f.data ? ' — ' + formatarData(f.data) : ''}</div>
-    ${f.hora  ? `<div class="info-linha">${f.hora}</div>` : ''}
-    ${f.local ? `<div class="info-linha">${f.local}</div>` : ''}
-    ${f.obs   ? `<div class="info-linha" style="opacity:.75;font-size:12px;margin-top:6px">${f.obs}</div>` : ''}
+    <h2>${_escHtml(f.nome)}</h2>
+    <div class="info-linha">${_escHtml(f.cliente)}${f.data ? ' — ' + formatarData(f.data) : ''}</div>
+    ${f.hora  ? `<div class="info-linha">${_escHtml(f.hora)}</div>` : ''}
+    ${f.local ? `<div class="info-linha">${_escHtml(f.local)}</div>` : ''}
+    ${f.obs   ? `<div class="info-linha" style="opacity:.75;font-size:12px;margin-top:6px">${_escHtml(f.obs)}</div>` : ''}
     ${btnExcluir}
   `;
 }
@@ -3401,11 +3401,11 @@ function htmlInfoFesta(f) {
 function htmlInfoLinhas(f) {
   return [
     f.data        && `<div class="info-linha">${formatarData(f.data)}</div>`,
-    f.hora        && `<div class="info-linha">${f.hora}</div>`,
-    f.cliente     && `<div class="info-linha">${f.cliente}</div>`,
-    f.local       && `<div class="info-linha">${f.local}</div>`,
-    f.colaborador && `<div class="info-linha">Colaborador: ${f.colaborador}</div>`,
-    f.coordenador && `<div class="info-linha">Coordenador: ${f.coordenador}</div>`,
+    f.hora        && `<div class="info-linha">${_escHtml(f.hora)}</div>`,
+    f.cliente     && `<div class="info-linha">${_escHtml(f.cliente)}</div>`,
+    f.local       && `<div class="info-linha">${_escHtml(f.local)}</div>`,
+    f.colaborador && `<div class="info-linha">Colaborador: ${_escHtml(f.colaborador)}</div>`,
+    f.coordenador && `<div class="info-linha">Coordenador: ${_escHtml(f.coordenador)}</div>`,
   ].filter(Boolean).join('');
 }
 
@@ -3521,7 +3521,7 @@ function renderizarProducaoCEO() {
         ${naoClas.map(item => `
           <div class="producao-item-row producao-item-nao-clas">
             <div class="producao-item-info">
-              <div class="producao-item-nome">${nomeBasDisplay(item.nome)}</div>
+              <div class="producao-item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
               <div class="producao-item-total">Total: <strong>${item.total}</strong> ${item.unidade}</div>
             </div>
             <button class="btn-sm btn-secundario" onclick="abrirFormItemConfig(null,'${_esc(item.nome)}')">Configurar</button>
@@ -3552,7 +3552,7 @@ function htmlGrupoProducao(g) {
     <div class="producao-grupo">
       <div class="producao-grupo-header" onclick="toggleGrupo('${grupoKey}')">
         <span class="producao-grupo-seta">&#9660;</span>
-        <span class="producao-grupo-nome">${g.nome}</span>
+        <span class="producao-grupo-nome">${_escHtml(g.nome)}</span>
         <span class="producao-grupo-qtd">${g.itens.length} item${g.itens.length !== 1 ? 's' : ''}</span>
       </div>
       <div class="producao-grupo-itens" id="grupo-${grupoKey}">
@@ -3577,7 +3577,7 @@ function htmlProducaoSintetico(itens) {
     return `
       <div class="producao-item-row">
         <div class="producao-item-info">
-          <div class="producao-item-nome">${nomeBasDisplay(item.nome)}</div>
+          <div class="producao-item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
           ${badgeRefrig || badgePrior ? `<div class="producao-item-badges">${badgeRefrig}${badgePrior}</div>` : ''}
           <div class="producao-item-total">Necessário: <strong>${item.total}</strong> ${item.unidade}</div>
         </div>
@@ -3615,7 +3615,7 @@ function htmlProducaoAnalitico(itens) {
       }
       return `
         <div class="analitico-sub-row">
-          <span class="analitico-sub-nome">${f.festaNome}${dataTxt}</span>
+          <span class="analitico-sub-nome">${_escHtml(f.festaNome)}${dataTxt}</span>
           <span class="analitico-sub-qty">${f.qtd} ${item.unidade}</span>
         </div>
       `;
@@ -3625,7 +3625,7 @@ function htmlProducaoAnalitico(itens) {
       <div class="producao-item-row">
         <div class="producao-item-info" style="width:100%">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <div class="producao-item-nome">${nomeBasDisplay(item.nome)} ${badgeRefrig}</div>
+            <div class="producao-item-nome">${_escHtml(nomeBasDisplay(item.nome))} ${badgeRefrig}</div>
             <div class="producao-item-nums" style="flex-direction:row;gap:10px;align-items:center">
               <span class="producao-item-total">Total: <strong>${item.total}</strong> ${item.unidade}</span>
               <span class="${diff < 0 ? 'producao-diff-falta' : 'producao-diff-ok'}">
@@ -3958,8 +3958,8 @@ function renderizarInventario() {
       return `
         <div class="estoque-item-card" id="inv-card-${key}" style="margin-bottom:8px">
           <div class="estoque-item-header">
-            <div class="estoque-item-nome">${c.nome}</div>
-            ${un ? `<div class="estoque-item-total" style="font-size:12px;color:var(--cinza-500)">${un}</div>` : ''}
+            <div class="estoque-item-nome">${_escHtml(c.nome)}</div>
+            ${un ? `<div class="estoque-item-total" style="font-size:12px;color:var(--cinza-500)">${_escHtml(un)}</div>` : ''}
           </div>
           <div class="estoque-body-row">
             <span class="estoque-body-label">Qtd.:</span>
@@ -3968,7 +3968,7 @@ function renderizarInventario() {
                 id="inv-qty-${key}"
                 value="${qtdEst}" min="0" placeholder="0"
               />
-              ${un ? `<span class="estoque-qty-un">${un}</span>` : ''}
+              ${un ? `<span class="estoque-qty-un">${_escHtml(un)}</span>` : ''}
             </div>
             <button class="btn-primario btn-sm" style="margin-left:8px;flex-shrink:0;${btnStyle}"
               onclick="salvarInventarioQtd('${_esc(key)}','${_esc(c.nome)}','${_esc(un)}')">
@@ -3978,7 +3978,7 @@ function renderizarInventario() {
         </div>`;
     }).join('');
     return `
-      <div class="grupo-titulo" style="margin-top:16px;margin-bottom:4px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--cinza-500);letter-spacing:.5px">${g}</div>
+      <div class="grupo-titulo" style="margin-top:16px;margin-bottom:4px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--cinza-500);letter-spacing:.5px">${_escHtml(g)}</div>
       ${linhas}`;
   }).join('');
 
@@ -4072,14 +4072,14 @@ function renderizarHistoricoContagem(registros, containerId) {
       <div class="estoque-item-card" style="margin-bottom:6px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div>
-            <div style="font-weight:600;font-size:14px">${r.nome || r.nomeKey}</div>
+            <div style="font-weight:600;font-size:14px">${_escHtml(r.nome || r.nomeKey)}</div>
             <div style="font-size:12px;color:var(--cinza-500);margin-top:2px">
-              👤 ${r.contadoPor || '—'} &nbsp;·&nbsp; ${fmt(r.contadoEm)}
+              👤 ${_escHtml(r.contadoPor || '—')} &nbsp;·&nbsp; ${fmt(r.contadoEm)}
             </div>
           </div>
           <div style="text-align:right;flex-shrink:0">
             <div style="font-size:20px;font-weight:700;color:var(--verde-700)">${r.qtd}</div>
-            <div style="font-size:11px;color:var(--cinza-500)">${r.unidade || 'un'}</div>
+            <div style="font-size:11px;color:var(--cinza-500)">${_escHtml(r.unidade || 'un')}</div>
           </div>
         </div>
       </div>
@@ -4202,6 +4202,16 @@ function _esc(s) {
   return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'&quot;');
 }
 
+function _escHtml(s) {
+  if (s === null || s === undefined) return '';
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /* Resolve um item do cadastro (item_config) a partir do nome digitado num input com datalist */
 function _resolverItemCatalogoPorNome(nomeDigitado) {
   const alvo = normalizarNomeItem(nomeDigitado);
@@ -4217,8 +4227,8 @@ function htmlEstoqueSintetico(item, est) {
   return `
     <div class="estoque-item-card">
       <div class="estoque-item-header">
-        <div class="estoque-item-nome">${item.nome}</div>
-        <div class="estoque-item-total">Necessário: <strong>${item.total}</strong> ${item.unidade}</div>
+        <div class="estoque-item-nome">${_escHtml(item.nome)}</div>
+        <div class="estoque-item-total">Necessário: <strong>${item.total}</strong> ${_escHtml(item.unidade)}</div>
       </div>
       <div class="estoque-body-row">
         <span class="estoque-body-label">Em estoque:</span>
@@ -4228,7 +4238,7 @@ function htmlEstoqueSintetico(item, est) {
             value="${qtdEst}" min="0"
             onchange="salvarEstoqueQtd('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(item.unidade)}',this.value)"
           />
-          <span class="estoque-qty-un">${item.unidade}</span>
+          <span class="estoque-qty-un">${_escHtml(item.unidade)}</span>
         </div>
         <button class="btn-comprar"
           onclick="comprarItemEstoque('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(item.unidade)}')">
@@ -4240,8 +4250,8 @@ function htmlEstoqueSintetico(item, est) {
       </div>
       <div class="estoque-diff ${diff < 0 ? 'deficit-text' : 'ok-text'}">
         ${diff < 0
-          ? `Falta <strong>${Math.abs(diff)}</strong> ${item.unidade} (${pct}% coberto)`
-          : `Estoque suficiente — sobra <strong>${diff}</strong> ${item.unidade}`}
+          ? `Falta <strong>${Math.abs(diff)}</strong> ${_escHtml(item.unidade)} (${pct}% coberto)`
+          : `Estoque suficiente — sobra <strong>${diff}</strong> ${_escHtml(item.unidade)}`}
       </div>
     </div>
   `;
@@ -4262,9 +4272,9 @@ function htmlEstoqueAnalitico(item, est) {
     return `
       <div class="analitico-festa-row">
         <div class="analitico-festa-nome">
-          ${f.festaNome}${dataTxt}
+          ${_escHtml(f.festaNome)}${dataTxt}
           <span class="badge badge-${f.festaStatus}" style="font-size:9px;margin-left:4px">
-            ${STATUS_LABELS[f.festaStatus] || f.festaStatus}
+            ${_escHtml(STATUS_LABELS[f.festaStatus] || f.festaStatus)}
           </span>
         </div>
         <div class="analitico-festa-qty">
@@ -4272,7 +4282,7 @@ function htmlEstoqueAnalitico(item, est) {
             value="${f.qtd}" min="0"
             onchange="editarQtdFestaEstoque('${_esc(f.festaId)}',${f.itemIdx},this.value)"
           />
-          <span class="estoque-qty-un">${item.unidade}</span>
+          <span class="estoque-qty-un">${_escHtml(item.unidade)}</span>
         </div>
       </div>
     `;
@@ -4281,10 +4291,10 @@ function htmlEstoqueAnalitico(item, est) {
   return `
     <div class="estoque-item-card">
       <div class="estoque-item-header">
-        <div class="estoque-item-nome">${item.nome}</div>
+        <div class="estoque-item-nome">${_escHtml(item.nome)}</div>
         <div class="estoque-item-total">
-          Total: <strong>${item.total}</strong> ${item.unidade} &nbsp;|&nbsp;
-          Estoque: <strong>${qtdEst}</strong> ${item.unidade}
+          Total: <strong>${item.total}</strong> ${_escHtml(item.unidade)} &nbsp;|&nbsp;
+          Estoque: <strong>${qtdEst}</strong> ${_escHtml(item.unidade)}
           <span class="${diff < 0 ? 'deficit-text' : 'ok-text'}" style="font-weight:700">
             &nbsp;(${diff < 0 ? 'falta ' + Math.abs(diff) : 'sobra ' + diff})
           </span>
@@ -4508,7 +4518,7 @@ async function renderizarCadastroItens() {
       <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:13px;">
         <strong style="color:#92400E;">⚠ Produtos duplicados (${duplicados.size}):</strong>
         <ul style="margin:4px 0 0 16px;color:#78350F;">
-          ${[...duplicados].map(k => `<li>${configs.find(c=>c.nomeKey===k)?.nome || k}</li>`).join('')}
+          ${[...duplicados].map(k => `<li>${_escHtml(configs.find(c=>c.nomeKey===k)?.nome || k)}</li>`).join('')}
         </ul>
         <span style="font-size:11px;color:#92400E;">Remova as entradas extras para evitar conflitos.</span>
       </div>` : '';
@@ -4524,7 +4534,7 @@ async function renderizarCadastroItens() {
         if (!itensFiltrados.length) return '';
         return `
           <div class="config-grupo-bloco">
-            <div class="config-grupo-titulo">${grupo}</div>
+            <div class="config-grupo-titulo">${_escHtml(grupo)}</div>
             ${itensFiltrados.map(c => htmlConfigItemRow(c)).join('')}
           </div>`;
       }).join('');
@@ -4537,7 +4547,7 @@ async function renderizarCadastroItens() {
         ${semConfigFiltrado.sort((a,b) => a.nomeDisplay.localeCompare(b.nomeDisplay,'pt-BR')).map(it => `
           <div class="config-item-row">
             <div class="config-item-info">
-              <div class="config-item-nome">${it.nomeDisplay}</div>
+              <div class="config-item-nome">${_escHtml(it.nomeDisplay)}</div>
               <div class="config-item-meta">Sem configuração</div>
             </div>
             <div class="config-item-acoes">
@@ -4549,7 +4559,7 @@ async function renderizarCadastroItens() {
     ` : '';
 
     const conteudo = htmlDuplicados + htmlGrupos + htmlSemConfig;
-    el.innerHTML = conteudo || estadoVazio(busca ? `Nenhum produto encontrado para "${busca}".` : 'Nenhum item encontrado. Cadastre uma festa para começar.');
+    el.innerHTML = conteudo || estadoVazio(busca ? `Nenhum produto encontrado para "${_escHtml(busca)}".` : 'Nenhum item encontrado. Cadastre uma festa para começar.');
   } catch(e) {
     console.error(e);
     el.innerHTML = estadoVazio('Erro ao carregar. Tente novamente.');
@@ -4575,7 +4585,7 @@ function htmlConfigItemRow(c) {
     <div class="config-item-row" data-item-id="${_esc(c.id)}" onclick="onClickItemCadastro('${_esc(c.id)}')">
       <input type="checkbox" class="chk-item-cadastro" onclick="event.stopPropagation();toggleSelecaoItemCadastro('${_esc(c.id)}')">
       <div class="config-item-info">
-        <div class="config-item-nome">${nomeExibido} ${badgeProd} ${badgeSep}</div>
+        <div class="config-item-nome">${_escHtml(nomeExibido)} ${badgeProd} ${badgeSep}</div>
         <div class="config-item-meta">${metaHtml}</div>
       </div>
       <div class="config-item-acoes">
@@ -4656,10 +4666,10 @@ async function preencherSugestoesItemConfig() {
     Object.values(itemConfigsCache).forEach(c => { if (c.grupo) gruposSet.add(c.grupo); });
 
     const dlNomes = document.getElementById('ic-nomes-lista');
-    if (dlNomes) dlNomes.innerHTML = [...nomesSet].sort().map(n => `<option value="${n}">`).join('');
+    if (dlNomes) dlNomes.innerHTML = [...nomesSet].sort().map(n => `<option value="${_escHtml(n)}">`).join('');
 
     const dlGrupos = document.getElementById('ic-grupos-lista');
-    if (dlGrupos) dlGrupos.innerHTML = [...gruposSet].sort().map(g => `<option value="${g}">`).join('');
+    if (dlGrupos) dlGrupos.innerHTML = [...gruposSet].sort().map(g => `<option value="${_escHtml(g)}">`).join('');
   } catch(e) { console.error(e); }
 }
 
@@ -4975,11 +4985,11 @@ function renderizarAnalise() {
       </div>
       <div class="analise-card analise-card-verde">
         <div class="analise-card-valor">${_fmtMin(maisRapido.mins)}</div>
-        <div class="analise-card-label">Mais rápida<br><span class="analise-card-sub">${maisRapido.nome || maisRapido.cliente}</span></div>
+        <div class="analise-card-label">Mais rápida<br><span class="analise-card-sub">${_escHtml(maisRapido.nome || maisRapido.cliente)}</span></div>
       </div>
       <div class="analise-card analise-card-laranja">
         <div class="analise-card-valor">${_fmtMin(maisLento.mins)}</div>
-        <div class="analise-card-label">Mais demorada<br><span class="analise-card-sub">${maisLento.nome || maisLento.cliente}</span></div>
+        <div class="analise-card-label">Mais demorada<br><span class="analise-card-sub">${_escHtml(maisLento.nome || maisLento.cliente)}</span></div>
       </div>
     </div>
 
@@ -4990,7 +5000,7 @@ function renderizarAnalise() {
         <div class="analise-colab-card ${c.media <= mediaMins * 0.9 ? 'analise-colab-top' : ''}">
           <div class="analise-colab-pos">${i + 1}º</div>
           <div class="analise-colab-info">
-            <div class="analise-colab-nome">${c.nome}</div>
+            <div class="analise-colab-nome">${_escHtml(c.nome)}</div>
             <div class="analise-colab-stats">
               ${c.total} separação${c.total > 1 ? 'ões' : ''} &nbsp;·&nbsp;
               ${c.itens} itens no total
@@ -5033,10 +5043,10 @@ function renderizarAnalise() {
         return `
           <div class="analise-lista-row">
             <div>
-              <div class="analise-lista-nome">${r.nome || '—'}</div>
-              <div class="analise-lista-cliente">${r.cliente}</div>
+              <div class="analise-lista-nome">${_escHtml(r.nome || '—')}</div>
+              <div class="analise-lista-cliente">${_escHtml(r.cliente)}</div>
             </div>
-            <div class="analise-lista-colab">${r.colaborador}</div>
+            <div class="analise-lista-colab">${_escHtml(r.colaborador)}</div>
             <div class="analise-lista-data">${dataEvento}</div>
             <div>
               <span class="analise-duracao ${cls}">${_fmtMin(r.mins)}</span>
@@ -5327,7 +5337,7 @@ function lcRenderizarConteudo() {
     } else if (todosItens.length > 0 && statusFiltro === 'comprar') {
       msg = `Estoque OK! Todos os ${todosItens.length} itens têm quantidade suficiente. Mude o filtro para "Todos os itens" para ver a lista completa.`;
     } else if (todosItens.length > 0 && busca) {
-      msg = `Nenhum item com "${busca}" encontrado. Limpe a busca para ver todos os ${todosItens.length} itens.`;
+      msg = `Nenhum item com "${_escHtml(busca)}" encontrado. Limpe a busca para ver todos os ${todosItens.length} itens.`;
     } else if (!festas.length) {
       msg = 'Nenhuma festa ativa no período selecionado. Tente "Todos Ativos".';
     }
@@ -5398,7 +5408,7 @@ function lcHtmlGrupoSintetico(g) {
 
       return `
         <div class="lc-row">
-          <div class="lc-row-nome">${nomeBasDisplay(it.nome)} ${badgeR}${badgeP}${fornHtml}</div>
+          <div class="lc-row-nome">${_escHtml(nomeBasDisplay(it.nome))} ${badgeR}${badgeP}${fornHtml}</div>
           <div class="lc-row-num">${qtdVis} <span class="lc-row-un">${it.unidade}</span></div>
           <div class="lc-row-num">${it.estoque} <span class="lc-row-un">${it.unidade}</span></div>
           <div class="lc-row-num ${diffCls}">${diffTxt}</div>
@@ -5417,7 +5427,7 @@ function lcHtmlGrupoSintetico(g) {
     <div class="lc-grupo">
       <div class="lc-grupo-header" onclick="toggleGrupo('lc_${grupoKey}')">
         <span class="producao-grupo-seta">&#9660;</span>
-        <span class="lc-grupo-nome">${g.nome}</span>
+        <span class="lc-grupo-nome">${_escHtml(g.nome)}</span>
         ${badge}
       </div>
       <div class="lc-grupo-corpo" id="grupo-lc_${grupoKey}">
@@ -5454,7 +5464,7 @@ function lcHtmlGrupoAnalitico(g) {
         }
         return `
           <div class="analitico-sub-row lc-sub-row">
-            <span class="analitico-sub-nome">${f.festaNome}${dataTxt}</span>
+            <span class="analitico-sub-nome">${_escHtml(f.festaNome)}${dataTxt}</span>
             <span class="analitico-sub-qty">${f.qtd} ${it.unidade}</span>
           </div>
         `;
@@ -5463,7 +5473,7 @@ function lcHtmlGrupoAnalitico(g) {
       return `
         <div class="lc-analitico-item">
           <div class="lc-analitico-resumo">
-            <div class="lc-row-nome">${nomeBasDisplay(it.nome)} ${badgeR}</div>
+            <div class="lc-row-nome">${_escHtml(nomeBasDisplay(it.nome))} ${badgeR}</div>
             <div class="lc-analitico-nums">
               <span>Necessário: <strong>${it.necessario}</strong> ${it.unidade}</span>
               <span>Estoque: <strong>${it.estoque}</strong> ${it.unidade}</span>
@@ -5485,7 +5495,7 @@ function lcHtmlGrupoAnalitico(g) {
     <div class="lc-grupo">
       <div class="lc-grupo-header" onclick="toggleGrupo('lc_${grupoKey}')">
         <span class="producao-grupo-seta">&#9660;</span>
-        <span class="lc-grupo-nome">${g.nome}</span>
+        <span class="lc-grupo-nome">${_escHtml(g.nome)}</span>
         ${badge}
       </div>
       <div class="lc-grupo-corpo" id="grupo-lc_${grupoKey}">
@@ -5720,7 +5730,7 @@ function renderizarRelPorItem(festasNoPeriodo, todasFestas, estoqueMap) {
     .sort(([,a],[,b]) => a.ordem - b.ordem)
     .map(([grupo, gData]) => `
       <div class="rel-grupo-bloco">
-        <div class="rel-grupo-titulo">${grupo}</div>
+        <div class="rel-grupo-titulo">${_escHtml(grupo)}</div>
         ${gData.itens.sort((a,b) => a.nome.localeCompare(b.nome,'pt-BR')).map(it => htmlRelItemCard(it)).join('')}
       </div>
     `).join('');
@@ -5734,7 +5744,7 @@ function htmlRelItemCard(it) {
   return `
     <div class="rel-card">
       <div class="rel-card-header">
-        <div class="rel-card-nome">${it.nome} ${badgeRefrig}</div>
+        <div class="rel-card-nome">${_escHtml(it.nome)} ${badgeRefrig}</div>
         <div class="rel-card-badges">
           ${it.cfg?.prioridade ? `<span class="badge-prioridade prior-${it.cfg.prioridade}">${it.cfg.prioridade}</span>` : ''}
         </div>
@@ -5792,8 +5802,8 @@ function htmlRelDetalhesFestas(detalhes, unidade) {
     return `
       <div class="rel-detalhe-row">
         <div class="rel-detalhe-festa">
-          ${d.festaNome}${dataTxt?' — '+dataTxt:''}
-          <span class="badge badge-${d.festaStatus}" style="font-size:9px;margin-left:4px">${STATUS_LABELS[d.festaStatus]||d.festaStatus}</span>
+          ${_escHtml(d.festaNome)}${dataTxt?' — '+dataTxt:''}
+          <span class="badge badge-${d.festaStatus}" style="font-size:9px;margin-left:4px">${_escHtml(STATUS_LABELS[d.festaStatus]||d.festaStatus)}</span>
         </div>
         <div class="rel-detalhe-nums">
           <span>Solicitado: <strong>${d.solicitado}</strong></span>
@@ -5828,10 +5838,10 @@ function renderizarRelPorFesta(festasNoPeriodo) {
       <div class="rel-festa-card">
         <div class="rel-festa-header">
           <div>
-            <div class="rel-festa-nome">${f.nome}</div>
-            <div class="rel-festa-meta">${formatarData(f.data)}${f.cliente?' · '+f.cliente:''}</div>
+            <div class="rel-festa-nome">${_escHtml(f.nome)}</div>
+            <div class="rel-festa-meta">${formatarData(f.data)}${f.cliente?' · '+_escHtml(f.cliente):''}</div>
           </div>
-          <span class="badge badge-${f.status}">${STATUS_LABELS[f.status]||f.status}</span>
+          <span class="badge badge-${f.status}">${_escHtml(STATUS_LABELS[f.status]||f.status)}</span>
         </div>
         <div class="rel-grid" style="grid-template-columns:repeat(4,1fr)">
           <div class="rel-cell"><div class="rel-cell-valor">${totSol}</div><div class="rel-cell-label">Solicitado</div></div>
@@ -5998,18 +6008,18 @@ async function renderizarLocalizacoes() {
       })
       .map(([grupo, itens]) => `
         <div class="config-grupo-bloco">
-          <div class="config-grupo-titulo">${grupo}</div>
+          <div class="config-grupo-titulo">${_escHtml(grupo)}</div>
           ${itens.sort((a,b) => a.nome.localeCompare(b.nome,'pt-BR')).map(c => `
             <div class="loc-item-row">
               <div class="loc-item-info">
-                <div class="loc-item-nome">${c.nome}</div>
-                <div class="loc-item-grupo">${c.grupo || '—'}</div>
+                <div class="loc-item-nome">${_escHtml(c.nome)}</div>
+                <div class="loc-item-grupo">${_escHtml(c.grupo || '—')}</div>
               </div>
               <div class="loc-campos">
                 <input class="loc-input" id="loc-setor-${c.id}"
-                  placeholder="Setor / Ambiente" value="${c.setor || ''}" />
+                  placeholder="Setor / Ambiente" value="${_escHtml(c.setor || '')}" />
                 <input class="loc-input" id="loc-prat-${c.id}"
-                  placeholder="Prateleira" value="${c.prateleira || ''}" style="width:90px" />
+                  placeholder="Prateleira" value="${_escHtml(c.prateleira || '')}" style="width:90px" />
                 <button class="btn-loc-salvar" onclick="salvarLocalizacaoItem('${c.id}','${_esc(c.nomeKey)}')">
                   Salvar
                 </button>
@@ -6063,7 +6073,7 @@ async function renderizarCategorias() {
     el.innerHTML = cats.map(c => `
       <div class="config-item-row">
         <div class="config-item-info">
-          <div class="config-item-nome">${c.nome}</div>
+          <div class="config-item-nome">${_escHtml(c.nome)}</div>
           <div class="config-item-meta">${c.ordem ? `Ordem: #${c.ordem}` : 'Sem ordem definida'}</div>
         </div>
         <div class="config-item-acoes">
@@ -6244,7 +6254,7 @@ function _renderAlertas() {
     const jaTemPedido = comprasCache.some(c => c.nomeKey === a.nomeKey && (c.status === 'pendente' || c.status === 'pedido'));
     return `
       <div class="compra-alerta-card${cor}">
-        <div class="compra-alerta-nome">${a.nome}</div>
+        <div class="compra-alerta-nome">${_escHtml(a.nome)}</div>
         <div class="compra-alerta-nums">
           <span>Atual: <strong>${a.qtdAtual} ${a.unidade}</strong></span>
           <span>Mínimo: <strong>${a.estoqueMinimo} ${a.unidade}</strong></span>
@@ -6286,13 +6296,13 @@ function _renderAndamento() {
     return `
       <div class="compra-pedido-card">
         <div class="compra-pedido-topo">
-          <div class="compra-pedido-nome">${c.nome}</div>
+          <div class="compra-pedido-nome">${_escHtml(c.nome)}</div>
           <span class="compra-status-badge ${statusClass}">${statusLabel}</span>
         </div>
         <div class="compra-pedido-detalhe">
           Qtd solicitada: <strong>${c.qtdSolicitada} ${c.unidade || 'un'}</strong>
           &nbsp;|&nbsp; Solicitado em: ${data}
-          ${c.observacao ? `<br>Obs: ${c.observacao}` : ''}
+          ${c.observacao ? `<br>Obs: ${_escHtml(c.observacao)}` : ''}
         </div>
         <div class="compra-pedido-acoes">
           ${c.status === 'pendente'
@@ -6321,13 +6331,13 @@ function _renderHistorico() {
     return `
       <div class="compra-pedido-card">
         <div class="compra-pedido-topo">
-          <div class="compra-pedido-nome">${c.nome}</div>
+          <div class="compra-pedido-nome">${_escHtml(c.nome)}</div>
           <span class="compra-status-badge compra-status-recebido">Recebido</span>
         </div>
         <div class="compra-pedido-detalhe">
           Recebido: <strong>${c.qtdRecebida || c.qtdSolicitada} ${c.unidade || 'un'}</strong>
           &nbsp;|&nbsp; Data: ${dataRec}
-          ${c.observacao ? `<br>Obs: ${c.observacao}` : ''}
+          ${c.observacao ? `<br>Obs: ${_escHtml(c.observacao)}` : ''}
         </div>
       </div>`;
   }).join('');

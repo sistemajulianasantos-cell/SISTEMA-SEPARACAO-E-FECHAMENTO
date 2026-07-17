@@ -17,7 +17,10 @@ function formatarData(val) {
   return toDate(val).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-/* ── Hash de senha (SHA-256 + salt fixo) ── */
+/* ── Hash de senha (SHA-256 + salt fixo) — ESQUEMA LEGADO ──
+   Mantido só para autenticar/migrar contas antigas (ver
+   autenticarUsuarioLegado). Contas novas usam o Firebase Authentication
+   de verdade e nunca mais gravam senha nem hash no Firestore. */
 async function hashSenha(senha) {
   const dados = new TextEncoder().encode(senha + 'romero-salt-2024');
   const buf   = await crypto.subtle.digest('SHA-256', dados);
@@ -27,29 +30,82 @@ async function hashSenha(senha) {
 }
 
 /* ════════════════════════════════════════
-   USUÁRIOS
+   USUÁRIOS — autenticação via Firebase Authentication
+   O login continua sendo por "nome de usuário" na tela, mas por trás
+   cada pessoa tem uma conta real no Firebase Auth, com um e-mail
+   sintético derivado do nome (ex.: "joao.silva@sistema-separacao.local").
+   A senha é validada e guardada pelo próprio Firebase — nunca mais
+   trafega nem fica salva como hash dentro do Firestore.
 ════════════════════════════════════════ */
+
+const AUTH_DOMINIO_USUARIO = 'sistema-separacao.local';
+
+function normalizarNomeUsuario(nome) {
+  return (nome || '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '');
+}
+
+function _emailDoUsuario(nome) {
+  return `${normalizarNomeUsuario(nome)}@${AUTH_DOMINIO_USUARIO}`;
+}
+
+/* App secundário do Firebase — usado só para criar a conta de OUTRA
+   pessoa (ex.: CEO cadastrando um colaborador). createUserWithEmailAndPassword
+   loga automaticamente como o usuário recém-criado quando chamado no app
+   principal, o que derrubaria a sessão de quem está cadastrando; rodando
+   num app secundário isso não acontece. */
+function _appSecundario() {
+  const NOME_APP = 'secundario';
+  const existente = firebase.apps.find(a => a.name === NOME_APP);
+  if (existente) return existente;
+
+  const app = firebase.initializeApp(firebaseConfig, NOME_APP);
+  /* Replica a ativação do App Check do app principal — sem isso, chamadas
+     de Auth/Firestore pelo app secundário seriam rejeitadas se o App Check
+     estiver com enforcement ligado no projeto. */
+  if (typeof APPCHECK_SITE_KEY !== 'undefined' && APPCHECK_SITE_KEY) {
+    app.appCheck().activate(APPCHECK_SITE_KEY, true);
+  }
+  return app;
+}
 
 async function contarUsuarios() {
   const snap = await db.collection('usuarios').limit(1).get();
   return snap.size;
 }
 
-/* roles: array de strings, ex: ['separador', 'coordenador'] */
+/* roles: array de strings, ex: ['separador', 'coordenador'].
+   Cria a conta no Firebase Auth (via app secundário, sem afetar a sessão
+   atual) e o perfil em usuarios/{uid}. O documento é gravado usando a
+   própria sessão recém-criada (as regras do Firestore exigem que o
+   primeiro documento de um usuário seja gravado por ele mesmo). Quem
+   chamar e quiser efetivamente entrar como esse usuário deve, em
+   seguida, chamar autenticarUsuario. */
 async function criarUsuario(nome, senha, roles) {
-  const hash  = await hashSenha(senha);
   /* papel principal: ceo > coordenador > separador */
-  const role  = roles.includes('ceo') ? 'ceo'
+  const role = roles.includes('ceo') ? 'ceo'
     : roles.includes('coordenador') ? 'coordenador' : 'separador';
 
-  return db.collection('usuarios').add({
+  const appSec   = _appSecundario();
+  const cred     = await appSec.auth().createUserWithEmailAndPassword(_emailDoUsuario(nome), senha);
+  const uid      = cred.user.uid;
+
+  const dados = {
     nome,
-    senhaHash: hash,
+    nomeKey:  normalizarNomeUsuario(nome),
     role,           /* campo legado — mantido para compat */
     roles,          /* array com todos os papéis */
     ativo:     true,
     criadoEm: TS(),
-  });
+  };
+  await appSec.firestore().collection('usuarios').doc(uid).set(dados);
+  await appSec.auth().signOut();
+
+  return { id: uid, ...dados };
 }
 
 async function buscarUsuarioPorNome(nome) {
@@ -63,13 +119,65 @@ async function buscarUsuarioPorNome(nome) {
 }
 
 async function autenticarUsuario(nome, senha) {
-  const usuario = await buscarUsuarioPorNome(nome);
-  if (!usuario) return null;
+  const email = _emailDoUsuario(nome);
+  try {
+    const cred  = await firebase.auth().signInWithEmailAndPassword(email, senha);
+    const doc   = await db.collection('usuarios').doc(cred.user.uid).get();
+    if (!doc.exists) { await firebase.auth().signOut(); return null; }
+    const usuario = { id: cred.user.uid, ...doc.data() };
+    if (!usuario.roles) usuario.roles = [usuario.role];
+    return usuario;
+  } catch (e) {
+    const CODIGOS_CREDENCIAL_INVALIDA = [
+      'auth/user-not-found', 'auth/wrong-password', 'auth/invalid-credential',
+      'auth/invalid-login-credentials',
+    ];
+    if (CODIGOS_CREDENCIAL_INVALIDA.includes(e.code)) {
+      /* Pode ser uma conta ainda não migrada do esquema antigo (hash no
+         Firestore) — tenta validar por ali e, se bater, migra na hora. */
+      return autenticarUsuarioLegado(nome, senha);
+    }
+    throw e;
+  }
+}
+
+async function autenticarUsuarioLegado(nome, senha) {
+  /* A consulta ao Firestore exige alguma sessão (mesmo anônima) — depois
+     de um logout ela deixa de existir, então garantimos uma aqui. */
+  if (!firebase.auth().currentUser) {
+    await firebase.auth().signInAnonymously();
+  }
+  const usuarioLegado = await buscarUsuarioPorNome(nome);
+  if (!usuarioLegado || !usuarioLegado.senhaHash) return null;
   const hash = await hashSenha(senha);
-  if (hash !== usuario.senhaHash) return null;
-  /* garantir que o campo roles exista (retrocompatibilidade) */
-  if (!usuario.roles) usuario.roles = [usuario.role];
-  return usuario;
+  if (hash !== usuarioLegado.senhaHash) return null;
+  return migrarUsuarioLegado(usuarioLegado, senha);
+}
+
+/* Cria a conta real no Firebase Auth para quem só existia no esquema
+   antigo e apaga o registro legado (com o hash de senha). A senha em
+   texto puro só existe neste instante, durante o próprio login, e nunca
+   é salva em lugar nenhum. */
+async function migrarUsuarioLegado(usuarioLegado, senha) {
+  const roles   = usuarioLegado.roles || [usuarioLegado.role];
+  const nomeKey = normalizarNomeUsuario(usuarioLegado.nome);
+  const email   = _emailDoUsuario(usuarioLegado.nome);
+
+  const cred = await firebase.auth().createUserWithEmailAndPassword(email, senha);
+  const uid  = cred.user.uid;
+
+  const dados = {
+    nome:     usuarioLegado.nome,
+    nomeKey,
+    role:     usuarioLegado.role,
+    roles,
+    ativo:    usuarioLegado.ativo !== false,
+    criadoEm: usuarioLegado.criadoEm || TS(),
+  };
+  await db.collection('usuarios').doc(uid).set(dados);
+  await db.collection('usuarios').doc(usuarioLegado.id).delete();
+
+  return { id: uid, ...dados };
 }
 
 async function listarUsuarios() {

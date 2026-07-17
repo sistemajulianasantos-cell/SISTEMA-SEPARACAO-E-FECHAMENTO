@@ -1,0 +1,84 @@
+rules_version = '2';
+
+/* ============================================================
+   REGRAS DE SEGURANÇA — Firestore
+   ============================================================
+   Requer que cada usuário tenha uma conta real no Firebase
+   Authentication (ver js/firestore.js). O login na tela continua
+   sendo por "nome de usuário", mas por trás existe uma conta com
+   e-mail sintético (ex.: "joao.silva@sistema-separacao.local") e
+   senha guardada/verificada pelo próprio Firebase — nunca mais como
+   hash dentro de um documento legível pelo cliente.
+
+   Como aplicar: cole este arquivo no Console do Firebase em
+   Firestore Database → Regras, ou publique via Firebase CLI
+   (`firebase deploy --only firestore:rules`) usando o firebase.json
+   deste repositório.
+   ============================================================ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    /* Sessão "real": conta de verdade (Firebase Auth com e-mail/senha),
+       não a sessão anônima usada apenas no fluxo transitório de login/
+       migração (ver /usuarios abaixo). Toda leitura/escrita de dados de
+       negócio exige isso. */
+    function autenticadoReal() {
+      return autenticado() && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    function meuPerfil() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data;
+    }
+
+    function ehCeo() {
+      return autenticadoReal()
+        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+        && meuPerfil().role == 'ceo';
+    }
+
+    match /usuarios/{uid} {
+      /* Cada um lê o próprio perfil; o CEO lê o de qualquer um. */
+      allow get: if autenticadoReal() && (request.auth.uid == uid || ehCeo());
+
+      /* FASE 1 — migração de contas antigas (temporário):
+         permite consulta pontual (no máximo 1 resultado) por "nome",
+         mesmo em sessão anônima, para localizar um registro do esquema
+         antigo (com senhaHash) durante o login. Depois que toda a
+         equipe tiver entrado ao menos uma vez (nenhum documento com
+         senhaHash restando), troque a linha abaixo para:
+           allow list: if ehCeo();
+         e remova a exceção de sessão anônima com limite 1. */
+      allow list: if ehCeo() || (autenticado() && request.query.limit <= 1);
+
+      /* Criação: a própria pessoa criando seu perfil logo após a conta
+         no Auth existir (setup inicial / auto-cadastro / migração), ou
+         o CEO cadastrando outra pessoa pelo painel de usuários. */
+      allow create: if autenticadoReal() && (
+        (request.auth.uid == uid && !exists(/databases/$(database)/documents/usuarios/$(request.auth.uid)))
+        || ehCeo()
+      );
+
+      allow update: if ehCeo();
+
+      /* Exclusão: o CEO a qualquer momento, ou a própria pessoa apagando
+         seu registro legado (mesmo nomeKey) no instante da migração. */
+      allow delete: if ehCeo() || (
+        autenticadoReal()
+        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid))
+        && meuPerfil().nomeKey == resource.data.nomeKey
+      );
+    }
+
+    match /festas/{id}             { allow read, write: if autenticadoReal(); }
+    match /estoque/{id}            { allow read, write: if autenticadoReal(); }
+    match /categorias/{id}         { allow read, write: if autenticadoReal(); }
+    match /item_config/{id}        { allow read, write: if autenticadoReal(); }
+    match /historico_contagem/{id} { allow read, write: if autenticadoReal(); }
+    match /compras/{id}            { allow read, write: if autenticadoReal(); }
+  }
+}
