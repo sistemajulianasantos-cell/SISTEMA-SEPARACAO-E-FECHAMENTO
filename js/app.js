@@ -825,7 +825,11 @@ async function finalizarSetup() {
     setTimeout(() => mostrarTela('tela-login'), 1200);
   } catch (e) {
     console.error(e);
-    toast('Erro ao criar administrador', 'erro');
+    if (e.code === 'auth/email-already-in-use') {
+      toast('Ja existe uma conta com esse nome. Apague-a em Firebase Console > Authentication > Users antes de tentar de novo.', 'erro');
+    } else {
+      toast('Erro ao criar administrador', 'erro');
+    }
   }
 }
 
@@ -942,7 +946,11 @@ async function submitPrimeiroAcesso() {
     irParaPrincipal();
   } catch (e) {
     console.error(e);
-    mostrarErro('Erro ao cadastrar. Tente novamente.');
+    if (e.code === 'auth/email-already-in-use') {
+      mostrarErro('Já existe um usuário com esse nome. Faça login ou contate o administrador.');
+    } else {
+      mostrarErro('Erro ao cadastrar. Tente novamente.');
+    }
   } finally {
     btn.disabled    = false;
     btn.textContent = 'Cadastrar e Entrar';
@@ -2002,83 +2010,144 @@ async function abrirConferencia(id) {
   });
 }
 
+function htmlCardConfItem(item, ri) {
+  const cfg       = buscarConfigItem(normalizarNomeItem(item.nome));
+  const exigeFoto = !!cfg?.exigeFoto;
+  const temFoto   = !!(fotosCache.confItens[ri] || item.fotoConferencia);
+  const fotoAreaHtml = exigeFoto ? `
+    <div class="item-foto-area${temFoto ? ' ok' : ''}" id="conf-foto-area-${ri}">
+      <div class="item-foto-preview">
+        ${item.fotoConferencia
+          ? `<img src="${item.fotoConferencia}" alt="foto">`
+          : fotosCache.confItens[ri]
+            ? `<img src="${URL.createObjectURL(fotosCache.confItens[ri])}" alt="foto">`
+            : `<div class="item-foto-placeholder">📷</div>`}
+      </div>
+      <div class="item-foto-label">
+        <div class="item-foto-label-titulo${temFoto ? ' ok' : ''}">${temFoto ? '✓ Foto anexada' : 'Foto obrigatória'}</div>
+        <div class="item-foto-label-desc">${temFoto ? 'Toque para trocar' : 'Este item exige registro fotográfico'}</div>
+      </div>
+      <input type="file" id="conf-foto-input-${ri}" accept="image/*" capture="environment" style="display:none"
+        onchange="onFotoItemConf(${ri}, this)" />
+      <button class="btn-foto-item${temFoto ? ' ok' : ''}"
+        onclick="document.getElementById('conf-foto-input-${ri}').click()">
+        ${temFoto ? '✓ OK' : '📷 Anexar'}
+      </button>
+    </div>
+  ` : '';
+
+  const confVal  = item.qtdConferida;
+  const sepVal   = item.qtdSeparada || 0;
+  const msgInicial = confVal !== undefined
+    ? (confVal > sepVal
+        ? `<span class="msg-item msg-alerta">⚠ Quantidade acima do separado</span>`
+        : confVal < sepVal
+          ? `<span class="msg-item msg-erro">⚠ Quantidade abaixo do separado</span>`
+          : '')
+    : '';
+
+  return `
+    <div class="item-row">
+      <div class="item-topo">
+        <div>
+          <div class="item-nome">
+            ${_escHtml(nomeBasDisplay(item.nome))}
+            <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${ri})">✏️</button>
+          </div>
+          ${htmlBadgeForn(item) || ''}
+          ${item.separado && item.qtdSeparada !== undefined ? `
+            <div class="item-sub">
+              Separado: <strong>${item.qtdSeparada} ${_escHtml(item.unidade || 'un')}</strong>${item.separadoPor ? ` por <strong>${_escHtml(item.separadoPor)}</strong>` : ''}${item.separadoEm ? ` às ${formatarHora(item.separadoEm)}` : ''}
+            </div>
+          ` : ''}
+        </div>
+      </div>
+      <div class="item-entrada">
+        <label>Quantidade conferida:</label>
+        <input type="number" class="qty-input" id="conf-qty-${ri}"
+          value="${confVal !== undefined ? confVal : ''}"
+          min="0" placeholder="0"
+          oninput="checarConf(${ri}, ${sepVal})"
+          onchange="salvarQtdConf(${ri})" />
+        <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
+      </div>
+      <div id="conf-msg-${ri}">${msgInicial}</div>
+      ${fotoAreaHtml}
+    </div>
+  `;
+}
+
 function renderizarConferencia(festa) {
   document.getElementById('conf-info').innerHTML = htmlInfoFesta(festa);
 
-  document.getElementById('conf-itens').innerHTML =
-    (festa.itens || []).filter((item) => {
-      /* CEO vê todos os itens da festa; demais perfis só os configurados
-         para aparecer na conferência (descartáveis/decoração ficam ocultos) */
-      if (souCeo()) return true;
-      const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
-      return !cfg || cfg.conferirCoord !== false;
-    }).map((item) => {
-    const ri        = (festa.itens || []).indexOf(item);
-    const cfg       = buscarConfigItem(normalizarNomeItem(item.nome));
-    const exigeFoto = !!cfg?.exigeFoto;
-    const temFoto   = !!(fotosCache.confItens[ri] || item.fotoConferencia);
-    const fotoAreaHtml = exigeFoto ? `
-      <div class="item-foto-area${temFoto ? ' ok' : ''}" id="conf-foto-area-${ri}">
-        <div class="item-foto-preview">
-          ${item.fotoConferencia
-            ? `<img src="${item.fotoConferencia}" alt="foto">`
-            : fotosCache.confItens[ri]
-              ? `<img src="${URL.createObjectURL(fotosCache.confItens[ri])}" alt="foto">`
-              : `<div class="item-foto-placeholder">📷</div>`}
-        </div>
-        <div class="item-foto-label">
-          <div class="item-foto-label-titulo${temFoto ? ' ok' : ''}">${temFoto ? '✓ Foto anexada' : 'Foto obrigatória'}</div>
-          <div class="item-foto-label-desc">${temFoto ? 'Toque para trocar' : 'Este item exige registro fotográfico'}</div>
-        </div>
-        <input type="file" id="conf-foto-input-${ri}" accept="image/*" capture="environment" style="display:none"
-          onchange="onFotoItemConf(${ri}, this)" />
-        <button class="btn-foto-item${temFoto ? ' ok' : ''}"
-          onclick="document.getElementById('conf-foto-input-${ri}').click()">
-          ${temFoto ? '✓ OK' : '📷 Anexar'}
-        </button>
-      </div>
-    ` : '';
+  const buscaConf = document.getElementById('busca-conf-input')?.value || '';
 
-    const confVal  = item.qtdConferida;
-    const sepVal   = item.qtdSeparada || 0;
-    const msgInicial = confVal !== undefined
-      ? (confVal > sepVal
-          ? `<span class="msg-item msg-alerta">⚠ Quantidade acima do separado</span>`
-          : confVal < sepVal
-            ? `<span class="msg-item msg-erro">⚠ Quantidade abaixo do separado</span>`
-            : '')
-      : '';
+  const visiveis = (festa.itens || []).filter((item) => {
+    /* CEO vê todos os itens da festa; demais perfis só os configurados
+       para aparecer na conferência (descartáveis/decoração ficam ocultos) */
+    if (souCeo()) return true;
+    const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+    return !cfg || cfg.conferirCoord !== false;
+  }).map((item) => ({ item, ri: (festa.itens || []).indexOf(item) }));
 
-    return `
-      <div class="item-row">
-        <div class="item-topo">
-          <div>
-            <div class="item-nome">
-              ${_escHtml(nomeBasDisplay(item.nome))}
-              <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${ri})">✏️</button>
-            </div>
-            ${htmlBadgeForn(item) || ''}
-            ${item.separado && item.qtdSeparada !== undefined ? `
-              <div class="item-sub">
-                Separado: <strong>${item.qtdSeparada} ${_escHtml(item.unidade || 'un')}</strong>${item.separadoPor ? ` por <strong>${_escHtml(item.separadoPor)}</strong>` : ''}${item.separadoEm ? ` às ${formatarHora(item.separadoEm)}` : ''}
-              </div>
-            ` : ''}
-          </div>
-        </div>
-        <div class="item-entrada">
-          <label>Quantidade conferida:</label>
-          <input type="number" class="qty-input" id="conf-qty-${ri}"
-            value="${confVal !== undefined ? confVal : ''}"
-            min="0" placeholder="0"
-            oninput="checarConf(${ri}, ${sepVal})"
-            onchange="salvarQtdConf(${ri})" />
-          <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
-        </div>
-        <div id="conf-msg-${ri}">${msgInicial}</div>
-        ${fotoAreaHtml}
+  const pendentes  = visiveis.filter(({ item }) => item.qtdConferida === undefined);
+  const conferidos = visiveis.filter(({ item }) => item.qtdConferida !== undefined);
+
+  const buscaHtml = `
+    <div class="busca-sep-wrap">
+      <input type="search" id="busca-conf-input" class="busca-sep"
+        placeholder="Pesquisar item..."
+        oninput="filtrarItensConf(this.value)"
+        value="${buscaConf.replace(/"/g, '&quot;')}" />
+    </div>
+  `;
+
+  const pendentesHtml = pendentes.length
+    ? pendentes.map(({ item, ri }) => htmlCardConfItem(item, ri)).join('')
+    : estadoVazio('Nenhum item pendente de conferência.');
+
+  const conferidosHtml = conferidos.length ? `
+    <div class="producao-grupo">
+      <div class="producao-grupo-header collapsed" onclick="toggleGrupo('conf_conferidos')">
+        <span class="producao-grupo-seta">&#9660;</span>
+        <span class="producao-grupo-nome">✓ Conferido</span>
+        <span class="producao-grupo-qtd">${conferidos.length} item${conferidos.length !== 1 ? 's' : ''}</span>
       </div>
-    `;
-  }).join('');
+      <div class="producao-grupo-itens collapsed" id="grupo-conf_conferidos">
+        ${conferidos.map(({ item, ri }) => htmlCardConfItem(item, ri)).join('')}
+      </div>
+    </div>
+  ` : '';
+
+  document.getElementById('conf-itens').innerHTML = `
+    ${buscaHtml}
+    <h4 class="titulo-secao">A Conferir (${pendentes.length})</h4>
+    ${pendentesHtml}
+    ${conferidosHtml}
+  `;
+
+  if (buscaConf) filtrarItensConf(buscaConf);
+}
+
+function filtrarItensConf(q) {
+  const termo = q.trim().toLowerCase();
+  let temResultadoEmConferidos = false;
+
+  document.querySelectorAll('#conf-itens .item-row').forEach(card => {
+    const nome     = card.querySelector('.item-nome')?.textContent.toLowerCase() || '';
+    const combina  = !termo || nome.includes(termo);
+    card.style.display = combina ? '' : 'none';
+    if (combina && termo && card.closest('#grupo-conf_conferidos')) {
+      temResultadoEmConferidos = true;
+    }
+  });
+
+  if (temResultadoEmConferidos) {
+    const grupo  = document.getElementById('grupo-conf_conferidos');
+    const header = grupo?.previousElementSibling;
+    grupo?.classList.remove('collapsed');
+    header?.classList.remove('collapsed');
+  }
 }
 
 /* Grava um campo de um item específico da festa no Firestore sem perder o resto,
@@ -3070,7 +3139,11 @@ async function salvarUsuario() {
     }, 1000);
   } catch (e) {
     console.error(e);
-    toast('Erro ao criar usuario.', 'erro');
+    if (e.code === 'auth/email-already-in-use') {
+      toast('Ja existe uma conta com esse nome (pode ser uma conta orfa de uma tentativa anterior). Apague-a em Firebase Console > Authentication > Users antes de tentar de novo.', 'erro');
+    } else {
+      toast('Erro ao criar usuario.', 'erro');
+    }
   }
 }
 
