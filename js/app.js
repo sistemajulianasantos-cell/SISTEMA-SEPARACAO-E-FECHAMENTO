@@ -17,6 +17,7 @@ let festaEditandoId   = null;   /* id da festa em edição */
 let timers    = {};
 let intervalos= {};
 
+let abaConfAtual       = 'aconferir';   /* 'aconferir' | 'conferido' */
 let abaEstoqueAtual    = 'sintetico';
 let abaProducaoAtual   = 'sintetico';
 let ordemProducaoAtual = 'categoria';   /* 'categoria' | 'prioridade' */
@@ -2055,7 +2056,7 @@ function htmlCardConfItem(item, ri) {
             <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${ri})">✏️</button>
           </div>
           ${htmlBadgeForn(item) || ''}
-          ${item.separado && item.qtdSeparada !== undefined ? `
+          ${souCeo() && item.separado && item.qtdSeparada !== undefined ? `
             <div class="item-sub">
               Separado: <strong>${item.qtdSeparada} ${_escHtml(item.unidade || 'un')}</strong>${item.separadoPor ? ` por <strong>${_escHtml(item.separadoPor)}</strong>` : ''}${item.separadoEm ? ` às ${formatarHora(item.separadoEm)}` : ''}
             </div>
@@ -2090,8 +2091,11 @@ function renderizarConferencia(festa) {
     return !cfg || cfg.conferirCoord !== false;
   }).map((item) => ({ item, ri: (festa.itens || []).indexOf(item) }));
 
-  const pendentes  = visiveis.filter(({ item }) => item.qtdConferida === undefined);
-  const conferidos = visiveis.filter(({ item }) => item.qtdConferida !== undefined);
+  /* Item só é considerado "conferido" depois que o coordenador de fato salva uma
+     quantidade (marcado por conferidoEm); qtdConferida sozinha não serve porque
+     itens novos já nascem com qtdConferida:0 (ver criarFesta / duplicarFesta). */
+  const pendentes  = visiveis.filter(({ item }) => item.conferidoEm === undefined);
+  const conferidos = visiveis.filter(({ item }) => item.conferidoEm !== undefined);
 
   const buscaHtml = `
     <div class="busca-sep-wrap">
@@ -2102,52 +2106,47 @@ function renderizarConferencia(festa) {
     </div>
   `;
 
+  const tabsHtml = `
+    <div class="filtros-tabs" id="conf-tabs">
+      <button class="tab${abaConfAtual === 'aconferir' ? ' ativo' : ''}"
+        onclick="trocarAbaConf('aconferir', this)">A Conferir (${pendentes.length})</button>
+      <button class="tab${abaConfAtual === 'conferido' ? ' ativo' : ''}"
+        onclick="trocarAbaConf('conferido', this)">✓ Conferido (${conferidos.length})</button>
+    </div>
+  `;
+
   const pendentesHtml = pendentes.length
     ? pendentes.map(({ item, ri }) => htmlCardConfItem(item, ri)).join('')
     : estadoVazio('Nenhum item pendente de conferência.');
 
-  const conferidosHtml = conferidos.length ? `
-    <div class="producao-grupo">
-      <div class="producao-grupo-header collapsed" onclick="toggleGrupo('conf_conferidos')">
-        <span class="producao-grupo-seta">&#9660;</span>
-        <span class="producao-grupo-nome">✓ Conferido</span>
-        <span class="producao-grupo-qtd">${conferidos.length} item${conferidos.length !== 1 ? 's' : ''}</span>
-      </div>
-      <div class="producao-grupo-itens collapsed" id="grupo-conf_conferidos">
-        ${conferidos.map(({ item, ri }) => htmlCardConfItem(item, ri)).join('')}
-      </div>
-    </div>
-  ` : '';
+  const conferidosHtml = conferidos.length
+    ? conferidos.map(({ item, ri }) => htmlCardConfItem(item, ri)).join('')
+    : estadoVazio('Nenhum item conferido ainda.');
 
   document.getElementById('conf-itens').innerHTML = `
     ${buscaHtml}
-    <h4 class="titulo-secao">A Conferir (${pendentes.length})</h4>
-    ${pendentesHtml}
-    ${conferidosHtml}
+    ${tabsHtml}
+    <div id="conf-lista-aconferir" class="${abaConfAtual === 'aconferir' ? '' : 'hidden'}">${pendentesHtml}</div>
+    <div id="conf-lista-conferido" class="${abaConfAtual === 'conferido' ? '' : 'hidden'}">${conferidosHtml}</div>
   `;
 
   if (buscaConf) filtrarItensConf(buscaConf);
 }
 
+function trocarAbaConf(aba, btn) {
+  abaConfAtual = aba;
+  document.querySelectorAll('#conf-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  document.getElementById('conf-lista-aconferir')?.classList.toggle('hidden', aba !== 'aconferir');
+  document.getElementById('conf-lista-conferido')?.classList.toggle('hidden', aba !== 'conferido');
+}
+
 function filtrarItensConf(q) {
   const termo = q.trim().toLowerCase();
-  let temResultadoEmConferidos = false;
-
   document.querySelectorAll('#conf-itens .item-row').forEach(card => {
-    const nome     = card.querySelector('.item-nome')?.textContent.toLowerCase() || '';
-    const combina  = !termo || nome.includes(termo);
-    card.style.display = combina ? '' : 'none';
-    if (combina && termo && card.closest('#grupo-conf_conferidos')) {
-      temResultadoEmConferidos = true;
-    }
+    const nome = card.querySelector('.item-nome')?.textContent.toLowerCase() || '';
+    card.style.display = (!termo || nome.includes(termo)) ? '' : 'none';
   });
-
-  if (temResultadoEmConferidos) {
-    const grupo  = document.getElementById('grupo-conf_conferidos');
-    const header = grupo?.previousElementSibling;
-    grupo?.classList.remove('collapsed');
-    header?.classList.remove('collapsed');
-  }
 }
 
 /* Grava um campo de um item específico da festa no Firestore sem perder o resto,
@@ -2165,7 +2164,7 @@ async function salvarQtdConf(idx) {
   if (!festaAtual) return;
   const val = parseFloat(document.getElementById(`conf-qty-${idx}`)?.value) || 0;
   try {
-    await persistirItemFesta(idx, { qtdConferida: val });
+    await persistirItemFesta(idx, { qtdConferida: val, conferidoEm: new Date() });
   } catch (e) {
     console.error('Erro ao salvar quantidade conferida:', e);
     toast('Não foi possível salvar a quantidade. Verifique a conexão.', 'erro');
