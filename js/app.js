@@ -599,6 +599,10 @@ function renderizarInicio(papel) {
           <div class="inicio-card-nome">Compras &amp; Lista</div>
           <span id="badge-compras" class="inicio-card-badge hidden"></span>
         </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirPainelTV()">
+          <div class="inicio-card-icone">📺</div>
+          <div class="inicio-card-nome">Painel TV</div>
+        </div>
       </div>
       <div class="inicio-secao-label">Administrativo</div>
       <div class="inicio-grid">
@@ -654,6 +658,12 @@ function renderizarInicio(papel) {
       </div>
     `;
   }
+}
+
+function abrirPainelTV() {
+  historico = ['tela-inicial'];
+  mostrarTela('tela-tv');
+  carregarTV();
 }
 
 function irInicioProducao() {
