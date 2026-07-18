@@ -53,6 +53,19 @@ function _emailDoUsuario(nome) {
   return `${normalizarNomeUsuario(nome)}@${AUTH_DOMINIO_USUARIO}`;
 }
 
+/* O Firebase Auth exige senha com pelo menos 6 caracteres, mas o app
+   sempre permitiu 4 (e várias contas antigas usam senha de 4 dígitos).
+   Em vez de forçar todo mundo a redefinir a senha agora, completamos de
+   forma determinística senhas curtas até 6 caracteres antes de qualquer
+   chamada ao Firebase Auth — quem digita continua digitando a senha
+   original de sempre; o preenchimento é só um detalhe interno. */
+function _senhaFirebase(senha) {
+  if (!senha || senha.length >= 6) return senha;
+  let s = senha;
+  while (s.length < 6) s += senha;
+  return s.slice(0, 6);
+}
+
 /* App secundário do Firebase — usado só para criar a conta de OUTRA
    pessoa (ex.: CEO cadastrando um colaborador). createUserWithEmailAndPassword
    loga automaticamente como o usuário recém-criado quando chamado no app
@@ -91,7 +104,7 @@ async function criarUsuario(nome, senha, roles) {
     : roles.includes('coordenador') ? 'coordenador' : 'separador';
 
   const appSec   = _appSecundario();
-  const cred     = await appSec.auth().createUserWithEmailAndPassword(_emailDoUsuario(nome), senha);
+  const cred     = await appSec.auth().createUserWithEmailAndPassword(_emailDoUsuario(nome), _senhaFirebase(senha));
   const uid      = cred.user.uid;
 
   const dados = {
@@ -121,7 +134,7 @@ async function buscarUsuarioPorNome(nome) {
 async function autenticarUsuario(nome, senha) {
   const email = _emailDoUsuario(nome);
   try {
-    const cred  = await firebase.auth().signInWithEmailAndPassword(email, senha);
+    const cred  = await firebase.auth().signInWithEmailAndPassword(email, _senhaFirebase(senha));
     const doc   = await db.collection('usuarios').doc(cred.user.uid).get();
     if (!doc.exists) { await firebase.auth().signOut(); return null; }
     const usuario = { id: cred.user.uid, ...doc.data() };
@@ -163,7 +176,7 @@ async function migrarUsuarioLegado(usuarioLegado, senha) {
   const nomeKey = normalizarNomeUsuario(usuarioLegado.nome);
   const email   = _emailDoUsuario(usuarioLegado.nome);
 
-  const cred = await firebase.auth().createUserWithEmailAndPassword(email, senha);
+  const cred = await firebase.auth().createUserWithEmailAndPassword(email, _senhaFirebase(senha));
   const uid  = cred.user.uid;
 
   const dados = {
@@ -189,9 +202,9 @@ async function trocarSenhaUsuarioAtual(senhaAtual, novaSenha) {
   const user = firebase.auth().currentUser;
   if (!user || !user.email) throw new Error('Sem sessão ativa.');
 
-  const cred = firebase.auth.EmailAuthProvider.credential(user.email, senhaAtual);
+  const cred = firebase.auth.EmailAuthProvider.credential(user.email, _senhaFirebase(senhaAtual));
   await user.reauthenticateWithCredential(cred);
-  await user.updatePassword(novaSenha);
+  await user.updatePassword(_senhaFirebase(novaSenha));
 }
 
 async function listarUsuarios() {
