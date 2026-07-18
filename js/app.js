@@ -2011,7 +2011,7 @@ async function abrirConferencia(id) {
   });
 }
 
-function htmlCardConfItem(item, ri) {
+function htmlCardConfItem(item, ri, conferido) {
   const cfg       = buscarConfigItem(normalizarNomeItem(item.nome));
   const exigeFoto = !!cfg?.exigeFoto;
   const temFoto   = !!(fotosCache.confItens[ri] || item.fotoConferencia);
@@ -2074,6 +2074,9 @@ function htmlCardConfItem(item, ri) {
       </div>
       <div id="conf-msg-${ri}">${msgInicial}</div>
       ${fotoAreaHtml}
+      ${conferido
+        ? `<button class="btn-desfazer" onclick="reabrirItemConf(${ri})">↺ Reabrir</button>`
+        : `<button class="btn-confirmar btn-sm" onclick="marcarItemConferido(${ri})">✓ Marcar como Conferido</button>`}
     </div>
   `;
 }
@@ -2116,11 +2119,11 @@ function renderizarConferencia(festa) {
   `;
 
   const pendentesHtml = pendentes.length
-    ? pendentes.map(({ item, ri }) => htmlCardConfItem(item, ri)).join('')
+    ? pendentes.map(({ item, ri }) => htmlCardConfItem(item, ri, false)).join('')
     : estadoVazio('Nenhum item pendente de conferência.');
 
   const conferidosHtml = conferidos.length
-    ? conferidos.map(({ item, ri }) => htmlCardConfItem(item, ri)).join('')
+    ? conferidos.map(({ item, ri }) => htmlCardConfItem(item, ri, true)).join('')
     : estadoVazio('Nenhum item conferido ainda.');
 
   document.getElementById('conf-itens').innerHTML = `
@@ -2159,15 +2162,41 @@ async function persistirItemFesta(idx, patch) {
 }
 
 /* Salva a quantidade conferida assim que o coordenador sai do campo,
-   para não perder o valor caso a página seja atualizada antes de concluir */
+   para não perder o valor caso a página seja atualizada antes de concluir.
+   Não marca o item como conferido — isso só acontece ao clicar no botão
+   "Marcar como Conferido" (marcarItemConferido), para o item não migrar de
+   aba sozinho apenas por o usuário ter tocado no campo. */
 async function salvarQtdConf(idx) {
+  if (!festaAtual) return;
+  const val = parseFloat(document.getElementById(`conf-qty-${idx}`)?.value) || 0;
+  try {
+    await persistirItemFesta(idx, { qtdConferida: val });
+  } catch (e) {
+    console.error('Erro ao salvar quantidade conferida:', e);
+    toast('Não foi possível salvar a quantidade. Verifique a conexão.', 'erro');
+  }
+}
+
+/* Confirma a conferência do item — move-o de "A Conferir" para "Conferido" */
+async function marcarItemConferido(idx) {
   if (!festaAtual) return;
   const val = parseFloat(document.getElementById(`conf-qty-${idx}`)?.value) || 0;
   try {
     await persistirItemFesta(idx, { qtdConferida: val, conferidoEm: new Date() });
   } catch (e) {
-    console.error('Erro ao salvar quantidade conferida:', e);
-    toast('Não foi possível salvar a quantidade. Verifique a conexão.', 'erro');
+    console.error('Erro ao marcar item como conferido:', e);
+    toast('Não foi possível confirmar a conferência. Verifique a conexão.', 'erro');
+  }
+}
+
+/* Desfaz a confirmação — devolve o item para "A Conferir" */
+async function reabrirItemConf(idx) {
+  if (!festaAtual) return;
+  try {
+    await persistirItemFesta(idx, { conferidoEm: undefined });
+  } catch (e) {
+    console.error('Erro ao reabrir item:', e);
+    toast('Não foi possível reabrir o item. Verifique a conexão.', 'erro');
   }
 }
 
