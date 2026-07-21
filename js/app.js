@@ -4596,7 +4596,12 @@ async function carregarEquipe() {
     buscarEscalasGestao(),
     buscarContratosGestao(),
   ]);
-  _equipeFestasCache    = festas.filter(f => f.status !== 'concluida');
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  _equipeFestasCache = festas.filter(f => {
+    if (f.status === 'concluida') return false;
+    const fd = toDate(f.data); fd.setHours(0, 0, 0, 0);
+    return fd >= hoje;
+  });
   _equipeRosterCache    = roster;
   _equipeEscalasCache   = escalas;
   _equipeContratosCache = contratos;
