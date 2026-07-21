@@ -463,6 +463,47 @@ body {
   flex-wrap: wrap;
 }
 
+/* ══ EQUIPE (escalação lida do controle-gestao-main) ══════════ */
+.card-equipe { cursor: default; }
+.card-equipe:hover { box-shadow: none; }
+
+.equipe-status-gestao {
+  background: #FEF2F2;
+  border-left: 4px solid #B91C1C;
+  color: #B91C1C;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 14px;
+  border-radius: var(--raio);
+  margin-top: 12px;
+}
+
+.equipe-card-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: var(--borda);
+}
+.equipe-card-pessoa {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+.equipe-card-nome  { font-weight: 600; color: var(--cinza-900); }
+.equipe-card-cargo { color: var(--cinza-500); }
+
+.equipe-card-vazio {
+  font-size: 12px;
+  color: var(--cinza-400);
+  font-style: italic;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: var(--borda);
+}
+
 /* BADGES DE STATUS */
 .badge {
   display: inline-block;

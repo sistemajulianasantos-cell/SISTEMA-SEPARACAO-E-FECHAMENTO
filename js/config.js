@@ -32,3 +32,32 @@ const authReady = firebase.auth().signInAnonymously()
 /* Cloudinary — armazenamento de fotos (Firebase Storage exige plano pago) */
 const CLOUDINARY_CLOUD_NAME    = 'wwutkszi';
 const CLOUDINARY_UPLOAD_PRESET = 'xnbsx4zh';
+
+/* ════════════════════════════════════════════════════════════
+   APP SECUNDÁRIO — leitura read-only do controle-gestao-main
+   (aba Equipe: elenco/escalação por evento vêm de lá, nunca são
+   editados aqui). Nunca deve ganhar chamadas de escrita. Projeto
+   separado, sem App Check configurado — não replicar a ativação
+   feita acima para o app principal.
+   ════════════════════════════════════════════════════════════ */
+const firebaseConfigGestao = {
+  apiKey: "AIzaSyCSIMoj3cx0OddVWNgVuUz85Hwk32kRV3g",
+  authDomain: "controle-e-gestao-93c69.firebaseapp.com",
+  projectId: "controle-e-gestao-93c69",
+  storageBucket: "controle-e-gestao-93c69.firebasestorage.app",
+  messagingSenderId: "754860108927",
+  appId: "1:754860108927:web:212499c91e35f113dbe34a"
+};
+
+let dbGestao = null;
+let gestaoAuthReady = Promise.resolve(false);
+
+try {
+  const appGestao = firebase.initializeApp(firebaseConfigGestao, 'gestao');
+  dbGestao = firebase.firestore(appGestao);
+  gestaoAuthReady = firebase.auth(appGestao).signInAnonymously()
+    .then(() => true)
+    .catch(e => { console.error('Erro na autenticação anônima (gestao):', e); return false; });
+} catch (e) {
+  console.error('Erro ao inicializar app secundário (gestao):', e);
+}

@@ -41,6 +41,13 @@ let _modoSelecaoCadastro = false;
 let _itensSelecionados   = new Set();
 let _buscaCadastro       = '';
 
+let _buscaEquipe         = '';
+let _equipeRosterCache   = null;  /* elenco do controle-gestao (null = indisponível) */
+let _equipeEscalasCache  = null;  /* escalações do controle-gestao (null = indisponível) */
+let _equipeContratosCache= null;  /* contratos do controle-gestao (para vínculo manual) */
+let _equipeFestasCache   = [];
+let _vinculoEquipeFestaId= null;  /* festa em edição no modal de vínculo manual */
+
 let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [], confItens: {} };
 let modoGrupoSep = 'categoria'; /* 'nenhum' | 'categoria' | 'setor' */
 let _tvClockTimer      = null;
@@ -529,6 +536,7 @@ function goBack() {
       if (anterior === 'tela-inicial')              renderizarInicio(papelAtual());
       if (anterior === 'tela-agenda-meses')         renderizarAgendaMeses();
       if (anterior === 'tela-agenda-datas')         renderizarAgendaDatas(_agendaMesSelecionado);
+      if (anterior === 'tela-equipe')               carregarEquipe();
     }
   } else {
     irParaPrincipal();
@@ -590,6 +598,10 @@ function renderizarInicio(papel) {
         <div class="inicio-card" onclick="irInicioAgenda()">
           <div class="inicio-card-icone">📅</div>
           <div class="inicio-card-nome">Agenda</div>
+        </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEquipe()">
+          <div class="inicio-card-icone">👥</div>
+          <div class="inicio-card-nome">Equipe</div>
         </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEstoque()">
           <div class="inicio-card-icone">📦</div>
@@ -2712,12 +2724,14 @@ async function submitCriarFesta() {
 
     toast(`Festa "${nome}" criada com sucesso.`, 'sucesso');
 
-    /* Auto-criar configs de item para itens com categoria do PDF (silencioso, sem bloquear) */
+    /* Auto-criar configs de item para itens com categoria do PDF (silencioso, sem bloquear)
+       Usa o nome sem sufixo de fornecimento (ex: "CONSIGNADO") para não poluir o cadastro. */
     itens.filter(it => it.categoria).forEach(it => {
-      const key = normalizarNomeItem(it.nome);
+      const nomeLimpo = nomeBasDisplay(it.nome);
+      const key = normalizarNomeItem(nomeLimpo);
       if (!itemConfigsCache[key] && !itemConfigsCache[nomeBaseKey(key)]) {
         const dados = {
-          nome:            it.nome,
+          nome:            nomeLimpo,
           nomeKey:         key,
           grupo:           it.categoria,
           ordemSeparacao:  999,
@@ -4561,6 +4575,212 @@ async function confirmarCompra() {
 }
 
 /* ══════════════════════════════════════════════════
+   EQUIPE — escalação lida ao vivo do controle-gestao-main
+   (dbGestao é read-only: nada aqui deve gravar no projeto
+   secundário, só no campo equipeVinculoManual da própria festa)
+══════════════════════════════════════════════════ */
+
+async function abrirEquipe() {
+  historico.push('tela-equipe');
+  mostrarTela('tela-equipe', 'Equipe');
+  _buscaEquipe = '';
+  const inputBusca = document.querySelector('#tela-equipe .barra-busca');
+  if (inputBusca) inputBusca.value = '';
+  await carregarEquipe();
+}
+
+async function carregarEquipe() {
+  const [festas, roster, escalas, contratos] = await Promise.all([
+    buscarTodasFestas(),
+    buscarEquipeGestao(),
+    buscarEscalasGestao(),
+    buscarContratosGestao(),
+  ]);
+  _equipeFestasCache    = festas.filter(f => f.status !== 'concluida');
+  _equipeRosterCache    = roster;
+  _equipeEscalasCache   = escalas;
+  _equipeContratosCache = contratos;
+
+  const indisponivel = roster === null || escalas === null;
+  const elAviso = document.getElementById('equipe-status-gestao');
+  if (elAviso) elAviso.classList.toggle('hidden', !indisponivel);
+
+  renderizarEquipe();
+}
+
+function filtrarEquipe(valor) {
+  _buscaEquipe = (valor || '').toLowerCase().trim();
+  renderizarEquipe();
+}
+
+function renderizarEquipe() {
+  const el = document.getElementById('equipe-lista');
+  if (!el) return;
+  const termo = _buscaEquipe;
+  const lista = _equipeFestasCache
+    .filter(f => !termo || f.nome.toLowerCase().includes(termo) || (f.cliente || '').toLowerCase().includes(termo))
+    .sort((a, b) => toDate(a.data) - toDate(b.data));
+
+  el.innerHTML = lista.length
+    ? lista.map(f => htmlCardEquipeFesta(f)).join('')
+    : estadoVazio('Nenhuma festa ativa encontrada.');
+}
+
+/* Chave normalizada nome+data — os dois sistemas não compartilham ID,
+   então festa (aqui) e escalação/contrato (controle-gestao) só podem
+   ser casados por nome+data digitados independentemente em cada um. */
+function _chaveMatchEvento(nome, data) {
+  const d = data ? toDate(data) : null;
+  return normalizarNomeItem(nome) + '|' + (d && !isNaN(d) ? d.toISOString().slice(0, 10) : '');
+}
+
+function _matchEscalasParaFesta(festa) {
+  if (!_equipeEscalasCache) return null; /* controle-gestao indisponível */
+  const vinculo = festa.equipeVinculoManual;
+  if (vinculo) {
+    return _equipeEscalasCache.filter(e =>
+      vinculo.contratoId ? e.contratoId === vinculo.contratoId
+                          : _chaveMatchEvento(e.nomeEvento, e.dataEvento) === vinculo.chave
+    );
+  }
+  const chaveFesta = _chaveMatchEvento(festa.nome, festa.data);
+  return _equipeEscalasCache.filter(e => _chaveMatchEvento(e.nomeEvento, e.dataEvento) === chaveFesta);
+}
+
+function htmlCardEquipeFesta(festa) {
+  const escalas = _matchEscalasParaFesta(festa);
+  const roster  = _equipeRosterCache || [];
+
+  const MESES_ABR = ['JAN','FEV','MAR','ABR','MAI','JUN','JUL','AGO','SET','OUT','NOV','DEZ'];
+  let diaNum = '—', mesTxt = '';
+  const d = festa.data ? toDate(festa.data) : null;
+  if (d && !isNaN(d)) { diaNum = String(d.getDate()).padStart(2, '0'); mesTxt = MESES_ABR[d.getMonth()]; }
+
+  let corpoEquipe;
+  if (escalas === null) {
+    corpoEquipe = `<div class="equipe-card-vazio">Equipe indisponível no momento.</div>`;
+  } else if (!escalas.length) {
+    corpoEquipe = `
+      <div class="equipe-card-vazio">Nenhum vínculo encontrado com o controle-gestao.</div>
+      <button class="btn-secundario btn-sm" onclick="abrirVinculoManualEquipe('${_esc(festa.id)}')">Vincular evento</button>
+    `;
+  } else {
+    corpoEquipe = `
+      <div class="equipe-card-lista">
+        ${escalas.map(e => {
+          const pessoa = roster.find(p => p.id === e.colaboradorId);
+          return `<div class="equipe-card-pessoa">
+            <span class="equipe-card-nome">${_esc(pessoa?.nome || '—')}</span>
+            <span class="equipe-card-cargo">${_esc(e.cargo || pessoa?.cargo || '')}</span>
+          </div>`;
+        }).join('')}
+      </div>
+      ${festa.equipeVinculoManual ? `<button class="btn-secundario btn-sm" onclick="desvincularEquipeFesta('${_esc(festa.id)}')">Desvincular / procurar de novo</button>` : ''}
+    `;
+  }
+
+  return `
+    <div class="card-festa card-equipe">
+      <div class="card-festa-body">
+        <div class="card-data-col">
+          <div class="card-data-num">${diaNum}</div>
+          <div class="card-data-mes">${mesTxt}</div>
+        </div>
+        <div class="card-corpo">
+          <div class="card-festa-topo">
+            <div class="card-festa-nome">${festa.nome}</div>
+          </div>
+          <div class="card-festa-meta">${festa.cliente || ''}</div>
+          ${corpoEquipe}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/* ── Vínculo manual (fallback para quando nome/data não batem automaticamente) ── */
+
+function _candidatosEventoGestao(dataFesta) {
+  const alvo = toDate(dataFesta).getTime();
+  const JANELA_MS = 3 * 24 * 60 * 60 * 1000;
+
+  if (_equipeContratosCache && _equipeContratosCache.length) {
+    return _equipeContratosCache
+      .filter(c => c.data && Math.abs(toDate(c.data).getTime() - alvo) <= JANELA_MS)
+      .map(c => ({ contratoId: c.id, nomeEvento: c.nomeEvento || c.nome, dataEvento: c.data }));
+  }
+  /* Sem contratos disponíveis: monta candidatos a partir dos eventos distintos já presentes nas escalas */
+  const vistos = new Map();
+  (_equipeEscalasCache || []).forEach(e => {
+    if (!e.dataEvento || Math.abs(toDate(e.dataEvento).getTime() - alvo) > JANELA_MS) return;
+    const chave = e.contratoId || _chaveMatchEvento(e.nomeEvento, e.dataEvento);
+    if (!vistos.has(chave)) vistos.set(chave, { contratoId: e.contratoId, nomeEvento: e.nomeEvento, dataEvento: e.dataEvento });
+  });
+  return [...vistos.values()];
+}
+
+function abrirVinculoManualEquipe(festaId) {
+  const festa = _equipeFestasCache.find(f => f.id === festaId);
+  if (!festa) return;
+  _vinculoEquipeFestaId = festaId;
+
+  const candidatos = _candidatosEventoGestao(festa.data);
+  const select = document.getElementById('modal-vinculo-select');
+  select.innerHTML = candidatos.length
+    ? candidatos.map((c, i) => `<option value="${i}">${_esc(c.nomeEvento)} — ${formatarData(c.dataEvento)}</option>`).join('')
+    : '<option value="">Nenhum evento próximo encontrado</option>';
+  select.dataset.candidatos = JSON.stringify(candidatos);
+
+  document.getElementById('modal-vinculo-info').textContent = `${festa.nome} — ${formatarData(festa.data)}`;
+  document.getElementById('modal-vinculo-equipe').classList.remove('hidden');
+}
+
+function fecharModalVinculoEquipe() {
+  document.getElementById('modal-vinculo-equipe').classList.add('hidden');
+  _vinculoEquipeFestaId = null;
+}
+
+async function confirmarVinculoEquipe() {
+  const select = document.getElementById('modal-vinculo-select');
+  const idx = select?.value;
+  if (idx === '' || idx == null) return toast('Selecione um evento.', 'erro');
+  const candidatos = JSON.parse(select.dataset.candidatos || '[]');
+  const escolhido  = candidatos[parseInt(idx)];
+  if (!escolhido || !_vinculoEquipeFestaId) return;
+
+  const vinculo = {
+    contratoId:   escolhido.contratoId || null,
+    chave:        escolhido.contratoId ? null : _chaveMatchEvento(escolhido.nomeEvento, escolhido.dataEvento),
+    vinculadoEm:  new Date().toISOString(),
+    vinculadoPor: usuarioAtual?.nome || '',
+  };
+
+  try {
+    await atualizarFesta(_vinculoEquipeFestaId, { equipeVinculoManual: vinculo });
+    const festa = _equipeFestasCache.find(f => f.id === _vinculoEquipeFestaId);
+    if (festa) festa.equipeVinculoManual = vinculo;
+    fecharModalVinculoEquipe();
+    renderizarEquipe();
+    toast('Evento vinculado.', 'sucesso');
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao vincular evento.', 'erro');
+  }
+}
+
+async function desvincularEquipeFesta(festaId) {
+  try {
+    await atualizarFesta(festaId, { equipeVinculoManual: firebase.firestore.FieldValue.delete() });
+    const festa = _equipeFestasCache.find(f => f.id === festaId);
+    if (festa) delete festa.equipeVinculoManual;
+    renderizarEquipe();
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao desvincular.', 'erro');
+  }
+}
+
+/* ══════════════════════════════════════════════════
    CADASTRO DE ITENS (grupos, prioridade, refrigerado)
 ══════════════════════════════════════════════════ */
 
@@ -4770,7 +4990,7 @@ async function abrirFormItemConfig(id, nomePreenchido) {
   await preencherSugestoesItemConfig();
 
   const resetForm = (cfg) => {
-    document.getElementById('ic-nome').value    = cfg?.nome  || nomePreenchido || '';
+    document.getElementById('ic-nome').value    = (cfg?.nome ? nomeBasDisplay(cfg.nome) : nomePreenchido) || '';
     document.getElementById('ic-grupo').value   = cfg?.grupo || '';
     document.getElementById('ic-ordem').value   = (cfg?.ordemSeparacao && cfg.ordemSeparacao !== 999) ? cfg.ordemSeparacao : '';
     document.getElementById('ic-dias-antes').value = cfg?.diasAntesEvento ?? 1;

@@ -474,6 +474,29 @@ async function deletarCompraDB(id) {
 }
 
 /* ════════════════════════════════════════
+   GESTAO (controle-gestao-main) — leitura read-only
+   Nunca escrever aqui: dbGestao só serve para exibir elenco/
+   escalação já cadastrados no outro sistema.
+════════════════════════════════════════ */
+
+async function _buscarDocGestao(docId) {
+  if (!dbGestao) return null;
+  const ok = await gestaoAuthReady;
+  if (!ok) return null;
+  try {
+    const snap = await dbGestao.collection('dados').doc(docId).get();
+    return snap.exists ? (snap.data().valor || []) : [];
+  } catch (e) {
+    console.error(`Erro ao buscar ${docId} (gestao):`, e);
+    return null; /* null = indisponível/erro; [] = leu certo mas está vazio */
+  }
+}
+
+async function buscarEquipeGestao()    { return _buscarDocGestao('equipe'); }
+async function buscarEscalasGestao()   { return _buscarDocGestao('escalas'); }
+async function buscarContratosGestao() { return _buscarDocGestao('contratos'); }
+
+/* ════════════════════════════════════════
    CLOUDINARY — fotos
 ════════════════════════════════════════ */
 
