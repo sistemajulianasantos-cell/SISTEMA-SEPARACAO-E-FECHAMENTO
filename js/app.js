@@ -4372,9 +4372,28 @@ function renderizarEstoque(festas, estoqueMap) {
       estadoVazio('Nenhum item encontrado nas festas ativas.');
     return;
   }
-  document.getElementById('estoque-conteudo').innerHTML = abaEstoqueAtual === 'sintetico'
-    ? itens.map(it => htmlEstoqueSintetico(it, estoqueMap[it.nomeKey])).join('')
-    : itens.map(it => htmlEstoqueAnalitico(it, estoqueMap[it.nomeKey])).join('');
+
+  /* Agrupar por categoria, respeitando a ordem cadastrada em Categorias */
+  const grupos = {};
+  itens.forEach(it => {
+    const cfg = buscarConfigItem(it.nomeKey);
+    const g   = cfg?.grupo || 'Sem Categoria';
+    if (!grupos[g]) grupos[g] = [];
+    grupos[g].push(it);
+  });
+  const catOrdem = {};
+  categoriasCache.forEach((c, i) => { catOrdem[c.nome] = c.ordem != null ? c.ordem : i + 1; });
+
+  const renderCard = it => abaEstoqueAtual === 'sintetico'
+    ? htmlEstoqueSintetico(it, estoqueMap[it.nomeKey])
+    : htmlEstoqueAnalitico(it, estoqueMap[it.nomeKey]);
+
+  document.getElementById('estoque-conteudo').innerHTML = Object.keys(grupos)
+    .sort((a, b) => (catOrdem[a] ?? 999) - (catOrdem[b] ?? 999) || a.localeCompare(b, 'pt-BR'))
+    .map(g => `
+      <div class="grupo-titulo" style="margin-top:16px;margin-bottom:4px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--cinza-500);letter-spacing:.5px">${_escHtml(g)}</div>
+      ${grupos[g].map(renderCard).join('')}
+    `).join('');
 }
 
 function _esc(s) {
