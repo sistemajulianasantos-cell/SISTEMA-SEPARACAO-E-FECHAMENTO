@@ -4516,6 +4516,10 @@ function renderizarHistoricoContagem(registros, containerId) {
 async function abrirEstoque(abaInicial) {
   historico.push('tela-estoque');
   mostrarTela('tela-estoque', 'Controle de Estoque');
+  const desc = document.getElementById('estoque-desc');
+  if (desc) desc.textContent = souCeo()
+    ? 'Edite as quantidades em estoque. O sistema calcula automaticamente o saldo em relação às festas ativas.'
+    : 'Consulte as quantidades em estoque. O sistema calcula automaticamente o saldo em relação às festas ativas.';
   abaEstoqueAtual = abaInicial || 'sintetico';
   const tabIndex  = { sintetico: 0, analitico: 1, historico: 2 }[abaEstoqueAtual] ?? 0;
   document.querySelectorAll('#estoque-tabs .tab').forEach((b, i) => {
@@ -4684,6 +4688,7 @@ function htmlEstoqueSintetico(item, est) {
   const semDemanda = !item.festas.length;
   const diff       = qtdEst - item.total;
   const pct        = item.total > 0 ? Math.min(100, Math.round((qtdEst / item.total) * 100)) : 100;
+  const podeEditar = souCeo(); /* separador só visualiza — não edita quantidade nem pede compra */
 
   return `
     <div class="estoque-item-card">
@@ -4695,6 +4700,7 @@ function htmlEstoqueSintetico(item, est) {
       </div>
       <div class="estoque-body-row">
         <span class="estoque-body-label">Em estoque:</span>
+        ${podeEditar ? `
         <div class="estoque-qty-wrap">
           <input type="number" class="estoque-qty-input"
             id="estoque-qty-${item.nomeKey}"
@@ -4706,7 +4712,10 @@ function htmlEstoqueSintetico(item, est) {
         <button class="btn-comprar"
           onclick="comprarItemEstoque('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(item.unidade)}')">
           + Comprar
-        </button>
+        </button>` : `
+        <div class="estoque-qty-wrap">
+          <strong>${qtdEst}</strong>&nbsp;<span class="estoque-qty-un">${_escHtml(item.unidade)}</span>
+        </div>`}
       </div>
       ${semDemanda ? '' : `
       <div class="estoque-progress-track">
@@ -4725,6 +4734,7 @@ function htmlEstoqueAnalitico(item, est) {
   const qtdEst     = est?.qtd || 0;
   const semDemanda = !item.festas.length;
   const diff       = qtdEst - item.total;
+  const podeEditar = souCeo(); /* separador só visualiza — não edita quantidade nem pede compra */
 
   const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
@@ -4745,11 +4755,13 @@ function htmlEstoqueAnalitico(item, est) {
           </span>
         </div>
         <div class="analitico-festa-qty">
+          ${podeEditar ? `
           <input type="number" class="estoque-qty-input-sm"
             value="${f.qtd}" min="0"
             onchange="editarQtdFestaEstoque('${_esc(f.festaId)}',${f.itemIdx},this.value)"
           />
-          <span class="estoque-qty-un">${_escHtml(item.unidade)}</span>
+          <span class="estoque-qty-un">${_escHtml(item.unidade)}</span>` : `
+          <strong>${f.qtd}</strong>&nbsp;<span class="estoque-qty-un">${_escHtml(item.unidade)}</span>`}
         </div>
       </div>
     `;
@@ -4770,12 +4782,13 @@ function htmlEstoqueAnalitico(item, est) {
         </div>
       </div>
       <div class="analitico-festas-lista">${festasHTML}</div>
+      ${podeEditar ? `
       <div class="analitico-item-footer">
         <button class="btn-comprar"
           onclick="comprarItemEstoque('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(item.unidade)}')">
           + Comprar
         </button>
-      </div>
+      </div>` : ''}
     </div>
   `;
 }

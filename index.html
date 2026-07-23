@@ -915,7 +915,7 @@
         <h2 class="titulo-tela">Controle de Estoque</h2>
         <button class="btn-secundario btn-sm" onclick="recarregarEstoque()">&#8635; Atualizar</button>
       </div>
-      <p class="desc-tela">Edite as quantidades em estoque. O sistema calcula automaticamente o saldo em relação às festas ativas.</p>
+      <p class="desc-tela" id="estoque-desc">Edite as quantidades em estoque. O sistema calcula automaticamente o saldo em relação às festas ativas.</p>
       <div class="barra-busca-wrap">
         <input type="search" class="barra-busca" placeholder="Buscar item..."
           oninput="filtrarEstoque(this.value)" />
@@ -1262,7 +1262,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=39"></script>
-  <script src="js/app.js?v=52"></script>
+  <script src="js/app.js?v=53"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->
