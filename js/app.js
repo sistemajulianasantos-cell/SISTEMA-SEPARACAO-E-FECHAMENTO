@@ -4820,6 +4820,7 @@ function trocarAbaItens(aba, btn) {
   const btnNovoCat= document.getElementById('btn-nova-categoria');
   const btnSel    = document.getElementById('btn-selecionar-itens');
   const btnAplicar= document.getElementById('btn-aplicar-class');
+  const btnPadr   = document.getElementById('btn-padronizar-nomes');
   const busca     = document.getElementById('busca-cadastro-wrap');
 
   /* Reset todos */
@@ -4830,6 +4831,7 @@ function trocarAbaItens(aba, btn) {
   if (btnNovoCat) btnNovoCat.classList.add('hidden');
   if (btnSel)     btnSel.style.display = '';
   if (btnAplicar) btnAplicar.classList.add('hidden');
+  if (btnPadr)    btnPadr.classList.add('hidden');
   if (busca)      busca.classList.add('hidden');
 
   if (aba === 'categorias') {
@@ -4844,6 +4846,7 @@ function trocarAbaItens(aba, btn) {
     elConf?.classList.remove('hidden');
     if (btnNovo)    btnNovo.classList.remove('hidden');
     if (btnAplicar) btnAplicar.classList.remove('hidden');
+    if (btnPadr)    btnPadr.classList.remove('hidden');
     if (busca)      busca.classList.remove('hidden');
     renderizarCadastroItens();
   }
@@ -4984,6 +4987,137 @@ function htmlConfigItemRow(c) {
       </div>
     </div>
   `;
+}
+
+/* ════════════════════════════════════════
+   PADRONIZAR NOMES — aplica a lista de nomes "oficiais" da Juliana sobre os
+   itens do Cadastro. Só troca o campo "nome" (o que aparece na tela); o
+   nomeKey NUNCA é recalculado aqui, porque é ele — não o nome de exibição —
+   que vincula o item ao estoque, ao historico_contagem e ao matching com
+   itens importados de PDF de festa. Recalcular o nomeKey junto quebraria
+   esses vínculos todos. Espelha o mesmo tipo de ferramenta que existe no
+   controle-gestao-main (Cadastro de Insumos) para a mesma finalidade.
+════════════════════════════════════════ */
+const MAPA_PADRONIZACAO_NOMES = {
+  "AGUA COM GAS - 500ML": "AGUA COM GAS - 500ML",
+  "AGUA TONICA LATA ZERO - 350 ML": "AGUA TONICA LATA TRADICIONAL - 350ML",
+  "APEROL - 750ML": "APEROL - 750ML",
+  "BIQUEIRA BITTER ANGOSTURA": "BIQUEIRA BITTER ANGOSTURA",
+  "BITTER ANGOSTURA - 200ML": "BITTER ANGOSTURA - 200ML (RESERVA)",
+  "CACHAÇA SPIRAL - 1000ML": "CACHAÇA SPIRAL - 1000ML",
+  "CAMPARI - 998 ML": "CAMPARI - 998 ML",
+  "COPO BAIXO XTRA": "COPO BAIXO XTRA",
+  "COPO CANECA COBRE": "COPO CANECA COBRE",
+  "COPO LONGO ELYSIA": "COPO LONGO ELYSIA",
+  "COPO LONGO LISO NOVO": "COPO LONGO LISO NOVO",
+  "COPO LONGO LISO ANTIGO": "COPO LONGO LISO VELHO",
+  "COPO LONGO XTRA": "COPO LONGO XTRA",
+  "EMULSIFICANTE - 200ml": "EMULSIFICANTE - 200ml",
+  "ESPUMA DE GENGIBRE - 1000ML": "ESPUMA DE GENGIBRE - 1000ML",
+  "ESPUMA DE LIMAO SICILIANO - 1000ML": "ESPUMA DE LIMAO SICILIANO - 1000ML",
+  "ESPUMANTE BRUT - 750ML": "ESPUMANTE BRUT - 750ML",
+  "FIREBALL - 750ML": "FIREBALL - 750ML",
+  "GIN BEEFEATER - 750ML": "GIN BEEFEATER - 750ML",
+  "GIN TANQUERAY - 750ML": "GIN TANQUERAY - 750ML",
+  "LICOR 43 - 700ML": "LICOR 43 - 700ML",
+  "MANZA - 330ML": "MANZA - 330ML",
+  "MARACUJA": "MARACUJA",
+  "MEL": "MEL",
+  "RUM HAVANA CLUB ANEJO - 700ML": "RUM HAVANA CLUB ANEJO - 700ML",
+  "SODA GINGER ALE - 1000ML": "SODA GINGER ALE - 1000ML",
+  "SODA GRAPEFRUIT - 1000ML": "SODA GRAPEFRUIT - 1000ML",
+  "SUCO DE LARANJA": "SUCO DE LARANJA",
+  "SUCO DE LIMAO": "SUCO DE LIMAO",
+  "TAÇA COUPE AMÉRICA": "TAÇA COUPE AMÉRICA",
+  "TAÇA COUPE TIMELESS": "TAÇA COUPE TIMELESS",
+  "TAÇA XTRA": "TAÇA XTRA",
+  "TEQUILA JOSE CUERVO ESPECIAL OURO- 750ML": "TEQUILA JOSE CUERVO ESPECIAL OURO - 750ML",
+  "VERMUTE CARPANO- 950ML": "VERMUTE CARPANO ROSSO - 950ML",
+  "Vermute cinzano": "VERMUTE ROSSO CINZANO - 1000ML",
+  "VODKA ABSOLUT - 1000ML": "VODKA ABSOLUT - 1000ML",
+  "WHISKEY JAMESON - 750ML": "WHISKEY JAMESON - 750ML",
+  "XAROPE 1883 CRAMBERRY - 1000ML": "XAROPE 1883 CRAMBERRY - 1000ML",
+  "XAROPE 1883 GENGIBRE - 1000ML": "XAROPE 1883 GENGIBRE - 1000ML",
+  "XAROPE 1883 LICHIA - 1000ML": "XAROPE 1883 LICHIA - 1000ML",
+  "LIMAO SICILIANO": "XAROPE 1883 LIMAO SICILIANO - 1000ML",
+  "XAROPE 1883 MARACUJÁ VERMELHO- 1000ML": "XAROPE 1883 MARACUJÁ VERMELHO - 1000ML",
+  "XAROPE 1883 TANGERINE - 1000ML": "XAROPE 1883 TANGERINE - 1000ML",
+  "XAROPE DE AÇUCAR": "XAROPE DE AÇUCAR",
+};
+
+let _padronizacaoPendente = []; /* [{id, nomeKey, nomeAtual, nomeNovo}] montado no preview, usado na confirmação */
+
+function abrirModalPadronizarNomes() {
+  const configs = Object.values(itemConfigsCache);
+  const porNomeAtual = {};
+  configs.forEach(c => { porNomeAtual[(c.nome || '').trim().toUpperCase()] = c; });
+
+  _padronizacaoPendente = [];
+  const naoEncontrados = [];
+  Object.entries(MAPA_PADRONIZACAO_NOMES).forEach(([nomeAtual, nomeNovo]) => {
+    const cfg = porNomeAtual[nomeAtual.trim().toUpperCase()];
+    if (!cfg) { naoEncontrados.push(nomeAtual); return; }
+    if ((cfg.nome || '').trim() === nomeNovo.trim()) return; /* já está no padrão */
+    _padronizacaoPendente.push({ id: cfg.id, nomeKey: cfg.nomeKey, nomeAtual: cfg.nome, nomeNovo });
+  });
+
+  const listaEl    = document.getElementById('padronizar-nomes-lista');
+  const btnAplicar = document.getElementById('btn-aplicar-padronizacao');
+
+  if (!_padronizacaoPendente.length) {
+    listaEl.innerHTML =
+      '<p style="font-size:13px;color:#6B7280;padding:12px 0">Nenhuma mudança pendente — os itens já estão com o nome padrão (ou ainda não foram cadastrados aqui).</p>' +
+      (naoEncontrados.length ? `<p style="font-size:12px;color:#9CA3AF">${naoEncontrados.length} nome(s) da lista não encontrados no Cadastro: ${naoEncontrados.map(_escHtml).join(', ')}</p>` : '');
+    if (btnAplicar) btnAplicar.classList.add('hidden');
+  } else {
+    listaEl.innerHTML = `
+      <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">${_padronizacaoPendente.length} mudança(s):</div>
+      ${_padronizacaoPendente.map(p => `
+        <div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #F3F4F6;font-size:13px">
+          <span style="color:#9CA3AF;text-decoration:line-through">${_escHtml(p.nomeAtual)}</span>
+          <span style="color:#111827;font-weight:600">&#8594; ${_escHtml(p.nomeNovo)}</span>
+        </div>
+      `).join('')}
+      ${naoEncontrados.length ? `<div style="font-size:11px;color:#9CA3AF;margin-top:10px">${naoEncontrados.length} nome(s) da lista não encontrados no Cadastro (podem já ter outro nome, ou não existir aqui ainda): ${naoEncontrados.map(_escHtml).join(', ')}</div>` : ''}
+    `;
+    if (btnAplicar) btnAplicar.classList.remove('hidden');
+  }
+
+  document.getElementById('modal-padronizar-nomes').classList.remove('hidden');
+}
+
+function fecharModalPadronizarNomes() {
+  document.getElementById('modal-padronizar-nomes').classList.add('hidden');
+}
+
+async function confirmarPadronizarNomes() {
+  if (!_padronizacaoPendente.length) return;
+  const btnAplicar = document.getElementById('btn-aplicar-padronizacao');
+  if (btnAplicar) { btnAplicar.disabled = true; btnAplicar.textContent = 'Aplicando...'; }
+  try {
+    const estoqueAtual = await buscarEstoque();
+    for (const p of _padronizacaoPendente) {
+      await salvarItemConfigDB({ id: p.id, nome: p.nomeNovo });
+      /* Também atualiza o nome de exibição no doc de estoque correspondente
+         (mesmo nomeKey — só existe se o item já tiver contagem/compra registrada).
+         Nunca cria um doc de estoque novo aqui. */
+      if (estoqueAtual[p.nomeKey]) {
+        await salvarItemEstoque(p.nomeKey, { nome: p.nomeNovo });
+      }
+    }
+    toast(`${_padronizacaoPendente.length} nome(s) padronizado(s)!`, 'sucesso');
+    _padronizacaoPendente = [];
+    fecharModalPadronizarNomes();
+    const cfgsFrescos = await listarItemConfigs();
+    itemConfigsCache = {};
+    cfgsFrescos.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    renderizarCadastroItens();
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao aplicar padronização. Tente novamente.', 'erro');
+  } finally {
+    if (btnAplicar) { btnAplicar.disabled = false; btnAplicar.textContent = 'Aplicar'; }
+  }
 }
 
 function onClickItemCadastro(id) {
