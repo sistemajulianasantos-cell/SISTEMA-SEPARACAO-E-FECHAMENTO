@@ -54,6 +54,7 @@ let _tvClockTimer      = null;
 let _tvScrollTimers    = [];
 let _tvScrollState     = {};
 let _tvScrollDelay     = null;
+let _tvRefreshTimer    = null;
 
 /* ══════════════════════════════════════════════════
    PAINEL TV
@@ -94,19 +95,29 @@ function _tvIniciarAutoScroll() {
 function carregarTV() {
   pararListeners();
   _tvPararAutoScroll();
+  _tvArmarFullscreenNoPrimeiroToque();
 
   if (_tvClockTimer) clearInterval(_tvClockTimer);
   _tvAtualizarRelogio();
   _tvClockTimer = setInterval(_tvAtualizarRelogio, 1000);
 
-  Promise.all([listarItemConfigs(), listarCategorias(), buscarEstoque(), listarCompras()]).then(([cfgs, cats, est, compras]) => {
-    itemConfigsCache = {};
-    cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
-    categoriasCache = cats;
-    estoqueCache    = est;
-    comprasCache    = compras;
-    if (todasFestasCache.length) renderizarPainelTV(todasFestasCache);
-  }).catch(e => console.error('TV configs:', e));
+  const carregarDadosTV = () => {
+    Promise.all([listarItemConfigs(), listarCategorias(), buscarEstoque(), listarCompras()]).then(([cfgs, cats, est, compras]) => {
+      itemConfigsCache = {};
+      cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+      categoriasCache = cats;
+      estoqueCache    = est;
+      comprasCache    = compras;
+      if (todasFestasCache.length) renderizarPainelTV(todasFestasCache);
+    }).catch(e => console.error('TV configs:', e));
+  };
+  carregarDadosTV();
+
+  /* Atualização automática de 15 em 15min — o painel roda sem ninguém
+     tocar, então não pode depender de alguém apertar F5. Recarrega só os
+     dados (não a página), pra não perder a tela cheia. */
+  if (_tvRefreshTimer) clearInterval(_tvRefreshTimer);
+  _tvRefreshTimer = setInterval(carregarDadosTV, 15 * 60 * 1000);
 
   unsubFestas = escutarFestas({}, festas => {
     todasFestasCache = festas;
@@ -138,6 +149,26 @@ document.addEventListener('fullscreenchange', () => {
   if (!btn) return;
   btn.textContent = document.fullscreenElement ? '✕ Sair da Tela Cheia' : '⛶ Tela Cheia';
 });
+
+/* Navegador bloqueia tela cheia automática sem nenhuma interação — não tem
+   como pular isso via JS. Isso aqui pega o primeiro toque/clique/tecla
+   depois que o painel TV abre e já entra em tela cheia nesse instante, pra
+   não precisar ninguém procurar o botão. Só dispara uma vez. */
+let _tvFullscreenArmado = false;
+function _tvArmarFullscreenNoPrimeiroToque() {
+  if (_tvFullscreenArmado || document.fullscreenElement) return;
+  _tvFullscreenArmado = true;
+  const ativar = () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+    document.removeEventListener('click', ativar);
+    document.removeEventListener('touchstart', ativar);
+    document.removeEventListener('keydown', ativar);
+    _tvFullscreenArmado = false;
+  };
+  document.addEventListener('click', ativar, { once: true });
+  document.addEventListener('touchstart', ativar, { once: true });
+  document.addEventListener('keydown', ativar, { once: true });
+}
 
 function renderizarPainelTV(festas) {
   const hojeKey  = normalizarData(new Date());
@@ -997,7 +1028,8 @@ function escolherRole(role) {
 function logout() {
   pararListeners();
   pararTimers();
-  if (_tvClockTimer) { clearInterval(_tvClockTimer); _tvClockTimer = null; }
+  if (_tvClockTimer)   { clearInterval(_tvClockTimer);   _tvClockTimer   = null; }
+  if (_tvRefreshTimer) { clearInterval(_tvRefreshTimer); _tvRefreshTimer = null; }
   firebase.auth().signOut().catch(() => {});
   usuarioAtual = null;
   festaAtual   = null;
