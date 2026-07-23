@@ -672,6 +672,10 @@ function renderizarInicio(papel) {
           <div class="inicio-card-icone">📦</div>
           <div class="inicio-card-nome">Entrada de Mercadoria</div>
         </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEstoque()">
+          <div class="inicio-card-icone">📊</div>
+          <div class="inicio-card-nome">Controle de Estoque</div>
+        </div>
       </div>
     `;
   }
@@ -4166,14 +4170,14 @@ function renderizarInventario() {
         <div class="estoque-item-card" id="inv-card-${key}" style="margin-bottom:8px">
           <div class="estoque-item-header">
             <div class="estoque-item-nome">${_escHtml(c.nome)}</div>
-            ${un ? `<div class="estoque-item-total" style="font-size:12px;color:var(--cinza-500)">${_escHtml(un)}</div>` : ''}
+            <div style="font-size:12px;color:var(--cinza-500)">${contado ? `Sistema: ${qtdEst} ${_escHtml(un)}` : (un ? _escHtml(un) : '')}</div>
           </div>
           <div class="estoque-body-row">
             <span class="estoque-body-label">Qtd.:</span>
             <div class="estoque-qty-wrap">
               <input type="number" class="estoque-qty-input"
                 id="inv-qty-${key}"
-                value="${qtdEst}" min="0" placeholder="0"
+                min="0" placeholder="0"
               />
               ${un ? `<span class="estoque-qty-un">${_escHtml(un)}</span>` : ''}
             </div>
@@ -4365,7 +4369,10 @@ async function registrarEntradaMercadoria(nomeKey, nome, unidade) {
 
 async function salvarInventarioQtd(nomeKey, nome, unidade) {
   const input = document.getElementById(`inv-qty-${nomeKey}`);
-  const qtd   = input ? (parseFloat(input.value) || 0) : 0;
+  /* Campo vem vazio (não pré-preenchido com o valor antigo, pra forçar a
+     contagem real) — por isso, vazio não pode virar "0 salvo" sem querer. */
+  if (!input || input.value.trim() === '') return toast('Informe a quantidade contada.', 'erro');
+  const qtd   = parseFloat(input.value) || 0;
   const agora = new Date();
   try {
     await salvarItemEstoque(nomeKey, { nome, unidade, qtd, ultimaContagemEm: agora });
