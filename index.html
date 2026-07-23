@@ -422,7 +422,11 @@
         <h2 class="titulo-tela">Inventário de Estoque</h2>
         <button class="btn-secundario btn-sm" onclick="recarregarInventario()">&#8635; Atualizar</button>
       </div>
-      <p class="desc-tela">Registre as quantidades atuais no estoque. Toque no número para editar.</p>
+      <div class="filtros-tabs" id="inv-modo-tabs" style="margin-bottom:8px">
+        <button class="tab ativo" id="inv-modo-contagem" onclick="trocarModoInventario('contagem',this)">&#128203; Contagem geral</button>
+        <button class="tab" id="inv-modo-entrada" onclick="trocarModoInventario('entrada',this)">&#128230; Entrada de mercadoria</button>
+      </div>
+      <p class="desc-tela" id="inv-desc">Registre as quantidades atuais no estoque. Toque no número para editar.</p>
 
       <!-- Adicionar item avulso -->
       <div class="inv-add-wrap">
@@ -436,7 +440,7 @@
           min="0" placeholder="Qtd"
           onkeydown="if(event.key==='Enter') invAdicionarItem()" />
         <span id="inv-add-un" class="inv-add-un"></span>
-        <button class="btn-primario btn-sm" onclick="invAdicionarItem()">&#43; Adicionar</button>
+        <button class="btn-primario btn-sm" id="inv-add-btn" onclick="invAdicionarItem()">&#43; Adicionar</button>
       </div>
 
       <div class="barra-busca-wrap" style="margin-top:8px">
@@ -1210,8 +1214,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=3"></script>
-  <script src="js/firestore.js?v=37"></script>
-  <script src="js/app.js?v=46"></script>
+  <script src="js/firestore.js?v=38"></script>
+  <script src="js/app.js?v=47"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

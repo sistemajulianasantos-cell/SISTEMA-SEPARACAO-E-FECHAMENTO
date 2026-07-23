@@ -3998,19 +3998,51 @@ function standByInfo(item, festaData) {
 ══════════════════════════════════════════════════ */
 
 let _buscaInventario    = '';
-let _inventarioContados = new Set(); /* nomeKeys contados nesta sessão */
-let _abaInventario      = 'acontar'; /* 'acontar' | 'contados' */
-let _inventarioConfigs  = [];        /* cache dos item_configs carregados */
+let _abaInventario      = 'acontar';  /* 'acontar' | 'contados' */
+let _modoInventario     = 'contagem'; /* 'contagem' (inventário geral) | 'entrada' (mercadoria recebida) */
+let _inventarioConfigs  = [];         /* cache dos item_configs carregados */
+
+/* Um item fica na aba "Contados" por 24h a partir do momento em que foi
+   contado (campo ultimaContagemEm no doc de estoque) — não é um estado só
+   de memória, então sobrevive a "Atualizar"/recarregar a tela. Só ações de
+   CONTAGEM setam esse campo; entrada de mercadoria não conta como contagem. */
+function _itemContadoRecentemente(nomeKey) {
+  const ts = estoqueCache[nomeKey]?.ultimaContagemEm;
+  if (!ts) return false;
+  const d = toDate(ts);
+  if (isNaN(d)) return false;
+  return (Date.now() - d.getTime()) < 24 * 60 * 60 * 1000;
+}
 
 async function abrirInventario() {
   historico.push('tela-colaborador');
   mostrarTela('tela-inventario', 'Inventário de Estoque');
-  _buscaInventario    = '';
-  _inventarioContados = new Set();
-  _abaInventario      = 'acontar';
+  _buscaInventario = '';
+  _abaInventario   = 'acontar';
+  _modoInventario  = 'contagem';
+  document.querySelectorAll('#inv-modo-tabs .tab').forEach((b, i) => b.classList.toggle('ativo', i === 0));
+  const desc = document.getElementById('inv-desc');
+  if (desc) desc.textContent = 'Registre as quantidades atuais no estoque. Toque no número para editar.';
+  const qtdInput = document.getElementById('inv-add-qtd');
+  if (qtdInput) qtdInput.placeholder = 'Qtd';
   const busca = document.querySelector('#tela-inventario .barra-busca');
   if (busca) busca.value = '';
   await recarregarInventario();
+}
+
+function trocarModoInventario(modo, btn) {
+  _modoInventario = modo;
+  document.querySelectorAll('#inv-modo-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  const desc = document.getElementById('inv-desc');
+  if (desc) desc.textContent = modo === 'entrada'
+    ? 'Informe quanto está chegando de cada produto — o sistema soma automaticamente ao que já tem em estoque.'
+    : 'Registre as quantidades atuais no estoque. Toque no número para editar.';
+  const qtdInput = document.getElementById('inv-add-qtd');
+  if (qtdInput) qtdInput.placeholder = modo === 'entrada' ? 'Qtd. chegando' : 'Qtd';
+  const addBtn = document.getElementById('inv-add-btn');
+  if (addBtn) addBtn.innerHTML = modo === 'entrada' ? '&#43; Registrar Entrada' : '&#43; Adicionar';
+  renderizarInventario();
 }
 
 async function recarregarInventario() {
@@ -4050,20 +4082,30 @@ async function invAdicionarItem() {
   const qtdInput  = document.getElementById('inv-add-qtd');
   const nome = (nomeInput?.value || '').trim();
   if (!nome) return toast('Informe o nome do produto.', 'erro');
-  const qtd = parseFloat(qtdInput?.value) || 0;
+  const qtdDigitada = parseFloat(qtdInput?.value) || 0;
   const cfg = _inventarioConfigs.find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(nome));
   const nomeKey  = cfg ? (cfg.nomeKey || normalizarNomeItem(cfg.nome)) : normalizarNomeItem(nome);
   const unidade  = cfg?.unidade || 'un';
   const nomeReal = cfg?.nome || nome;
+
+  const ehEntrada = _modoInventario === 'entrada';
+  if (ehEntrada && qtdDigitada <= 0) return toast('Informe quanto está chegando.', 'erro');
+  const qtdAtual = estoqueCache[nomeKey]?.qtd || 0;
+  const qtd      = ehEntrada ? qtdAtual + qtdDigitada : qtdDigitada;
+
+  const dadosSalvar = { nome: nomeReal, unidade, qtd };
+  if (!ehEntrada) dadosSalvar.ultimaContagemEm = new Date();
+
   try {
-    await salvarItemEstoque(nomeKey, { nome: nomeReal, unidade, qtd });
-    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome: nomeReal, unidade, qtd, nomeKey };
-    _inventarioContados.add(nomeKey);
+    await salvarItemEstoque(nomeKey, dadosSalvar);
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), ...dadosSalvar, nomeKey };
     if (nomeInput) nomeInput.value = '';
     if (qtdInput)  qtdInput.value  = '';
     const unEl = document.getElementById('inv-add-un');
     if (unEl) unEl.textContent = '';
-    toast(`${nomeReal}: ${qtd} ${unidade} ✓`, 'sucesso');
+    toast(ehEntrada
+      ? `+${qtdDigitada} ${unidade} de "${nomeReal}" — total agora: ${qtd} ${unidade}`
+      : `${nomeReal}: ${qtd} ${unidade} ✓`, 'sucesso');
     renderizarInventario();
   } catch (e) {
     console.error(e);
@@ -4071,7 +4113,12 @@ async function invAdicionarItem() {
     return;
   }
   try {
-    await registrarContagemHistorico({ nomeKey, nome: nomeReal, unidade, qtd, contadoPor: usuarioAtual?.nome || '—' });
+    await registrarContagemHistorico({
+      nomeKey, nome: nomeReal, unidade,
+      qtd: ehEntrada ? qtdDigitada : qtd,
+      contadoPor: usuarioAtual?.nome || '—',
+      tipo: ehEntrada ? 'entrada' : 'contagem',
+    });
   } catch (e) {
     toast('Aviso: não foi possível salvar no histórico.', 'erro');
   }
@@ -4086,6 +4133,14 @@ function trocarAbaInventario(aba, btn) {
 
 
 function renderizarInventario() {
+  if (_modoInventario === 'entrada') {
+    renderizarInventarioEntrada();
+  } else {
+    renderizarInventarioContagem();
+  }
+}
+
+function renderizarInventarioContagem() {
   const busca = _buscaInventario.toLowerCase().trim();
   let itens = _inventarioConfigs.filter(c => c.nome);
   if (busca) itens = itens.filter(c =>
@@ -4093,14 +4148,16 @@ function renderizarInventario() {
     (c.grupo || '').toLowerCase().includes(busca)
   );
 
-  /* Separar por aba */
-  const aContar  = itens.filter(c => !_inventarioContados.has(c.nomeKey || normalizarNomeItem(c.nome)));
-  const contados = itens.filter(c =>  _inventarioContados.has(c.nomeKey || normalizarNomeItem(c.nome)));
+  /* Separar por aba — "contado" é derivado do ultimaContagemEm salvo no
+     estoque (válido por 24h), não de um Set em memória, então sobrevive a
+     "Atualizar"/reabrir a tela. */
+  const aContar  = itens.filter(c => !_itemContadoRecentemente(c.nomeKey || normalizarNomeItem(c.nome)));
+  const contados = itens.filter(c =>  _itemContadoRecentemente(c.nomeKey || normalizarNomeItem(c.nome)));
   const lista    = _abaInventario === 'acontar' ? aContar : contados;
 
   /* Tabs com contadores */
-  const nContados = _inventarioContados.size;
-  const nAContar  = _inventarioConfigs.filter(c => c.nome).length - nContados;
+  const nContados = contados.length;
+  const nAContar  = aContar.length;
   const tabsHtml  = `
     <div class="filtros-tabs" id="inv-tabs" style="margin-bottom:12px">
       <button class="tab${_abaInventario === 'acontar'  ? ' ativo' : ''}" id="inv-tab-acontar"
@@ -4111,8 +4168,8 @@ function renderizarInventario() {
 
   if (!lista.length) {
     const msg = _abaInventario === 'acontar'
-      ? 'Todos os itens já foram contados nesta sessão!'
-      : 'Nenhum item contado ainda.';
+      ? 'Todos os itens já foram contados nas últimas 24h!'
+      : 'Nenhum item contado nas últimas 24h.';
     document.getElementById('inventario-conteudo').innerHTML = tabsHtml + estadoVazio(msg);
     return;
   }
@@ -4131,7 +4188,7 @@ function renderizarInventario() {
       const est      = estoqueCache[key] || {};
       const qtdEst   = est.qtd != null ? est.qtd : '';
       const un       = c.unidade || est.unidade || '';
-      const contado  = _inventarioContados.has(key);
+      const contado  = _itemContadoRecentemente(key);
       const btnLabel = contado ? '&#9998; Atualizar' : '&#10003; Contar';
       const btnStyle = contado ? 'background:var(--cinza-600)' : '';
       return `
@@ -4164,13 +4221,97 @@ function renderizarInventario() {
   document.getElementById('inventario-conteudo').innerHTML = tabsHtml + itenHtml;
 }
 
+function renderizarInventarioEntrada() {
+  const busca = _buscaInventario.toLowerCase().trim();
+  let itens = _inventarioConfigs.filter(c => c.nome);
+  if (busca) itens = itens.filter(c =>
+    (c.nome || '').toLowerCase().includes(busca) ||
+    (c.grupo || '').toLowerCase().includes(busca)
+  );
+
+  if (!itens.length) {
+    document.getElementById('inventario-conteudo').innerHTML = estadoVazio('Nenhum item encontrado.');
+    return;
+  }
+
+  /* Agrupar por categoria/grupo */
+  const grupos = {};
+  itens.forEach(c => {
+    const g = c.grupo || 'Sem Categoria';
+    if (!grupos[g]) grupos[g] = [];
+    grupos[g].push(c);
+  });
+
+  const itenHtml = Object.keys(grupos).sort().map(g => {
+    const linhas = grupos[g].map(c => {
+      const key      = c.nomeKey || normalizarNomeItem(c.nome);
+      const est      = estoqueCache[key] || {};
+      const qtdAtual = est.qtd || 0;
+      const un       = c.unidade || est.unidade || '';
+      return `
+        <div class="estoque-item-card" id="inv-entrada-card-${key}" style="margin-bottom:8px">
+          <div class="estoque-item-header">
+            <div class="estoque-item-nome">${_escHtml(c.nome)}</div>
+            <div class="estoque-item-total" style="font-size:12px;color:var(--cinza-500)">Em estoque: ${qtdAtual} ${_escHtml(un)}</div>
+          </div>
+          <div class="estoque-body-row">
+            <span class="estoque-body-label">Chegando:</span>
+            <div class="estoque-qty-wrap">
+              <input type="number" class="estoque-qty-input"
+                id="inv-entrada-qty-${key}"
+                min="0" placeholder="0"
+              />
+              ${un ? `<span class="estoque-qty-un">${_escHtml(un)}</span>` : ''}
+            </div>
+            <button class="btn-primario btn-sm" style="margin-left:8px;flex-shrink:0"
+              onclick="registrarEntradaInventario('${_esc(key)}','${_esc(c.nome)}','${_esc(un)}')">
+              &#43; Registrar Entrada
+            </button>
+          </div>
+        </div>`;
+    }).join('');
+    return `
+      <div class="grupo-titulo" style="margin-top:16px;margin-bottom:4px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--cinza-500);letter-spacing:.5px">${_escHtml(g)}</div>
+      ${linhas}`;
+  }).join('');
+
+  document.getElementById('inventario-conteudo').innerHTML = itenHtml;
+}
+
+async function registrarEntradaInventario(nomeKey, nome, unidade) {
+  const input        = document.getElementById(`inv-entrada-qty-${nomeKey}`);
+  const qtdChegando  = input ? (parseFloat(input.value) || 0) : 0;
+  if (qtdChegando <= 0) return toast('Informe quanto está chegando.', 'erro');
+  const qtdAtual = estoqueCache[nomeKey]?.qtd || 0;
+  const qtdNova  = qtdAtual + qtdChegando;
+  try {
+    await salvarItemEstoque(nomeKey, { nome, unidade, qtd: qtdNova });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd: qtdNova, nomeKey };
+    toast(`+${qtdChegando} ${unidade || 'un'} de "${nome}" — total agora: ${qtdNova} ${unidade || 'un'}`, 'sucesso');
+    renderizarInventario();
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao registrar entrada. Tente novamente.', 'erro');
+    return;
+  }
+  try {
+    await registrarContagemHistorico({
+      nomeKey, nome, unidade, qtd: qtdChegando,
+      contadoPor: usuarioAtual?.nome || '—', tipo: 'entrada',
+    });
+  } catch (e) {
+    console.error('Erro ao registrar histórico:', e);
+    toast('Aviso: não foi possível salvar no histórico de contagem.', 'erro');
+  }
+}
+
 async function salvarInventarioQtd(nomeKey, nome, unidade) {
   const input = document.getElementById(`inv-qty-${nomeKey}`);
   const qtd   = input ? (parseFloat(input.value) || 0) : 0;
+  const agora = new Date();
   try {
-    await salvarItemEstoque(nomeKey, { nome, unidade, qtd });
-    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey };
-    _inventarioContados.add(nomeKey);
+    await salvarItemEstoque(nomeKey, { nome, unidade, qtd, ultimaContagemEm: agora });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey, ultimaContagemEm: agora };
     toast(`${nome}: ${qtd} ${unidade || 'un'} ✓`, 'sucesso');
     renderizarInventario();
   } catch (e) {
@@ -4179,7 +4320,7 @@ async function salvarInventarioQtd(nomeKey, nome, unidade) {
     return;
   }
   try {
-    await registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor: usuarioAtual?.nome || '—' });
+    await registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor: usuarioAtual?.nome || '—', tipo: 'contagem' });
   } catch (e) {
     console.error('Erro ao registrar histórico:', e);
     toast('Aviso: não foi possível salvar no histórico de contagem.', 'erro');
@@ -4251,13 +4392,17 @@ function renderizarHistoricoContagem(registros, containerId) {
       <div class="estoque-item-card" style="margin-bottom:6px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div>
-            <div style="font-weight:600;font-size:14px">${_escHtml(r.nome || r.nomeKey)}</div>
+            <div style="font-weight:600;font-size:14px">${_escHtml(r.nome || r.nomeKey)}
+              ${r.tipo === 'entrada'
+                ? '<span style="background:#DBEAFE;color:#1D4ED8;font-size:10px;margin-left:6px;padding:2px 6px;border-radius:4px;font-weight:700">ENTRADA</span>'
+                : '<span style="background:#F3F4F6;color:#374151;font-size:10px;margin-left:6px;padding:2px 6px;border-radius:4px;font-weight:700">CONTAGEM</span>'}
+            </div>
             <div style="font-size:12px;color:var(--cinza-500);margin-top:2px">
               👤 ${_escHtml(r.contadoPor || '—')} &nbsp;·&nbsp; ${fmt(r.contadoEm)}
             </div>
           </div>
           <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:20px;font-weight:700;color:var(--verde-700)">${r.qtd}</div>
+            <div style="font-size:20px;font-weight:700;color:var(--verde-700)">${r.tipo === 'entrada' ? '+' : ''}${r.qtd}</div>
             <div style="font-size:11px;color:var(--cinza-500)">${_escHtml(r.unidade || 'un')}</div>
           </div>
         </div>

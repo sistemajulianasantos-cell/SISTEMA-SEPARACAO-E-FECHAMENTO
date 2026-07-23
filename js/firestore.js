@@ -426,9 +426,10 @@ async function renomearChaveEstoque(docId, novoNomeKey, novoNome) {
   });
 }
 
-async function registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor }) {
+async function registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor, tipo }) {
   return db.collection('historico_contagem').add({
     nomeKey, nome, unidade, qtd, contadoPor,
+    tipo: tipo || 'contagem', /* 'contagem' (inventário geral) | 'entrada' (mercadoria recebida) */
     contadoEm: TS(),
   });
 }
