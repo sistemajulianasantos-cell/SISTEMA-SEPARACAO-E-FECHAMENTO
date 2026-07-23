@@ -5111,6 +5111,7 @@ function trocarAbaItens(aba, btn) {
   const btnSel    = document.getElementById('btn-selecionar-itens');
   const btnAplicar= document.getElementById('btn-aplicar-class');
   const btnPadr   = document.getElementById('btn-padronizar-nomes');
+  const btnDup    = document.getElementById('btn-resolver-duplicados');
   const busca     = document.getElementById('busca-cadastro-wrap');
 
   /* Reset todos */
@@ -5122,6 +5123,7 @@ function trocarAbaItens(aba, btn) {
   if (btnSel)     btnSel.style.display = '';
   if (btnAplicar) btnAplicar.classList.add('hidden');
   if (btnPadr)    btnPadr.classList.add('hidden');
+  if (btnDup)     btnDup.classList.add('hidden');
   if (busca)      busca.classList.add('hidden');
 
   if (aba === 'categorias') {
@@ -5137,6 +5139,7 @@ function trocarAbaItens(aba, btn) {
     if (btnNovo)    btnNovo.classList.remove('hidden');
     if (btnAplicar) btnAplicar.classList.remove('hidden');
     if (btnPadr)    btnPadr.classList.remove('hidden');
+    if (btnDup)     btnDup.classList.remove('hidden');
     if (busca)      busca.classList.remove('hidden');
     renderizarCadastroItens();
   }
@@ -5542,12 +5545,34 @@ async function abrirModalPadronizarNomes() {
     if (!achouEmAlgumLugar) _padronizacaoPendenteNovos.push({ nomeNovo: canonico });
   });
 
+  /* Aviso preventivo: se dois itens diferentes do Cadastro forem terminar
+     com o mesmo nome (ex.: dois apelidos da lista, cada um já usado por um
+     item separado, apontando pro mesmo nome padrão), isso cria um
+     duplicado visual — nomeKey continua diferente, então não é bug, mas
+     ela precisa saber antes de aplicar (depois dá pra corrigir em
+     "Resolver duplicados"). */
+  const nomeNovoPorId = {};
+  _padronizacaoPendente.forEach(p => { nomeNovoPorId[p.id] = p.nomeNovo; });
+  const resultanteContagem = {};
+  configs.forEach(c => {
+    const nomeResultante = (nomeNovoPorId[c.id] || c.nome || '').trim().toUpperCase();
+    if (!nomeResultante) return;
+    resultanteContagem[nomeResultante] = (resultanteContagem[nomeResultante] || 0) + 1;
+  });
+  const avisosColisao = Object.entries(resultanteContagem).filter(([, qtd]) => qtd > 1).map(([nome]) => nome);
+
   const listaEl    = document.getElementById('padronizar-nomes-lista');
   const btnAplicar = document.getElementById('btn-aplicar-padronizacao');
   const total = _padronizacaoPendente.length + _padronizacaoPendenteFesta.length + _padronizacaoPendenteNovos.length;
 
+  const htmlAviso = avisosColisao.length ? `
+    <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#991B1B">
+      <strong>&#9888; Isso vai deixar ${avisosColisao.length} nome(s) duplicado(s) no Cadastro:</strong>
+      ${avisosColisao.map(_escHtml).join(', ')}. São itens diferentes (vínculo com estoque/festa diferente) que vão ficar com o mesmo nome exibido — depois de aplicar, use "Resolver duplicados" pra escolher qual manter.
+    </div>` : '';
+
   if (!total) {
-    listaEl.innerHTML = '<p style="font-size:13px;color:#6B7280;padding:12px 0">Nenhuma mudança pendente — tudo já está com o nome padrão.</p>';
+    listaEl.innerHTML = htmlAviso + '<p style="font-size:13px;color:#6B7280;padding:12px 0">Nenhuma mudança pendente — tudo já está com o nome padrão.</p>';
     if (btnAplicar) btnAplicar.classList.add('hidden');
   } else {
     const linhaTroca = p => `
@@ -5561,7 +5586,7 @@ async function abrirModalPadronizarNomes() {
         ${itens.map(render).join('')}
       </div>`;
 
-    listaEl.innerHTML =
+    listaEl.innerHTML = htmlAviso +
       secao('Cadastro de Itens', _padronizacaoPendente, linhaTroca) +
       secao('Controle de Estoque (festas ativas)', _padronizacaoPendenteFesta, linhaTroca) +
       secao('Novos produtos a cadastrar (sem categoria)', _padronizacaoPendenteNovos, p => `
@@ -5675,6 +5700,143 @@ async function confirmarPadronizarNomes() {
   } catch (e) {
     console.error(e);
     toast('Erro ao aplicar padronização. Tente novamente.', 'erro');
+  } finally {
+    if (btnAplicar) { btnAplicar.disabled = false; btnAplicar.textContent = 'Aplicar'; }
+  }
+}
+
+/* ════════════════════════════════════════
+   RESOLVER DUPLICADOS — itens do Cadastro com o MESMO nome de exibição mas
+   nomeKey diferente (o caso mais comum é sobra de uma "Padronizar nomes"
+   onde dois apelidos diferentes da lista apontavam pro mesmo nome final, e
+   os dois já existiam como itens separados). Mostra qual nomeKey está de
+   fato vinculado a uma festa ativa — normalmente o "certo" pra manter — e
+   remove os outros, migrando estoque e compras pendentes quando possível.
+════════════════════════════════════════ */
+let _duplicadosPendente = []; /* [{nome, itens:[{id,nomeKey,temEstoque,qtdEstoque,usadoEmFesta}]}] */
+
+async function abrirModalResolverDuplicados() {
+  const configs = Object.values(itemConfigsCache);
+  const porNome = {};
+  configs.forEach(c => {
+    const chave = (c.nome || '').trim().toUpperCase();
+    if (!chave) return;
+    if (!porNome[chave]) porNome[chave] = [];
+    porNome[chave].push(c);
+  });
+  const gruposDuplicados = Object.entries(porNome).filter(([, arr]) => arr.length > 1);
+
+  const listaEl    = document.getElementById('resolver-duplicados-lista');
+  const btnAplicar = document.getElementById('btn-aplicar-resolver-duplicados');
+
+  if (!gruposDuplicados.length) {
+    _duplicadosPendente = [];
+    listaEl.innerHTML = '<p style="font-size:13px;color:#6B7280;padding:12px 0">Nenhum nome duplicado encontrado no Cadastro.</p>';
+    if (btnAplicar) btnAplicar.classList.add('hidden');
+    document.getElementById('modal-resolver-duplicados').classList.remove('hidden');
+    return;
+  }
+
+  const [festasTodas, estoqueAtual] = await Promise.all([buscarTodasFestas(), buscarEstoque()]);
+  const chavesUsadasEmFestas = new Set();
+  festasTodas.filter(f => f.status !== 'concluida').forEach(f => (f.itens || []).forEach(it => {
+    const k = normalizarNomeItem(it.nome);
+    chavesUsadasEmFestas.add(k);
+    chavesUsadasEmFestas.add(nomeBaseKey(k));
+  }));
+
+  _duplicadosPendente = gruposDuplicados.map(([nome, itens]) => ({
+    nome,
+    itens: itens.map(c => ({
+      id: c.id,
+      nomeKey: c.nomeKey,
+      temEstoque: !!estoqueAtual[c.nomeKey],
+      qtdEstoque: estoqueAtual[c.nomeKey]?.qtd,
+      usadoEmFesta: chavesUsadasEmFestas.has(c.nomeKey),
+    })),
+  }));
+
+  listaEl.innerHTML = _duplicadosPendente.map((grupo, gi) => {
+    /* Sugestão de qual manter: vinculado a festa ativa primeiro, depois com estoque, senão o primeiro */
+    let sugeridoIdx = grupo.itens.findIndex(it => it.usadoEmFesta);
+    if (sugeridoIdx === -1) sugeridoIdx = grupo.itens.findIndex(it => it.temEstoque);
+    if (sugeridoIdx === -1) sugeridoIdx = 0;
+
+    return `
+      <div style="border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;margin-bottom:10px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:6px">${_escHtml(grupo.nome)}</div>
+        ${grupo.itens.map((it, ii) => `
+          <label style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:13px;cursor:pointer">
+            <input type="radio" name="dup-group-${gi}" value="${ii}" ${ii === sugeridoIdx ? 'checked' : ''} style="margin-top:3px">
+            <span>
+              <span style="color:#374151">nomeKey: <code>${_escHtml(it.nomeKey)}</code></span><br>
+              ${it.usadoEmFesta ? '<span style="background:#DCFCE7;color:#15803d;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;margin-right:4px">VINCULADO A FESTA ATIVA</span>' : ''}
+              ${it.temEstoque ? `<span style="background:#DBEAFE;color:#1D4ED8;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700">ESTOQUE: ${it.qtdEstoque ?? 0}</span>` : '<span style="color:#9CA3AF;font-size:11px">sem estoque registrado</span>'}
+            </span>
+          </label>
+        `).join('')}
+      </div>`;
+  }).join('');
+
+  if (btnAplicar) btnAplicar.classList.remove('hidden');
+  document.getElementById('modal-resolver-duplicados').classList.remove('hidden');
+}
+
+function fecharModalResolverDuplicados() {
+  document.getElementById('modal-resolver-duplicados').classList.add('hidden');
+}
+
+async function confirmarResolverDuplicados() {
+  if (!_duplicadosPendente.length) return;
+  const btnAplicar = document.getElementById('btn-aplicar-resolver-duplicados');
+  if (btnAplicar) { btnAplicar.disabled = true; btnAplicar.textContent = 'Aplicando...'; }
+  try {
+    const [estoqueAtual, comprasAtuais] = await Promise.all([buscarEstoque(), listarCompras()]);
+    const conflitosEstoque = [];
+    let totalRemovidos = 0;
+
+    for (let gi = 0; gi < _duplicadosPendente.length; gi++) {
+      const grupo = _duplicadosPendente[gi];
+      const radioMarcado = document.querySelector(`input[name="dup-group-${gi}"]:checked`);
+      const winnerIdx = radioMarcado ? parseInt(radioMarcado.value) : 0;
+      const winner = grupo.itens[winnerIdx];
+      const losers = grupo.itens.filter((_, i) => i !== winnerIdx);
+
+      for (const loser of losers) {
+        /* Migra o estoque do perdedor pro vencedor, se o vencedor ainda não tiver doc */
+        const docPerdedor = estoqueAtual[loser.nomeKey];
+        const docVencedor = estoqueAtual[winner.nomeKey];
+        if (docPerdedor && docVencedor) {
+          conflitosEstoque.push(`${grupo.nome} (${loser.nomeKey})`);
+        } else if (docPerdedor && !docVencedor) {
+          await renomearChaveEstoque(docPerdedor.id, winner.nomeKey, grupo.nome);
+          estoqueAtual[winner.nomeKey] = { ...docPerdedor, nomeKey: winner.nomeKey };
+        }
+
+        /* Migra compras pendentes/em andamento do perdedor pro vencedor */
+        const comprasParaMigrar = comprasAtuais.filter(c => c.nomeKey === loser.nomeKey && (c.status === 'pendente' || c.status === 'pedido'));
+        for (const c of comprasParaMigrar) {
+          await atualizarCompraDB(c.id, { nomeKey: winner.nomeKey, nome: grupo.nome });
+        }
+
+        await deletarItemConfigDB(loser.id);
+        totalRemovidos++;
+      }
+    }
+
+    toast(`${totalRemovidos} duplicado(s) removido(s).${conflitosEstoque.length ? ` ${conflitosEstoque.length} com estoque nas duas chaves — revise manualmente: ${conflitosEstoque.join(', ')}` : ''}`, 'sucesso');
+    if (conflitosEstoque.length) console.warn('Resolver duplicados — conflitos de estoque (revisar manualmente):', conflitosEstoque);
+
+    _duplicadosPendente = [];
+    fecharModalResolverDuplicados();
+
+    const cfgsFrescos = await listarItemConfigs();
+    itemConfigsCache = {};
+    cfgsFrescos.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    renderizarCadastroItens();
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao resolver duplicados. Tente novamente.', 'erro');
   } finally {
     if (btnAplicar) { btnAplicar.disabled = false; btnAplicar.textContent = 'Aplicar'; }
   }

@@ -265,6 +265,21 @@
     </div>
   </div>
 
+  <!-- ══════════ MODAL: RESOLVER DUPLICADOS (Cadastro) ══════════ -->
+  <div id="modal-resolver-duplicados" class="modal-overlay hidden" onclick="fecharModalResolverDuplicados()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:640px;width:95%">
+      <div class="modal-titulo">&#128257; Resolver duplicados</div>
+      <div style="font-size:13px;color:#6B7280;margin:8px 0 4px">
+        Itens com o mesmo nome cadastrados mais de uma vez (nomes iguais, mas vínculos diferentes). Escolha qual manter em cada grupo — o sistema já sugere o que está de fato ligado a uma festa ativa. Os outros são removidos do Cadastro.
+      </div>
+      <div id="resolver-duplicados-lista" style="max-height:55vh;overflow-y:auto;margin-top:10px"></div>
+      <div class="modal-acoes">
+        <button class="btn-secundario" onclick="fecharModalResolverDuplicados()">Cancelar</button>
+        <button class="btn-primario" id="btn-aplicar-resolver-duplicados" onclick="confirmarResolverDuplicados()">Aplicar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════ TELA: AGENDA — MESES ══════════ -->
   <div id="tela-agenda-meses" class="tela hidden">
     <div class="container">
@@ -674,6 +689,7 @@
         <div style="display:flex;gap:8px">
           <button class="btn-secundario btn-sm" id="btn-selecionar-itens" onclick="toggleModoSelecaoCadastro()">&#9744; Selecionar</button>
           <button class="btn-secundario btn-sm hidden" id="btn-padronizar-nomes" onclick="abrirModalPadronizarNomes()">&#127991; Padronizar nomes</button>
+          <button class="btn-secundario btn-sm hidden" id="btn-resolver-duplicados" onclick="abrirModalResolverDuplicados()">&#128257; Resolver duplicados</button>
           <button class="btn-primario" id="btn-novo-item-config" onclick="abrirFormItemConfig()">&#43; Novo Item</button>
           <button class="btn-primario hidden" id="btn-nova-categoria" onclick="abrirFormCategoria()">&#43; Nova Categoria</button>
         </div>
@@ -1246,7 +1262,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=39"></script>
-  <script src="js/app.js?v=51"></script>
+  <script src="js/app.js?v=52"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->
