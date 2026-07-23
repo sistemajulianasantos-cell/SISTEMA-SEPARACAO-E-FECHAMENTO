@@ -668,6 +668,10 @@ function renderizarInicio(papel) {
           <div class="inicio-card-icone">📋</div>
           <div class="inicio-card-nome">Inventário</div>
         </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEntradaMercadoria()">
+          <div class="inicio-card-icone">📦</div>
+          <div class="inicio-card-nome">Entrada de Mercadoria</div>
+        </div>
       </div>
     `;
   }
@@ -3998,9 +4002,8 @@ function standByInfo(item, festaData) {
 ══════════════════════════════════════════════════ */
 
 let _buscaInventario    = '';
-let _abaInventario      = 'acontar';  /* 'acontar' | 'contados' */
-let _modoInventario     = 'contagem'; /* 'contagem' (inventário geral) | 'entrada' (mercadoria recebida) */
-let _inventarioConfigs  = [];         /* cache dos item_configs carregados */
+let _abaInventario      = 'acontar'; /* 'acontar' | 'contados' */
+let _inventarioConfigs  = [];        /* cache dos item_configs carregados */
 
 /* Um item fica na aba "Contados" por 24h a partir do momento em que foi
    contado (campo ultimaContagemEm no doc de estoque) — não é um estado só
@@ -4019,30 +4022,9 @@ async function abrirInventario() {
   mostrarTela('tela-inventario', 'Inventário de Estoque');
   _buscaInventario = '';
   _abaInventario   = 'acontar';
-  _modoInventario  = 'contagem';
-  document.querySelectorAll('#inv-modo-tabs .tab').forEach((b, i) => b.classList.toggle('ativo', i === 0));
-  const desc = document.getElementById('inv-desc');
-  if (desc) desc.textContent = 'Registre as quantidades atuais no estoque. Toque no número para editar.';
-  const qtdInput = document.getElementById('inv-add-qtd');
-  if (qtdInput) qtdInput.placeholder = 'Qtd';
   const busca = document.querySelector('#tela-inventario .barra-busca');
   if (busca) busca.value = '';
   await recarregarInventario();
-}
-
-function trocarModoInventario(modo, btn) {
-  _modoInventario = modo;
-  document.querySelectorAll('#inv-modo-tabs .tab').forEach(b => b.classList.remove('ativo'));
-  if (btn) btn.classList.add('ativo');
-  const desc = document.getElementById('inv-desc');
-  if (desc) desc.textContent = modo === 'entrada'
-    ? 'Informe quanto está chegando de cada produto — o sistema soma automaticamente ao que já tem em estoque.'
-    : 'Registre as quantidades atuais no estoque. Toque no número para editar.';
-  const qtdInput = document.getElementById('inv-add-qtd');
-  if (qtdInput) qtdInput.placeholder = modo === 'entrada' ? 'Qtd. chegando' : 'Qtd';
-  const addBtn = document.getElementById('inv-add-btn');
-  if (addBtn) addBtn.innerHTML = modo === 'entrada' ? '&#43; Registrar Entrada' : '&#43; Adicionar';
-  renderizarInventario();
 }
 
 async function recarregarInventario() {
@@ -4093,19 +4075,12 @@ async function invAdicionarItem() {
   const qtdInput  = document.getElementById('inv-add-qtd');
   const nome = (nomeInput?.value || '').trim();
   if (!nome) return toast('Informe o nome do produto.', 'erro');
-  const qtdDigitada = parseFloat(qtdInput?.value) || 0;
+  const qtd = parseFloat(qtdInput?.value) || 0;
   const cfg = _inventarioConfigs.find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(nome));
   const nomeKey  = cfg ? (cfg.nomeKey || normalizarNomeItem(cfg.nome)) : normalizarNomeItem(nome);
   const unidade  = cfg?.unidade || 'un';
   const nomeReal = cfg?.nome || nome;
-
-  const ehEntrada = _modoInventario === 'entrada';
-  if (ehEntrada && qtdDigitada <= 0) return toast('Informe quanto está chegando.', 'erro');
-  const qtdAtual = estoqueCache[nomeKey]?.qtd || 0;
-  const qtd      = ehEntrada ? qtdAtual + qtdDigitada : qtdDigitada;
-
-  const dadosSalvar = { nome: nomeReal, unidade, qtd };
-  if (!ehEntrada) dadosSalvar.ultimaContagemEm = new Date();
+  const dadosSalvar = { nome: nomeReal, unidade, qtd, ultimaContagemEm: new Date() };
 
   try {
     await salvarItemEstoque(nomeKey, dadosSalvar);
@@ -4114,9 +4089,7 @@ async function invAdicionarItem() {
     if (qtdInput)  qtdInput.value  = '';
     const unEl = document.getElementById('inv-add-un');
     if (unEl) unEl.textContent = '';
-    toast(ehEntrada
-      ? `+${qtdDigitada} ${unidade} de "${nomeReal}" — total agora: ${qtd} ${unidade}`
-      : `${nomeReal}: ${qtd} ${unidade} ✓`, 'sucesso');
+    toast(`${nomeReal}: ${qtd} ${unidade} ✓`, 'sucesso');
     renderizarInventario();
   } catch (e) {
     console.error(e);
@@ -4124,12 +4097,7 @@ async function invAdicionarItem() {
     return;
   }
   try {
-    await registrarContagemHistorico({
-      nomeKey, nome: nomeReal, unidade,
-      qtd: ehEntrada ? qtdDigitada : qtd,
-      contadoPor: usuarioAtual?.nome || '—',
-      tipo: ehEntrada ? 'entrada' : 'contagem',
-    });
+    await registrarContagemHistorico({ nomeKey, nome: nomeReal, unidade, qtd, contadoPor: usuarioAtual?.nome || '—', tipo: 'contagem' });
   } catch (e) {
     toast('Aviso: não foi possível salvar no histórico.', 'erro');
   }
@@ -4142,16 +4110,7 @@ function trocarAbaInventario(aba, btn) {
   renderizarInventario();
 }
 
-
 function renderizarInventario() {
-  if (_modoInventario === 'entrada') {
-    renderizarInventarioEntrada();
-  } else {
-    renderizarInventarioContagem();
-  }
-}
-
-function renderizarInventarioContagem() {
   const busca = _buscaInventario.toLowerCase().trim();
   let itens = _inventarioConfigs.filter(c => c.nome && _categoriaPermiteEstoque(c.grupo));
   if (busca) itens = itens.filter(c =>
@@ -4232,16 +4191,102 @@ function renderizarInventarioContagem() {
   document.getElementById('inventario-conteudo').innerHTML = tabsHtml + itenHtml;
 }
 
-function renderizarInventarioEntrada() {
-  const busca = _buscaInventario.toLowerCase().trim();
-  let itens = _inventarioConfigs.filter(c => c.nome && _categoriaPermiteEstoque(c.grupo));
+/* ══════════════════════════════════════════════════
+   ENTRADA DE MERCADORIA — tela própria, separada do Inventário. Quem só
+   precisa registrar mercadoria chegando não precisa passar pelo Inventário
+   (contagem geral) pra isso.
+══════════════════════════════════════════════════ */
+
+let _buscaEntrada   = '';
+let _entradaConfigs = []; /* cache dos item_configs carregados */
+
+async function abrirEntradaMercadoria() {
+  historico.push('tela-colaborador');
+  mostrarTela('tela-entrada-mercadoria', 'Entrada de Mercadoria');
+  _buscaEntrada = '';
+  const busca = document.querySelector('#tela-entrada-mercadoria .barra-busca');
+  if (busca) busca.value = '';
+  await recarregarEntradaMercadoria();
+}
+
+async function recarregarEntradaMercadoria() {
+  document.getElementById('entrada-mercadoria-conteudo').innerHTML =
+    '<div class="estado-vazio"><p>Carregando...</p></div>';
+  try {
+    const [configs, estoqueMap, cats] = await Promise.all([
+      listarItemConfigs(),
+      buscarEstoque(),
+      categoriasCache.length ? Promise.resolve(categoriasCache) : listarCategorias(),
+    ]);
+    estoqueCache    = estoqueMap;
+    _entradaConfigs = configs;
+    if (!categoriasCache.length) categoriasCache = cats;
+    const dl = document.getElementById('ent-add-datalist');
+    if (dl) dl.innerHTML = configs.map(c => `<option value="${_esc(c.nome)}">`).join('');
+    renderizarEntradaMercadoria();
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao carregar.', 'erro');
+    document.getElementById('entrada-mercadoria-conteudo').innerHTML =
+      '<div class="estado-vazio"><p>Erro ao carregar. Tente novamente.</p></div>';
+  }
+}
+
+function filtrarEntradaMercadoria(valor) {
+  _buscaEntrada = valor;
+  renderizarEntradaMercadoria();
+}
+
+function entNomeInput(val) {
+  const cfg  = _entradaConfigs.find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(val));
+  const unEl = document.getElementById('ent-add-un');
+  if (unEl) unEl.textContent = cfg?.unidade || '';
+}
+
+async function entAdicionarItem() {
+  const nomeInput = document.getElementById('ent-add-nome');
+  const qtdInput  = document.getElementById('ent-add-qtd');
+  const nome = (nomeInput?.value || '').trim();
+  if (!nome) return toast('Informe o nome do produto.', 'erro');
+  const qtdChegando = parseFloat(qtdInput?.value) || 0;
+  if (qtdChegando <= 0) return toast('Informe quanto está chegando.', 'erro');
+  const cfg = _entradaConfigs.find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(nome));
+  const nomeKey  = cfg ? (cfg.nomeKey || normalizarNomeItem(cfg.nome)) : normalizarNomeItem(nome);
+  const unidade  = cfg?.unidade || 'un';
+  const nomeReal = cfg?.nome || nome;
+  const qtdAtual = estoqueCache[nomeKey]?.qtd || 0;
+  const qtdNova  = qtdAtual + qtdChegando;
+  try {
+    await salvarItemEstoque(nomeKey, { nome: nomeReal, unidade, qtd: qtdNova });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome: nomeReal, unidade, qtd: qtdNova, nomeKey };
+    if (nomeInput) nomeInput.value = '';
+    if (qtdInput)  qtdInput.value  = '';
+    const unEl = document.getElementById('ent-add-un');
+    if (unEl) unEl.textContent = '';
+    toast(`+${qtdChegando} ${unidade} de "${nomeReal}" — total agora: ${qtdNova} ${unidade}`, 'sucesso');
+    renderizarEntradaMercadoria();
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao salvar.', 'erro');
+    return;
+  }
+  try {
+    await registrarContagemHistorico({ nomeKey, nome: nomeReal, unidade, qtd: qtdChegando, contadoPor: usuarioAtual?.nome || '—', tipo: 'entrada' });
+  } catch (e) {
+    toast('Aviso: não foi possível salvar no histórico.', 'erro');
+  }
+}
+
+function renderizarEntradaMercadoria() {
+  const busca = _buscaEntrada.toLowerCase().trim();
+  let itens = _entradaConfigs.filter(c => c.nome && _categoriaPermiteEstoque(c.grupo));
   if (busca) itens = itens.filter(c =>
     (c.nome || '').toLowerCase().includes(busca) ||
     (c.grupo || '').toLowerCase().includes(busca)
   );
 
   if (!itens.length) {
-    document.getElementById('inventario-conteudo').innerHTML = estadoVazio('Nenhum item encontrado.');
+    document.getElementById('entrada-mercadoria-conteudo').innerHTML = estadoVazio('Nenhum item encontrado.');
     return;
   }
 
@@ -4260,7 +4305,7 @@ function renderizarInventarioEntrada() {
       const qtdAtual = est.qtd || 0;
       const un       = c.unidade || est.unidade || '';
       return `
-        <div class="estoque-item-card" id="inv-entrada-card-${key}" style="margin-bottom:8px">
+        <div class="estoque-item-card" id="ent-card-${key}" style="margin-bottom:8px">
           <div class="estoque-item-header">
             <div class="estoque-item-nome">${_escHtml(c.nome)}</div>
             <div class="estoque-item-total" style="font-size:12px;color:var(--cinza-500)">Em estoque: ${qtdAtual} ${_escHtml(un)}</div>
@@ -4269,13 +4314,13 @@ function renderizarInventarioEntrada() {
             <span class="estoque-body-label">Chegando:</span>
             <div class="estoque-qty-wrap">
               <input type="number" class="estoque-qty-input"
-                id="inv-entrada-qty-${key}"
+                id="ent-qty-${key}"
                 min="0" placeholder="0"
               />
               ${un ? `<span class="estoque-qty-un">${_escHtml(un)}</span>` : ''}
             </div>
             <button class="btn-primario btn-sm" style="margin-left:8px;flex-shrink:0"
-              onclick="registrarEntradaInventario('${_esc(key)}','${_esc(c.nome)}','${_esc(un)}')">
+              onclick="registrarEntradaMercadoria('${_esc(key)}','${_esc(c.nome)}','${_esc(un)}')">
               &#43; Registrar Entrada
             </button>
           </div>
@@ -4286,12 +4331,12 @@ function renderizarInventarioEntrada() {
       ${linhas}`;
   }).join('');
 
-  document.getElementById('inventario-conteudo').innerHTML = itenHtml;
+  document.getElementById('entrada-mercadoria-conteudo').innerHTML = itenHtml;
 }
 
-async function registrarEntradaInventario(nomeKey, nome, unidade) {
-  const input        = document.getElementById(`inv-entrada-qty-${nomeKey}`);
-  const qtdChegando  = input ? (parseFloat(input.value) || 0) : 0;
+async function registrarEntradaMercadoria(nomeKey, nome, unidade) {
+  const input       = document.getElementById(`ent-qty-${nomeKey}`);
+  const qtdChegando = input ? (parseFloat(input.value) || 0) : 0;
   if (qtdChegando <= 0) return toast('Informe quanto está chegando.', 'erro');
   const qtdAtual = estoqueCache[nomeKey]?.qtd || 0;
   const qtdNova  = qtdAtual + qtdChegando;
@@ -4299,7 +4344,7 @@ async function registrarEntradaInventario(nomeKey, nome, unidade) {
     await salvarItemEstoque(nomeKey, { nome, unidade, qtd: qtdNova });
     estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd: qtdNova, nomeKey };
     toast(`+${qtdChegando} ${unidade || 'un'} de "${nome}" — total agora: ${qtdNova} ${unidade || 'un'}`, 'sucesso');
-    renderizarInventario();
+    renderizarEntradaMercadoria();
   } catch (e) {
     console.error(e);
     toast('Erro ao registrar entrada. Tente novamente.', 'erro');
