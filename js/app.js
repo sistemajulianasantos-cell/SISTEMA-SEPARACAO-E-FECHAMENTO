@@ -4144,7 +4144,8 @@ function renderizarInventario() {
     return;
   }
 
-  /* Agrupar por categoria/grupo */
+  /* Agrupar por categoria/grupo, produtos em ordem alfabética dentro de cada uma */
+  lista.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
   const grupos = {};
   lista.forEach(c => {
     const g = c.grupo || 'Sem Categoria';
@@ -4152,7 +4153,7 @@ function renderizarInventario() {
     grupos[g].push(c);
   });
 
-  const itenHtml = Object.keys(grupos).sort().map(g => {
+  const itenHtml = Object.keys(grupos).sort((a, b) => a.localeCompare(b, 'pt-BR')).map(g => {
     const linhas = grupos[g].map(c => {
       const key      = c.nomeKey || normalizarNomeItem(c.nome);
       const est      = estoqueCache[key] || {};
@@ -4290,7 +4291,8 @@ function renderizarEntradaMercadoria() {
     return;
   }
 
-  /* Agrupar por categoria/grupo */
+  /* Agrupar por categoria/grupo, produtos em ordem alfabética dentro de cada uma */
+  itens.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
   const grupos = {};
   itens.forEach(c => {
     const g = c.grupo || 'Sem Categoria';
@@ -4298,7 +4300,7 @@ function renderizarEntradaMercadoria() {
     grupos[g].push(c);
   });
 
-  const itenHtml = Object.keys(grupos).sort().map(g => {
+  const itenHtml = Object.keys(grupos).sort((a, b) => a.localeCompare(b, 'pt-BR')).map(g => {
     const linhas = grupos[g].map(c => {
       const key      = c.nomeKey || normalizarNomeItem(c.nome);
       const est      = estoqueCache[key] || {};
@@ -4628,7 +4630,7 @@ function renderizarEstoque(festas, estoqueMap) {
     return;
   }
 
-  /* Agrupar por categoria, respeitando a ordem cadastrada em Categorias */
+  /* Agrupar por categoria, em ordem alfabética */
   const grupos = {};
   itens.forEach(it => {
     const cfg = buscarConfigItem(it.nomeKey);
@@ -4636,15 +4638,13 @@ function renderizarEstoque(festas, estoqueMap) {
     if (!grupos[g]) grupos[g] = [];
     grupos[g].push(it);
   });
-  const catOrdem = {};
-  categoriasCache.forEach((c, i) => { catOrdem[c.nome] = c.ordem != null ? c.ordem : i + 1; });
 
   const renderCard = it => abaEstoqueAtual === 'sintetico'
     ? htmlEstoqueSintetico(it, estoqueMap[it.nomeKey])
     : htmlEstoqueAnalitico(it, estoqueMap[it.nomeKey]);
 
   document.getElementById('estoque-conteudo').innerHTML = Object.keys(grupos)
-    .sort((a, b) => (catOrdem[a] ?? 999) - (catOrdem[b] ?? 999) || a.localeCompare(b, 'pt-BR'))
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'))
     .map(g => `
       <div class="grupo-titulo" style="margin-top:16px;margin-bottom:4px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--cinza-500);letter-spacing:.5px">${_escHtml(g)}</div>
       ${grupos[g].map(renderCard).join('')}
@@ -5161,9 +5161,7 @@ async function renderizarCadastroItens() {
     const grupos = {};
     configs.forEach(c => {
       const g = c.grupo || 'Sem Categoria';
-      if (!grupos[g]) grupos[g] = { ordem: 999, itens: [] };
-      const catInfo = categoriasCache.find(cat => cat.nome === g);
-      if (catInfo) grupos[g].ordem = catInfo.ordem || 999;
+      if (!grupos[g]) grupos[g] = { itens: [] };
       grupos[g].itens.push(c);
       delete nomesNasFestas[c.nomeKey]; /* remover da lista de não configurados (match exato) */
     });
@@ -5202,7 +5200,7 @@ async function renderizarCadastroItens() {
     const filtrar = (nome) => !busca || nome.toLowerCase().includes(busca);
 
     const htmlGrupos = Object.entries(grupos)
-      .sort(([, a], [, b]) => a.ordem - b.ordem || 0)
+      .sort(([nomeA], [nomeB]) => nomeA.localeCompare(nomeB, 'pt-BR'))
       .map(([grupo, grpData]) => {
         const itensFiltrados = grpData.itens
           .filter(c => filtrar(c.nome))
