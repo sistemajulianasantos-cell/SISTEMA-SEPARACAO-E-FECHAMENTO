@@ -4206,14 +4206,14 @@ function renderizarInventario() {
         <div class="estoque-item-card" id="inv-card-${key}" style="margin-bottom:8px">
           <div class="estoque-item-header">
             <div class="estoque-item-nome">${_escHtml(c.nome)}</div>
-            <div style="font-size:12px;color:var(--cinza-500)">${contado ? `Sistema: ${qtdEst} ${_escHtml(un)}` : (un ? _escHtml(un) : '')}</div>
+            <div style="font-size:12px;color:var(--cinza-500)">${contado ? '<span style="color:var(--verde-700);font-weight:600">&#10003; Contado</span>' : (un ? _escHtml(un) : '')}</div>
           </div>
           <div class="estoque-body-row">
             <span class="estoque-body-label">Qtd.:</span>
             <div class="estoque-qty-wrap">
               <input type="number" class="estoque-qty-input"
                 id="inv-qty-${key}"
-                min="0" placeholder="0"
+                ${contado ? `value="${qtdEst}"` : ''} min="0" placeholder="0"
               />
               ${un ? `<span class="estoque-qty-un">${_escHtml(un)}</span>` : ''}
             </div>
@@ -4222,6 +4222,13 @@ function renderizarInventario() {
               ${btnLabel}
             </button>
           </div>
+          ${contado ? `
+          <div style="text-align:right;margin-top:6px">
+            <button class="btn-secundario btn-sm" style="color:var(--vermelho)"
+              onclick="desfazerContagemInventario('${_esc(key)}','${_esc(c.nome)}','${_esc(un)}')">
+              &#8617; Desfazer
+            </button>
+          </div>` : ''}
         </div>`;
     }).join('');
     return `
@@ -4583,6 +4590,39 @@ async function salvarInventarioQtd(nomeKey, nome, unidade) {
   } catch (e) {
     console.error('Erro ao registrar histórico:', e);
     toast('Aviso: não foi possível salvar no histórico de contagem.', 'erro');
+  }
+}
+
+/* Desfaz a última contagem de um item: volta o estoque pro valor da
+   contagem anterior (não de entrada/produção, que guardam a diferença, não
+   o total — só "contagem" guarda o total real em cada momento). Se não
+   achar uma contagem anterior, avisa antes de zerar. A própria ação de
+   desfazer vira uma nova contagem no histórico (não apaga a errada — fica
+   registrado que existiu e foi corrigida, igual um estorno). */
+async function desfazerContagemInventario(nomeKey, nome, unidade) {
+  const btn = document.querySelector(`#inv-card-${nomeKey} .btn-secundario`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Desfazendo...'; }
+  try {
+    const registros = await listarHistoricoContagem(500);
+    const doItem = registros.filter(r => r.nomeKey === nomeKey && (r.tipo === 'contagem' || !r.tipo));
+    const valorAnterior = doItem.length >= 2 ? doItem[1].qtd : 0;
+
+    const msg = doItem.length >= 2
+      ? `Desfazer a última contagem de "${nome}"? Volta de ${doItem[0]?.qtd ?? '—'} para ${valorAnterior} ${unidade || 'un'}.`
+      : `Não encontrei uma contagem anterior de "${nome}" pra restaurar. Desfazer mesmo assim e zerar o estoque?`;
+    if (!confirm(msg)) return;
+
+    const agora = new Date();
+    await salvarItemEstoque(nomeKey, { nome, unidade, qtd: valorAnterior, ultimaContagemEm: agora });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd: valorAnterior, nomeKey, ultimaContagemEm: agora };
+    await registrarContagemHistorico({ nomeKey, nome, unidade, qtd: valorAnterior, contadoPor: usuarioAtual?.nome || '—', tipo: 'contagem' });
+    toast(`Contagem de "${nome}" desfeita — voltou pra ${valorAnterior} ${unidade || 'un'}.`, 'sucesso');
+    renderizarInventario();
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao desfazer. Tente novamente.', 'erro');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '&#8617; Desfazer'; }
   }
 }
 
