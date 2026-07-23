@@ -4049,12 +4049,14 @@ async function recarregarInventario() {
   document.getElementById('inventario-conteudo').innerHTML =
     '<div class="estado-vazio"><p>Carregando...</p></div>';
   try {
-    const [configs, estoqueMap] = await Promise.all([
+    const [configs, estoqueMap, cats] = await Promise.all([
       listarItemConfigs(),
       buscarEstoque(),
+      categoriasCache.length ? Promise.resolve(categoriasCache) : listarCategorias(),
     ]);
     estoqueCache       = estoqueMap;
     _inventarioConfigs = configs;
+    if (!categoriasCache.length) categoriasCache = cats;
     const dl = document.getElementById('inv-add-datalist');
     if (dl) dl.innerHTML = configs.map(c => `<option value="${_esc(c.nome)}">`).join('');
     renderizarInventario();
@@ -4064,6 +4066,15 @@ async function recarregarInventario() {
     document.getElementById('inventario-conteudo').innerHTML =
       '<div class="estado-vazio"><p>Erro ao carregar. Tente novamente.</p></div>';
   }
+}
+
+/* Categorias como Coquetéis (produzidos internamente, não dá pra contar
+   estoque) usam o mesmo flag exibirEstoque que já esconde a categoria do
+   Controle de Estoque — aqui ele também tira os itens da tela de Inventário. */
+function _categoriaPermiteEstoque(grupo) {
+  if (!grupo) return true;
+  const cat = categoriasCache.find(c => c.nome === grupo);
+  return !cat || cat.exibirEstoque !== false;
 }
 
 function filtrarInventario(valor) {
@@ -4142,7 +4153,7 @@ function renderizarInventario() {
 
 function renderizarInventarioContagem() {
   const busca = _buscaInventario.toLowerCase().trim();
-  let itens = _inventarioConfigs.filter(c => c.nome);
+  let itens = _inventarioConfigs.filter(c => c.nome && _categoriaPermiteEstoque(c.grupo));
   if (busca) itens = itens.filter(c =>
     (c.nome || '').toLowerCase().includes(busca) ||
     (c.grupo || '').toLowerCase().includes(busca)
@@ -4223,7 +4234,7 @@ function renderizarInventarioContagem() {
 
 function renderizarInventarioEntrada() {
   const busca = _buscaInventario.toLowerCase().trim();
-  let itens = _inventarioConfigs.filter(c => c.nome);
+  let itens = _inventarioConfigs.filter(c => c.nome && _categoriaPermiteEstoque(c.grupo));
   if (busca) itens = itens.filter(c =>
     (c.nome || '').toLowerCase().includes(busca) ||
     (c.grupo || '').toLowerCase().includes(busca)
@@ -4342,7 +4353,7 @@ async function _abrirHistoricoContagemLegado() {
   document.getElementById('hist-cont-lista').innerHTML =
     '<div class="estado-vazio"><p>Carregando...</p></div>';
   try {
-    const registros = await listarHistoricoContagem(300);
+    const registros = await listarHistoricoContagem(1500);
     renderizarHistoricoContagem(registros);
   } catch (e) {
     console.error('Histórico contagem:', e);
@@ -4365,50 +4376,87 @@ function renderizarHistoricoContagem(registros, containerId) {
   }
 
   const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const fmt = ts => {
-    if (!ts) return '—';
-    const d = ts.toDate ? ts.toDate() : new Date(ts);
-    if (isNaN(d)) return '—';
-    const dia  = String(d.getDate()).padStart(2,'0');
-    const mes  = MESES[d.getMonth()];
-    const ano  = d.getFullYear();
-    const hora = String(d.getHours()).padStart(2,'0');
-    const min  = String(d.getMinutes()).padStart(2,'0');
-    return `${dia} ${mes} ${ano} às ${hora}:${min}`;
-  };
 
-  /* Agrupar por data (dia) */
-  const porDia = {};
+  /* Tabela: produto na vertical, data na horizontal, célula = quantidade
+     registrada naquele dia. Se houver mais de um registro do mesmo produto
+     no mesmo dia (ex: contou de manhã e de novo à tarde), fica o mais
+     recente. Colunas mais recentes primeiro. */
+  const porProdutoDia = {}; /* chave (nomeKey||nome) -> { nome, unidade, porDia: { diaKey -> registro } } */
+  const diasTs = {};        /* diaKey -> timestamp do dia, só p/ ordenar as colunas */
+
   registros.forEach(r => {
     const d = r.contadoEm?.toDate ? r.contadoEm.toDate() : new Date(r.contadoEm);
-    const diaKey = isNaN(d) ? 'Sem data' : `${String(d.getDate()).padStart(2,'0')} ${MESES[d.getMonth()]} ${d.getFullYear()}`;
-    if (!porDia[diaKey]) porDia[diaKey] = [];
-    porDia[diaKey].push(r);
+    if (isNaN(d)) return;
+    const diaKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    diasTs[diaKey] = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+    const chave = r.nomeKey || r.nome;
+    if (!chave) return;
+    if (!porProdutoDia[chave]) porProdutoDia[chave] = { nome: r.nome || r.nomeKey, unidade: r.unidade, porDia: {} };
+
+    const existente = porProdutoDia[chave].porDia[diaKey];
+    if (!existente) {
+      porProdutoDia[chave].porDia[diaKey] = r;
+    } else {
+      const dExist = existente.contadoEm?.toDate ? existente.contadoEm.toDate() : new Date(existente.contadoEm);
+      if (d.getTime() >= dExist.getTime()) porProdutoDia[chave].porDia[diaKey] = r;
+    }
   });
 
-  el.innerHTML = Object.keys(porDia).map(dia => `
-    <div class="grupo-titulo" style="margin-top:16px;margin-bottom:4px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--cinza-500);letter-spacing:.5px">${dia}</div>
-    ${porDia[dia].map(r => `
-      <div class="estoque-item-card" style="margin-bottom:6px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-          <div>
-            <div style="font-weight:600;font-size:14px">${_escHtml(r.nome || r.nomeKey)}
-              ${r.tipo === 'entrada'
-                ? '<span style="background:#DBEAFE;color:#1D4ED8;font-size:10px;margin-left:6px;padding:2px 6px;border-radius:4px;font-weight:700">ENTRADA</span>'
-                : '<span style="background:#F3F4F6;color:#374151;font-size:10px;margin-left:6px;padding:2px 6px;border-radius:4px;font-weight:700">CONTAGEM</span>'}
-            </div>
-            <div style="font-size:12px;color:var(--cinza-500);margin-top:2px">
-              👤 ${_escHtml(r.contadoPor || '—')} &nbsp;·&nbsp; ${fmt(r.contadoEm)}
-            </div>
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:20px;font-weight:700;color:var(--verde-700)">${r.tipo === 'entrada' ? '+' : ''}${r.qtd}</div>
-            <div style="font-size:11px;color:var(--cinza-500)">${_escHtml(r.unidade || 'un')}</div>
-          </div>
-        </div>
-      </div>
-    `).join('')}
+  const dias = Object.keys(diasTs).sort((a, b) => diasTs[b] - diasTs[a]);
+  const fmtDia = diaKey => {
+    const [ano, mes, dia] = diaKey.split('-').map(Number);
+    return `${String(dia).padStart(2, '0')}/${MESES[mes - 1]}`;
+  };
+
+  const produtos = Object.values(porProdutoDia).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  const headerCols = dias.map(dia => `
+    <th style="padding:8px 10px;text-align:center;font-size:11px;font-weight:700;color:var(--cinza-500);white-space:nowrap;border-bottom:2px solid #E5E7EB">${fmtDia(dia)}</th>
   `).join('');
+
+  const linhas = produtos.map(p => {
+    const cols = dias.map(dia => {
+      const r = p.porDia[dia];
+      if (!r) return `<td style="padding:8px 10px;text-align:center;color:#D1D5DB;border-bottom:1px solid #F3F4F6">—</td>`;
+      const ehEntrada = r.tipo === 'entrada';
+      const d = r.contadoEm?.toDate ? r.contadoEm.toDate() : new Date(r.contadoEm);
+      const hora = !isNaN(d) ? `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
+      return `
+        <td style="padding:8px 10px;text-align:center;font-weight:700;white-space:nowrap;border-bottom:1px solid #F3F4F6;color:${ehEntrada ? '#1D4ED8' : '#111827'}"
+          title="${ehEntrada ? 'Entrada de mercadoria' : 'Contagem'} — ${_escHtml(r.contadoPor || '—')} às ${hora}">
+          ${ehEntrada ? '+' : ''}${r.qtd}
+        </td>`;
+    }).join('');
+    return `
+      <tr>
+        <td style="padding:8px 10px;font-weight:600;font-size:13px;white-space:nowrap;border-bottom:1px solid #F3F4F6;position:sticky;left:0;background:#fff">
+          ${_escHtml(p.nome)}<br><span style="font-weight:400;font-size:11px;color:var(--cinza-500)">${_escHtml(p.unidade || 'un')}</span>
+        </td>
+        ${cols}
+      </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="font-size:11px;color:var(--cinza-500);margin-bottom:8px">
+      <span style="color:#1D4ED8;font-weight:700">Azul com +</span> = entrada de mercadoria &nbsp;·&nbsp;
+      <span style="color:#111827;font-weight:700">Preto</span> = contagem de estoque &nbsp;·&nbsp;
+      toque num número pra ver quem registrou e a que horas
+    </div>
+    <div style="overflow-x:auto;border:1px solid #E5E7EB;border-radius:8px">
+      <table style="border-collapse:collapse;width:100%;font-size:13px">
+        <thead>
+          <tr>
+            <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--cinza-500);white-space:nowrap;border-bottom:2px solid #E5E7EB;position:sticky;left:0;background:#fff">Produto</th>
+            ${headerCols}
+          </tr>
+        </thead>
+        <tbody>
+          ${linhas}
+        </tbody>
+      </table>
+    </div>
+  `;
 }
 
 async function abrirEstoque(abaInicial) {
@@ -4472,7 +4520,7 @@ function trocarAbaEstoque(aba, btn) {
     if (elHistorico) {
       elHistorico.classList.remove('hidden');
       elHistorico.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
-      listarHistoricoContagem(300).then(registros => {
+      listarHistoricoContagem(1500).then(registros => {
         renderizarHistoricoContagem(registros, 'estoque-historico');
       }).catch(e => {
         console.error(e);
@@ -6291,8 +6339,8 @@ function lcRenderizarConteudo() {
   }
 
   /* Na visão "Por Evento" todos os itens das festas aparecem, independente da
-     configuração exibirEstoque da categoria. O flag exibirEstoque é usado apenas
-     no Controle de Estoque e nos Alertas de estoque mínimo. */
+     configuração exibirEstoque da categoria. O flag exibirEstoque é usado no
+     Controle de Estoque, no Inventário e nos Alertas de estoque mínimo. */
 
   /* Sumário calculado ANTES dos filtros de busca/status — mostra o quadro real */
   const elSum = document.getElementById('lc-sumario');
