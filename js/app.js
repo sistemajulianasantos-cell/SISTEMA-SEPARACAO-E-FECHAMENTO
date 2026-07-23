@@ -4353,6 +4353,23 @@ function filtrarEstoqueCat(val) {
 
 function renderizarEstoque(festas, estoqueMap) {
   const todos = agregarItensFestas(festas);
+
+  /* Itens do Cadastro sem nenhuma festa ativa pedindo também entram na tela,
+     com Necessário 0 — só pra dar pra registrar/consultar o estoque deles;
+     não entram no cálculo de falta/sobra (ver htmlEstoqueSintetico/Analitico). */
+  const chavesComFesta = new Set(todos.map(it => it.nomeKey));
+  Object.values(itemConfigsCache).forEach(cfg => {
+    if (!cfg.nomeKey || chavesComFesta.has(cfg.nomeKey)) return;
+    todos.push({
+      nomeKey: cfg.nomeKey,
+      nome:    cfg.nome,
+      unidade: estoqueMap[cfg.nomeKey]?.unidade || 'un',
+      total:   0,
+      festas:  [],
+    });
+  });
+  todos.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
   const busca = _buscaEstoque.toLowerCase().trim();
   let itens = todos.filter(it => {
     const cfg = buscarConfigItem(it.nomeKey);
@@ -4369,7 +4386,7 @@ function renderizarEstoque(festas, estoqueMap) {
   if (busca) itens = itens.filter(it => (it.nome || '').toLowerCase().includes(busca));
   if (!itens.length) {
     document.getElementById('estoque-conteudo').innerHTML =
-      estadoVazio('Nenhum item encontrado nas festas ativas.');
+      estadoVazio('Nenhum item encontrado.');
     return;
   }
 
@@ -4418,15 +4435,18 @@ function _resolverItemCatalogoPorNome(nomeDigitado) {
 }
 
 function htmlEstoqueSintetico(item, est) {
-  const qtdEst = est?.qtd || 0;
-  const diff   = qtdEst - item.total;
-  const pct    = item.total > 0 ? Math.min(100, Math.round((qtdEst / item.total) * 100)) : 100;
+  const qtdEst     = est?.qtd || 0;
+  const semDemanda = !item.festas.length;
+  const diff       = qtdEst - item.total;
+  const pct        = item.total > 0 ? Math.min(100, Math.round((qtdEst / item.total) * 100)) : 100;
 
   return `
     <div class="estoque-item-card">
       <div class="estoque-item-header">
         <div class="estoque-item-nome">${_escHtml(item.nome)}</div>
-        <div class="estoque-item-total">Necessário: <strong>${item.total}</strong> ${_escHtml(item.unidade)}</div>
+        <div class="estoque-item-total">${semDemanda
+          ? '<span style="color:var(--cinza-500)">Sem festa ativa</span>'
+          : `Necessário: <strong>${item.total}</strong> ${_escHtml(item.unidade)}`}</div>
       </div>
       <div class="estoque-body-row">
         <span class="estoque-body-label">Em estoque:</span>
@@ -4443,6 +4463,7 @@ function htmlEstoqueSintetico(item, est) {
           + Comprar
         </button>
       </div>
+      ${semDemanda ? '' : `
       <div class="estoque-progress-track">
         <div class="estoque-progress-bar ${diff < 0 ? 'deficit' : 'ok'}" style="width:${pct}%"></div>
       </div>
@@ -4450,18 +4471,21 @@ function htmlEstoqueSintetico(item, est) {
         ${diff < 0
           ? `Falta <strong>${Math.abs(diff)}</strong> ${_escHtml(item.unidade)} (${pct}% coberto)`
           : `Estoque suficiente — sobra <strong>${diff}</strong> ${_escHtml(item.unidade)}`}
-      </div>
+      </div>`}
     </div>
   `;
 }
 
 function htmlEstoqueAnalitico(item, est) {
-  const qtdEst = est?.qtd || 0;
-  const diff   = qtdEst - item.total;
+  const qtdEst     = est?.qtd || 0;
+  const semDemanda = !item.festas.length;
+  const diff       = qtdEst - item.total;
 
   const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
-  const festasHTML = item.festas.map(f => {
+  const festasHTML = semDemanda
+    ? '<p style="font-size:12px;color:var(--cinza-500);padding:4px 0">Nenhuma festa ativa pede este item.</p>'
+    : item.festas.map(f => {
     let dataTxt = '';
     if (f.festaData) {
       const d = toDate(f.festaData);
@@ -4491,11 +4515,13 @@ function htmlEstoqueAnalitico(item, est) {
       <div class="estoque-item-header">
         <div class="estoque-item-nome">${_escHtml(item.nome)}</div>
         <div class="estoque-item-total">
-          Total: <strong>${item.total}</strong> ${_escHtml(item.unidade)} &nbsp;|&nbsp;
-          Estoque: <strong>${qtdEst}</strong> ${_escHtml(item.unidade)}
-          <span class="${diff < 0 ? 'deficit-text' : 'ok-text'}" style="font-weight:700">
-            &nbsp;(${diff < 0 ? 'falta ' + Math.abs(diff) : 'sobra ' + diff})
-          </span>
+          ${semDemanda
+            ? `<span style="color:var(--cinza-500)">Sem festa ativa</span> &nbsp;|&nbsp; Estoque: <strong>${qtdEst}</strong> ${_escHtml(item.unidade)}`
+            : `Total: <strong>${item.total}</strong> ${_escHtml(item.unidade)} &nbsp;|&nbsp;
+               Estoque: <strong>${qtdEst}</strong> ${_escHtml(item.unidade)}
+               <span class="${diff < 0 ? 'deficit-text' : 'ok-text'}" style="font-weight:700">
+                 &nbsp;(${diff < 0 ? 'falta ' + Math.abs(diff) : 'sobra ' + diff})
+               </span>`}
         </div>
       </div>
       <div class="analitico-festas-lista">${festasHTML}</div>
