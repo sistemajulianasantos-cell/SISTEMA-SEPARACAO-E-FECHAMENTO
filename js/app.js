@@ -4603,7 +4603,12 @@ function filtrarEstoqueCat(val) {
 }
 
 function renderizarEstoque(festas, estoqueMap) {
-  const todos = agregarItensFestas(festas);
+  /* "Necessário" só conta festa que ainda não foi separada de fato
+     (agendada ou separando). A partir de conferência em diante, os itens
+     já foram fisicamente pegos do estoque durante a separação — contar
+     de novo aqui infla o "necessário" com pedidos que já saíram. */
+  const festasRelevantes = festas.filter(f => f.status === 'agendada' || f.status === 'separando');
+  const todos = agregarItensFestas(festasRelevantes);
 
   /* Itens do Cadastro sem nenhuma festa ativa pedindo também entram na tela,
      com Necessário 0 — só pra dar pra registrar/consultar o estoque deles;
