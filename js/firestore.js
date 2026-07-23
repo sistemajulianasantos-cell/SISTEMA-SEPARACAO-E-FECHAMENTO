@@ -416,6 +416,16 @@ async function salvarItemEstoque(nomeKey, dados) {
   });
 }
 
+/* Renomeia a CHAVE de um doc de estoque já existente (in place, mesmo doc,
+   preserva qtd e demais campos). Usado só quando um item é renomeado e o
+   nomeKey recalculado a partir do nome novo é diferente do antigo — sem
+   isso a contagem já feita ficaria "presa" sob a chave antiga. */
+async function renomearChaveEstoque(docId, novoNomeKey, novoNome) {
+  return db.collection('estoque').doc(docId).update({
+    nomeKey: novoNomeKey, nome: novoNome, updatedAt: TS(),
+  });
+}
+
 async function registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor }) {
   return db.collection('historico_contagem').add({
     nomeKey, nome, unidade, qtd, contadoPor,

@@ -253,9 +253,9 @@
   <!-- ══════════ MODAL: PADRONIZAR NOMES (Cadastro) ══════════ -->
   <div id="modal-padronizar-nomes" class="modal-overlay hidden" onclick="fecharModalPadronizarNomes()">
     <div class="modal-box" onclick="event.stopPropagation()" style="max-width:640px;width:95%">
-      <div class="modal-titulo">&#127991; Padronizar nomes do Cadastro</div>
+      <div class="modal-titulo">&#127991; Padronizar nomes</div>
       <div style="font-size:13px;color:#6B7280;margin:8px 0 4px">
-        Compara o nome atual de cada item com a lista padrão. Só o nome exibido muda — nada que já vincula este item a estoque, contagens ou festas é alterado.
+        Compara o nome atual de cada item com a lista padrão — no Cadastro e também nos itens das festas ativas (o que aparece no Controle de Estoque). Migra a contagem de estoque já feita para o nome novo, e cadastra sem categoria os produtos da lista que ainda não existem em nenhum lugar.
       </div>
       <div id="padronizar-nomes-lista" style="max-height:50vh;overflow-y:auto;margin-top:10px"></div>
       <div class="modal-acoes">
@@ -1210,8 +1210,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=3"></script>
-  <script src="js/firestore.js?v=36"></script>
-  <script src="js/app.js?v=43"></script>
+  <script src="js/firestore.js?v=37"></script>
+  <script src="js/app.js?v=44"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

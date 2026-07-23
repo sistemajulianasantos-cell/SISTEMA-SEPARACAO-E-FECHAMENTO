@@ -4990,15 +4990,156 @@ function htmlConfigItemRow(c) {
 }
 
 /* ════════════════════════════════════════
-   PADRONIZAR NOMES — aplica a lista de nomes "oficiais" da Juliana sobre os
-   itens do Cadastro. Só troca o campo "nome" (o que aparece na tela); o
-   nomeKey NUNCA é recalculado aqui, porque é ele — não o nome de exibição —
-   que vincula o item ao estoque, ao historico_contagem e ao matching com
-   itens importados de PDF de festa. Recalcular o nomeKey junto quebraria
-   esses vínculos todos. Espelha o mesmo tipo de ferramenta que existe no
-   controle-gestao-main (Cadastro de Insumos) para a mesma finalidade.
+   PADRONIZAR NOMES — aplica a lista de nomes "oficiais" da Juliana em 3 frentes:
+   1) Cadastro de Itens — troca só o campo "nome" (o que aparece na tela); o
+      nomeKey NUNCA é recalculado aqui, porque é ele — não o nome de exibição —
+      que vincula o item ao estoque e ao historico_contagem. Espelha o nome
+      novo no doc de estoque correspondente só se ele já existir, nunca cria
+      um novo.
+   2) Itens dentro das festas ATIVAS (status != concluida) — é esse texto, e
+      não o do Cadastro, que aparece na tela Controle de Estoque (vem do PDF
+      importado da festa). Ao renomear um item aqui, o nomeKey recalculado a
+      partir do nome novo pode ser diferente do antigo — migra então o doc de
+      estoque (mesmo doc, só troca a chave) e qualquer compra pendente/em
+      andamento da chave antiga para a chave nova, senão a contagem já feita
+      "some" da tela por ficar presa sob a chave velha.
+   3) Nomes da lista que não batem em NENHUM lugar (nem Cadastro, nem festa,
+      por nenhum apelido) são produtos ainda não cadastrados — cria um item
+      novo no Cadastro sem categoria, pra revisão manual depois.
+   Casamento é sempre por igualdade exata (nome/apelido, sem distinguir
+   maiúsculas e espaços nas pontas) — não tenta adivinhar nomes parecidos.
 ════════════════════════════════════════ */
-const MAPA_PADRONIZACAO_NOMES = {
+const LISTA2_PARA_PADRAO = {
+  "AGUA COM GAS": "AGUA COM GAS - 500ML",
+  "AGUA SEM GAS 500ML": "AGUA SEM GAS - 500ML",
+  "AGUA TONICA": "AGUA TONICA LATA TRADICIONAL - 350ML",
+  "AMARENA": "AMARENA",
+  "AMAROGUTTA": "AMAROGUTTA - 1000ML",
+  "APEROL": "APEROL - 750ML",
+  "ANGOSTURA": "BITTER ANGOSTURA - 200ML (RESERVA)",
+  "BITTER LARANJA": "BITTER ORANGE - 200ML",
+  "BANANINHA": "CACHAÇA BANANINHA - 750ML",
+  "CACHACA SPIRAL": "CACHAÇA SPIRAL - 1000ML",
+  "CAMPARI": "CAMPARI - 998 ML",
+  "DOMEC": "CONHAQUE DOMECQ - 1000ML",
+  "COPO BAIXO XTRA": "COPO BAIXO XTRA",
+  "COPO BOODY MARY": "COPO BLOOD MARY",
+  "CANECA DE COBRE": "COPO CANECA COBRE",
+  "COPO LONG ELYSIA": "COPO LONGO ELYSIA",
+  "COPO LONG LISO MODELO NOVO": "COPO LONGO LISO NOVO",
+  "COPO LONG LISO MODELO VELHO": "COPO LONGO LISO VELHO",
+  "COPO LONG REVEL": "COPO LONGO REVEL",
+  "COPO LONG XTRA": "COPO LONGO XTRA",
+  "EMULSIFICANTE": "EMULSIFICANTE - 200ml",
+  "ESPUMA DE GENGIBRE": "ESPUMA DE GENGIBRE - 1000ML",
+  "ESPUMA DE SICILIANO": "ESPUMA DE LIMAO SICILIANO - 1000ML",
+  "ESPUMA DE TANGERINA": "ESPUMA DE TANGERINA - 1000ML",
+  "ESPUMANTE BRUT": "ESPUMANTE BRUT - 750ML",
+  "ESPUMANTE 0%": "ESPUMANTE FREIXENET 0% - 750ML",
+  "FERNET": "FERNET BRANCA - 750ML",
+  "FIREBALL": "FIREBALL - 750ML",
+  "GIN BEEFEATER": "GIN BEEFEATER - 750ML",
+  "GIN BOMBAY": "GIN BOMBAY - 750ML",
+  "GIN HENDRICKS": "GIN HENDRICKS - 750ML",
+  "GIN MARTIN MILLER": "GIN MARTIN MILLER - 750ML",
+  "GIN ROKU": "GIN ROKU - 750ML",
+  "GIN SPIRAL": "GIN SPIRAL - 1000ML",
+  "GIN TANQUERAY": "GIN TANQUERAY - 750ML",
+  "GIN YVY CERRADO": "GIN YVY CERRADO - 500ML",
+  "GIN YVY MATA ATLANTICA": "GIN YVY MATA ATLANTICA - 500ML",
+  "GIN ZURR": "GIN ZURR - 750ML",
+  "JAGERMEISTER": "JAGERMEISTER - 750ML",
+  "LICOR 43": "LICOR 43 - 700ML",
+  "LILLET": "LILLET BLANC - 750ML",
+  "LILLET ROSE": "LILLET ROSE - 750ML",
+  "MANZA": "MANZA - 330ML",
+  "MARACUJA PROD": "MARACUJA",
+  "MEL": "MEL",
+  "NEGRONI ROMERO": "NEGRONI",
+  "PISCO CHI CAPEL RESERVADO 700 ML": "PISCO CAPEL - 750ML",
+  "PURE MAÇA VERDE 1883 1L": "PURE 1883 MAÇA - 1000ML",
+  "PURE DE MARACUJA": "PURE 1883 MARACUJA - 1000ML",
+  "PURE DE ABACAXI": "PURE DE FRUTA ABACAXI",
+  "PURE DE BANANA": "PURE DE FRUTA BANANA",
+  "PURE DE FRUTAS VERMELHAS": "PURE DE FRUTAS VERMELHAS",
+  "PURE DE JABUTICABA": "PURE MONIN JABUTICABA - 1000ML",
+  "PURE DE PERA": "PURE MONIN PERA - 1000ML",
+  "PURE DE TORANJA": "PURE MONIN TORANJA - 1000ML",
+  "RUM HAVANA": "RUM HAVANA CLUB ANEJO - 700ML",
+  "SAQUE": "SAQUE - 600ML",
+  "GINGER ALE": "SODA GINGER ALE - 1000ML",
+  "SODA DE GRAPEFRUIT": "SODA GRAPEFRUIT - 1000ML",
+  "SUCO LARANJA": "SUCO DE LARANJA",
+  "SUCO DE LIMAO": "SUCO DE LIMAO",
+  "SUCO DE PESSEGO": "SUCO DE PESSEGO",
+  "TAÇA DE VINHO BRUNELLO": "TAÇA BRUNELLO",
+  "TAÇA CALISE AMERICA (RECEPTIVO)": "TAÇA CALISE AMERICA",
+  "TAÇA COUPE AMERICA": "TAÇA COUPE AMÉRICA",
+  "TAÇA COUPE TIMELEES": "TAÇA COUPE TIMELESS",
+  "TAÇA MARTINI": "TAÇA MARTINI AMERICA",
+  "TAÇA DE VINHO XTRA": "TAÇA XTRA",
+  "TEQUILA DON JULIO": "TEQUILA DON JULIO - 750ML",
+  "TEQUILA 1800 BLANCO": "TEQUILA JOSE CUERVO 1800 BLANCO - 750ML",
+  "TEQUILA 1800 CRISTALINO": "TEQUILA JOSE CUERVO 1800 CRISTALINO - 750ML",
+  "TEQUILA 1800 CRISTALINO AURORA": "TEQUILA JOSE CUERVO CRISTALINO (AURORA) - 700ML",
+  "TEQUILA JOSE CUERVO ESPECIAL": "TEQUILA JOSE CUERVO ESPECIAL OURO - 750ML",
+  "MAESTRO DOBEL": "TEQUILA MAESTRO DOBEL - 750ML",
+  "1757": "VERMUTE 1757 - 750ML",
+  "VERMUTE ARG CARPANO ROSSO": "VERMUTE CARPANO ROSSO - 950ML",
+  "CINZANO": "VERMUTE ROSSO CINZANO - 1000ML",
+  "VINHO DO PORTO BRANCO": "VINHO DO PORTO BRANCO - 750ML",
+  "VODKA ABSOLUT": "VODKA ABSOLUT - 1000ML",
+  "VODKA GREY GOOSE": "VODKA GREY GOOSE - 750ML",
+  "VODKA IMPERIAL GOLD": "VODKA IMPERIAL GOLD - 750ML",
+  "VODKA KETEL ONE": "VODKA KETEL ONE - 750ML",
+  "VODKA RCV": "VODKA RCV - 750ML",
+  "VODKA ROBERTO CAVALLI": "VODKA ROBERTO CAVALLI - 1000ML",
+  "VODKA WYBOROWA": "VODKA WYBOROWA - 750ML",
+  "WHISKY 3 LOBOS SINGLE MALT 750 ML": "WHISKEY 3 LOBOS - 750ML",
+  "BLACK LABEL": "WHISKEY BLACK LABEL - 750ML",
+  "WHISKY BUFFALO TRACE BOURBON - 750 ML": "WHISKEY BUFALO TRACE - 750ML",
+  "BULLEIT": "WHISKEY BULLEIT - 750ML",
+  "CHIVAS 12": "WHISKEY CHIVAS 12 - 750ML",
+  "JACK DANIELS": "WHISKEY JACK DANIELS - 750ML",
+  "WHISKY JAMESON - 750ML": "WHISKEY JAMESON - 750ML",
+  "RED LABEL": "WHISKEY RED LABEL - 750ML",
+  "SINGLETON": "WHISKEY SINGLETON - 750ML",
+  "THE GLENLIVET": "WHISKEY THE GLENLIVET - 750ML",
+  "ABACAXI XP": "XAROPE 1883 ABACAXI - 1000ML",
+  "AMARETO": "XAROPE 1883 AMARETO - 1000ML",
+  "XAROPE 1883 DE AMORA": "XAROPE 1883 AMORA - 1000ML",
+  "CARAMELO": "XAROPE 1883 CARAMELO - 1000ML",
+  "CARAMELO SALGADO": "XAROPE 1883 CARAMELO SALGADO - 1000ML",
+  "CRAMBERRY": "XAROPE 1883 CRAMBERRY - 1000ML",
+  "BLUE CURACAO": "XAROPE 1883 CURAÇAU BLUE - 1000ML",
+  "XAROPE 1883 DE FRAMBOESA": "XAROPE 1883 FRAMBOESA - 1000ML",
+  "GENGIBRE": "XAROPE 1883 GENGIBRE - 1000ML",
+  "GRENADINE": "XAROPE 1883 GRENADINE - 1000ML",
+  "XAROPE LARANJA VERMELHA 1L": "XAROPE 1883 LARANJA VERMELHA - 1000ML",
+  "XAROPE 1883 DE LICHIA": "XAROPE 1883 LICHIA - 1000ML",
+  "LIMAO SICILIANO": "XAROPE 1883 LIMAO SICILIANO - 1000ML",
+  "XAROPE DE MAÇA VERDE": "XAROPE 1883 MAÇA VERDE - 1000ML",
+  "MAPLE": "XAROPE 1883 MAPLE - 1000ML",
+  "MARACUJA VERMELHO": "XAROPE 1883 MARACUJÁ VERMELHO - 1000ML",
+  "MELANCIA": "XAROPE 1883 MELANCIA - 1000ML",
+  "MENTA": "XAROPE 1883 MENTA - 1000ML",
+  "PEPINO": "XAROPE 1883 PEPINO - 1000ML",
+  "PIMENTA": "XAROPE 1883 PIMENTA - 1000ML",
+  "POMEGRANATE ROMA": "XAROPE 1883 ROMA/POMEGRANATE - 1000ML",
+  "XAROPE 1883 DE TANGERINA": "XAROPE 1883 TANGERINE - 1000ML",
+  "TONIC XP": "XAROPE 1883 TONIC - 1000ML",
+  "XAROPE DE ACUCAR": "XAROPE DE AÇUCAR",
+  "FLOR DE SABUGUEIRO": "XAROPE FABRI FLOR DE SABUGUEIRO - 1000ML",
+  "MANDARIN": "XAROPE FABRI MANDARIM - 1000ML",
+  "AGAVE": "XAROPE MONIN AGAVEA - 1000ML",
+  "MELON": "XAROPE MONIN MELON - 1000ML",
+  "MENTA VERDE": "XAROPE MONIN MENTA VERDE - 1000ML",
+  "MORANGO XP": "XAROPE MONIN MORANGO - 1000ML",
+  "PIPOCA": "XAROPE MONIN PIPOCA - 1000ML",
+  "PISTACHIO": "XAROPE MONIN PISTACHO - 1000ML",
+  "PURE DE YUZU": "XAROPE MONIN YUZU - 1000ML",
+};
+const LISTA3_PARA_PADRAO = {
   "AGUA COM GAS - 500ML": "AGUA COM GAS - 500ML",
   "AGUA TONICA LATA ZERO - 350 ML": "AGUA TONICA LATA TRADICIONAL - 350ML",
   "APEROL - 750ML": "APEROL - 750ML",
@@ -5044,42 +5185,99 @@ const MAPA_PADRONIZACAO_NOMES = {
   "XAROPE 1883 TANGERINE - 1000ML": "XAROPE 1883 TANGERINE - 1000ML",
   "XAROPE DE AÇUCAR": "XAROPE DE AÇUCAR",
 };
+/* lista3 vence em caso de apelido repetido entre as duas — é a que já reflete
+   os nomes atuais do sistema */
+const MAPA_PADRONIZACAO_NOMES = { ...LISTA2_PARA_PADRAO, ...LISTA3_PARA_PADRAO };
 
-let _padronizacaoPendente = []; /* [{id, nomeKey, nomeAtual, nomeNovo}] montado no preview, usado na confirmação */
+let _padronizacaoPendente      = []; /* [{id, nomeKey, nomeAtual, nomeNovo}] — Cadastro */
+let _padronizacaoPendenteFesta = []; /* [{festaId, festaNome, itemIdx, nomeAtual, nomeNovo, oldKey, newKey}] — itens de festas ativas */
+let _padronizacaoPendenteNovos = []; /* [{nomeNovo}] — produtos a cadastrar do zero */
+let _padronizacaoFestasSnapshot = []; /* festas ativas no momento do preview, reusadas na confirmação p/ os itemIdx baterem */
 
-function abrirModalPadronizarNomes() {
+async function abrirModalPadronizarNomes() {
   const configs = Object.values(itemConfigsCache);
-  const porNomeAtual = {};
-  configs.forEach(c => { porNomeAtual[(c.nome || '').trim().toUpperCase()] = c; });
+  const porNomeAtualCfg = {};
+  configs.forEach(c => { porNomeAtualCfg[(c.nome || '').trim().toUpperCase()] = c; });
 
-  _padronizacaoPendente = [];
-  const naoEncontrados = [];
-  Object.entries(MAPA_PADRONIZACAO_NOMES).forEach(([nomeAtual, nomeNovo]) => {
-    const cfg = porNomeAtual[nomeAtual.trim().toUpperCase()];
-    if (!cfg) { naoEncontrados.push(nomeAtual); return; }
-    if ((cfg.nome || '').trim() === nomeNovo.trim()) return; /* já está no padrão */
-    _padronizacaoPendente.push({ id: cfg.id, nomeKey: cfg.nomeKey, nomeAtual: cfg.nome, nomeNovo });
+  const festasTodas = await buscarTodasFestas();
+  _padronizacaoFestasSnapshot = festasTodas.filter(f => f.status !== 'concluida');
+
+  const porNomeAtualFesta = {};
+  _padronizacaoFestasSnapshot.forEach(f => (f.itens || []).forEach((it, idx) => {
+    const chave = (it.nome || '').trim().toUpperCase();
+    if (!chave) return;
+    if (!porNomeAtualFesta[chave]) porNomeAtualFesta[chave] = [];
+    porNomeAtualFesta[chave].push({ festaId: f.id, festaNome: f.nome, itemIdx: idx, nomeAtual: it.nome });
+  }));
+
+  /* Agrupa todos os apelidos (das duas listas) por nome canônico — o próprio
+     nome canônico também conta como "apelido de si mesmo" */
+  const porCanonico = {};
+  Object.entries(MAPA_PADRONIZACAO_NOMES).forEach(([alias, canonicoRaw]) => {
+    const canonico = canonicoRaw.trim();
+    if (!porCanonico[canonico]) porCanonico[canonico] = new Set();
+    porCanonico[canonico].add(alias.trim());
+    porCanonico[canonico].add(canonico);
+  });
+
+  _padronizacaoPendente      = [];
+  _padronizacaoPendenteFesta = [];
+  _padronizacaoPendenteNovos = [];
+
+  Object.entries(porCanonico).forEach(([canonico, aliasesSet]) => {
+    let achouEmAlgumLugar = false;
+    aliasesSet.forEach(alias => {
+      const chave = alias.toUpperCase();
+
+      const cfg = porNomeAtualCfg[chave];
+      if (cfg) {
+        achouEmAlgumLugar = true;
+        if ((cfg.nome || '').trim() !== canonico) {
+          _padronizacaoPendente.push({ id: cfg.id, nomeKey: cfg.nomeKey, nomeAtual: cfg.nome, nomeNovo: canonico });
+        }
+      }
+
+      const ocorrenciasFesta = porNomeAtualFesta[chave];
+      if (ocorrenciasFesta) {
+        achouEmAlgumLugar = true;
+        ocorrenciasFesta.forEach(oc => {
+          if (oc.nomeAtual.trim() === canonico) return;
+          _padronizacaoPendenteFesta.push({
+            ...oc,
+            nomeNovo: canonico,
+            oldKey: nomeBaseKey(normalizarNomeItem(oc.nomeAtual)),
+            newKey: nomeBaseKey(normalizarNomeItem(canonico)),
+          });
+        });
+      }
+    });
+    if (!achouEmAlgumLugar) _padronizacaoPendenteNovos.push({ nomeNovo: canonico });
   });
 
   const listaEl    = document.getElementById('padronizar-nomes-lista');
   const btnAplicar = document.getElementById('btn-aplicar-padronizacao');
+  const total = _padronizacaoPendente.length + _padronizacaoPendenteFesta.length + _padronizacaoPendenteNovos.length;
 
-  if (!_padronizacaoPendente.length) {
-    listaEl.innerHTML =
-      '<p style="font-size:13px;color:#6B7280;padding:12px 0">Nenhuma mudança pendente — os itens já estão com o nome padrão (ou ainda não foram cadastrados aqui).</p>' +
-      (naoEncontrados.length ? `<p style="font-size:12px;color:#9CA3AF">${naoEncontrados.length} nome(s) da lista não encontrados no Cadastro: ${naoEncontrados.map(_escHtml).join(', ')}</p>` : '');
+  if (!total) {
+    listaEl.innerHTML = '<p style="font-size:13px;color:#6B7280;padding:12px 0">Nenhuma mudança pendente — tudo já está com o nome padrão.</p>';
     if (btnAplicar) btnAplicar.classList.add('hidden');
   } else {
-    listaEl.innerHTML = `
-      <div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:6px">${_padronizacaoPendente.length} mudança(s):</div>
-      ${_padronizacaoPendente.map(p => `
-        <div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid #F3F4F6;font-size:13px">
-          <span style="color:#9CA3AF;text-decoration:line-through">${_escHtml(p.nomeAtual)}</span>
-          <span style="color:#111827;font-weight:600">&#8594; ${_escHtml(p.nomeNovo)}</span>
-        </div>
-      `).join('')}
-      ${naoEncontrados.length ? `<div style="font-size:11px;color:#9CA3AF;margin-top:10px">${naoEncontrados.length} nome(s) da lista não encontrados no Cadastro (podem já ter outro nome, ou não existir aqui ainda): ${naoEncontrados.map(_escHtml).join(', ')}</div>` : ''}
-    `;
+    const linhaTroca = p => `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px solid #F3F4F6;font-size:13px">
+        <span style="color:#9CA3AF;text-decoration:line-through">${_escHtml(p.nomeAtual)}</span>
+        <span style="color:#111827;font-weight:600;text-align:right">&#8594; ${_escHtml(p.nomeNovo)}${p.festaNome ? `<br><span style="font-weight:400;color:#9CA3AF;font-size:11px">${_escHtml(p.festaNome)}</span>` : ''}</span>
+      </div>`;
+    const secao = (titulo, itens, render) => !itens.length ? '' : `
+      <div style="margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">${_escHtml(titulo)} (${itens.length}):</div>
+        ${itens.map(render).join('')}
+      </div>`;
+
+    listaEl.innerHTML =
+      secao('Cadastro de Itens', _padronizacaoPendente, linhaTroca) +
+      secao('Controle de Estoque (festas ativas)', _padronizacaoPendenteFesta, linhaTroca) +
+      secao('Novos produtos a cadastrar (sem categoria)', _padronizacaoPendenteNovos, p => `
+        <div style="padding:6px 0;border-bottom:1px solid #F3F4F6;font-size:13px;color:#111827;font-weight:600">+ ${_escHtml(p.nomeNovo)}</div>`);
     if (btnAplicar) btnAplicar.classList.remove('hidden');
   }
 
@@ -5091,26 +5289,100 @@ function fecharModalPadronizarNomes() {
 }
 
 async function confirmarPadronizarNomes() {
-  if (!_padronizacaoPendente.length) return;
+  const total = _padronizacaoPendente.length + _padronizacaoPendenteFesta.length + _padronizacaoPendenteNovos.length;
+  if (!total) return;
   const btnAplicar = document.getElementById('btn-aplicar-padronizacao');
   if (btnAplicar) { btnAplicar.disabled = true; btnAplicar.textContent = 'Aplicando...'; }
   try {
-    const estoqueAtual = await buscarEstoque();
+    const [estoqueAtual, comprasAtuais] = await Promise.all([buscarEstoque(), listarCompras()]);
+    const conflitosEstoque = [];
+
+    /* 1) Cadastro — só troca o nome de exibição, nomeKey preservado */
     for (const p of _padronizacaoPendente) {
       await salvarItemConfigDB({ id: p.id, nome: p.nomeNovo });
-      /* Também atualiza o nome de exibição no doc de estoque correspondente
-         (mesmo nomeKey — só existe se o item já tiver contagem/compra registrada).
-         Nunca cria um doc de estoque novo aqui. */
       if (estoqueAtual[p.nomeKey]) {
         await salvarItemEstoque(p.nomeKey, { nome: p.nomeNovo });
       }
     }
-    toast(`${_padronizacaoPendente.length} nome(s) padronizado(s)!`, 'sucesso');
-    _padronizacaoPendente = [];
+
+    /* 2) Produtos novos — cadastro do zero, sem categoria (revisão manual depois) */
+    for (const p of _padronizacaoPendenteNovos) {
+      await salvarItemConfigDB({
+        nome: p.nomeNovo,
+        nomeKey: normalizarNomeItem(p.nomeNovo),
+        grupo: '',
+        ordemSeparacao: 999,
+        prioridade: '',
+        eProducao: false,
+        exibirSeparacao: true,
+        exigeFoto: false,
+        conferirCoord: true,
+        setor: '',
+        prateleira: '',
+        refrigerado: false,
+        diasAntesEvento: 1,
+        estoqueMinimo: null,
+        qtdSugerida: null,
+      });
+    }
+
+    /* 3) Itens dentro das festas ativas — reescreve o array itens de cada festa afetada */
+    const mudancasPorFesta = {};
+    _padronizacaoPendenteFesta.forEach(p => {
+      if (!mudancasPorFesta[p.festaId]) mudancasPorFesta[p.festaId] = [];
+      mudancasPorFesta[p.festaId].push(p);
+    });
+    for (const [festaId, mudancas] of Object.entries(mudancasPorFesta)) {
+      const festa = _padronizacaoFestasSnapshot.find(f => f.id === festaId);
+      if (!festa) continue;
+      const itens = (festa.itens || []).map(it => ({ ...it }));
+      mudancas.forEach(m => {
+        if (itens[m.itemIdx] && (itens[m.itemIdx].nome || '').trim() === m.nomeAtual.trim()) {
+          itens[m.itemIdx].nome = m.nomeNovo;
+        }
+      });
+      await editarQtdFesta(festaId, itens);
+    }
+
+    /* 4) Migra a chave de estoque + compras pendentes/em andamento da chave antiga
+       pra chave nova (uma vez por par oldKey→newKey, mesmo que várias festas usem o mesmo item) */
+    const paresJaMigrados = new Set();
+    for (const m of _padronizacaoPendenteFesta) {
+      if (m.oldKey === m.newKey) continue;
+      const par = `${m.oldKey}→${m.newKey}`;
+      if (paresJaMigrados.has(par)) continue;
+      paresJaMigrados.add(par);
+
+      const docAntigo = estoqueAtual[m.oldKey];
+      const docNovo   = estoqueAtual[m.newKey];
+      if (docAntigo && docNovo) {
+        conflitosEstoque.push(m.nomeNovo); /* já existe estoque nas duas chaves — não mescla sozinho */
+      } else if (docAntigo && !docNovo) {
+        await renomearChaveEstoque(docAntigo.id, m.newKey, m.nomeNovo);
+      }
+
+      const comprasParaMigrar = comprasAtuais.filter(c => c.nomeKey === m.oldKey && (c.status === 'pendente' || c.status === 'pedido'));
+      for (const c of comprasParaMigrar) {
+        await atualizarCompraDB(c.id, { nomeKey: m.newKey, nome: m.nomeNovo });
+      }
+    }
+
+    toast(`${total} mudança(s) aplicada(s)!${conflitosEstoque.length ? ` ${conflitosEstoque.length} item(ns) com estoque nas duas chaves — revise manualmente: ${conflitosEstoque.join(', ')}` : ''}`, 'sucesso');
+    if (conflitosEstoque.length) console.warn('Padronizar nomes — conflitos de estoque (revisar manualmente):', conflitosEstoque);
+
+    _padronizacaoPendente      = [];
+    _padronizacaoPendenteFesta = [];
+    _padronizacaoPendenteNovos = [];
+    _padronizacaoFestasSnapshot = [];
     fecharModalPadronizarNomes();
-    const cfgsFrescos = await listarItemConfigs();
+
+    const [cfgsFrescos, festasFrescas, comprasFrescas] = await Promise.all([
+      listarItemConfigs(), buscarTodasFestas(), listarCompras(),
+    ]);
     itemConfigsCache = {};
     cfgsFrescos.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    todasFestasCache = festasFrescas;
+    comprasCache      = comprasFrescas;
     renderizarCadastroItens();
   } catch (e) {
     console.error(e);
