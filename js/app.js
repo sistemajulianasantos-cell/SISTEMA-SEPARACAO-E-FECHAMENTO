@@ -707,6 +707,10 @@ function renderizarInicio(papel) {
           <div class="inicio-card-icone">📊</div>
           <div class="inicio-card-nome">Controle de Estoque</div>
         </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirRegistrarProducao()">
+          <div class="inicio-card-icone">🍹</div>
+          <div class="inicio-card-nome">Registrar Produção</div>
+        </div>
       </div>
     `;
   }
@@ -4399,6 +4403,164 @@ async function registrarEntradaMercadoria(nomeKey, nome, unidade) {
   }
 }
 
+/* ══════════════════════════════════════════════════
+   REGISTRAR PRODUÇÃO — um lote só: baixa os insumos usados do estoque e
+   soma o que foi produzido, na mesma ação. Tela própria, separada de
+   Inventário e Entrada de Mercadoria — aqui o movimento é duplo (sai
+   insumo, entra produzido), ao contrário das outras duas que são só um
+   sentido.
+══════════════════════════════════════════════════ */
+let _prodConfigs = []; /* cache dos item_configs carregados */
+let _prodInsumos = []; /* [{nomeKey, nome, unidade, qtd}] pendente de registrar, monta o lote antes de confirmar */
+
+async function abrirRegistrarProducao() {
+  historico.push('tela-colaborador');
+  mostrarTela('tela-registrar-producao', 'Registrar Produção');
+  _prodInsumos = [];
+  renderizarProdInsumos();
+  const nomeI = document.getElementById('prod-insumo-nome'); if (nomeI) nomeI.value = '';
+  const qtdI  = document.getElementById('prod-insumo-qtd');  if (qtdI)  qtdI.value  = '';
+  const nomeS = document.getElementById('prod-saida-nome');  if (nomeS) nomeS.value = '';
+  const qtdS  = document.getElementById('prod-saida-qtd');   if (qtdS)  qtdS.value  = '';
+  await recarregarRegistrarProducao();
+}
+
+async function recarregarRegistrarProducao() {
+  try {
+    const [configs, estoqueMap] = await Promise.all([listarItemConfigs(), buscarEstoque()]);
+    estoqueCache = estoqueMap;
+    _prodConfigs = configs;
+    const dl1 = document.getElementById('prod-insumo-datalist');
+    if (dl1) dl1.innerHTML = configs.map(c => `<option value="${_esc(c.nome)}">`).join('');
+    const dl2 = document.getElementById('prod-saida-datalist');
+    if (dl2) dl2.innerHTML = configs.map(c => `<option value="${_esc(c.nome)}">`).join('');
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao carregar produtos.', 'erro');
+  }
+}
+
+function prodInsumoNomeInput(val) {
+  const cfg  = _prodConfigs.find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(val));
+  const unEl = document.getElementById('prod-insumo-un');
+  if (unEl) unEl.textContent = cfg?.unidade || '';
+}
+
+function prodSaidaNomeInput(val) {
+  const cfg  = _prodConfigs.find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(val));
+  const unEl = document.getElementById('prod-saida-un');
+  if (unEl) unEl.textContent = cfg?.unidade || '';
+}
+
+function prodAdicionarInsumo() {
+  const nomeInput = document.getElementById('prod-insumo-nome');
+  const qtdInput  = document.getElementById('prod-insumo-qtd');
+  const nome = (nomeInput?.value || '').trim();
+  if (!nome) return toast('Informe o nome do insumo.', 'erro');
+  const qtd = parseFloat(qtdInput?.value) || 0;
+  if (qtd <= 0) return toast('Informe a quantidade usada.', 'erro');
+
+  const cfg      = _prodConfigs.find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(nome));
+  const nomeKey  = cfg ? (cfg.nomeKey || normalizarNomeItem(cfg.nome)) : normalizarNomeItem(nome);
+  const unidade  = cfg?.unidade || 'un';
+  const nomeReal = cfg?.nome || nome;
+
+  const existente = _prodInsumos.find(i => i.nomeKey === nomeKey);
+  if (existente) existente.qtd += qtd;
+  else _prodInsumos.push({ nomeKey, nome: nomeReal, unidade, qtd });
+
+  if (nomeInput) nomeInput.value = '';
+  if (qtdInput)  qtdInput.value  = '';
+  const unEl = document.getElementById('prod-insumo-un');
+  if (unEl) unEl.textContent = '';
+  renderizarProdInsumos();
+}
+
+function prodRemoverInsumo(nomeKey) {
+  _prodInsumos = _prodInsumos.filter(i => i.nomeKey !== nomeKey);
+  renderizarProdInsumos();
+}
+
+function renderizarProdInsumos() {
+  const el = document.getElementById('prod-insumos-lista');
+  if (!el) return;
+  if (!_prodInsumos.length) {
+    el.innerHTML = '<p style="font-size:12px;color:var(--cinza-500);padding:6px 0">Nenhum insumo adicionado ainda.</p>';
+    return;
+  }
+  el.innerHTML = _prodInsumos.map(i => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border:1px solid #F3F4F6;border-radius:6px;margin-bottom:6px;font-size:13px">
+      <span>${_escHtml(i.nome)} — <strong>${i.qtd}</strong> ${_escHtml(i.unidade)}</span>
+      <button class="btn-secundario btn-sm" onclick="prodRemoverInsumo('${_esc(i.nomeKey)}')" style="padding:2px 8px">&#10005;</button>
+    </div>
+  `).join('');
+}
+
+async function confirmarRegistrarProducao() {
+  if (!_prodInsumos.length) return toast('Adicione pelo menos um insumo usado.', 'erro');
+
+  const nomeSInput = document.getElementById('prod-saida-nome');
+  const qtdSInput  = document.getElementById('prod-saida-qtd');
+  const nomeSaida  = (nomeSInput?.value || '').trim();
+  const qtdSaida   = parseFloat(qtdSInput?.value) || 0;
+  if (!nomeSaida)    return toast('Informe o que foi produzido.', 'erro');
+  if (qtdSaida <= 0) return toast('Informe a quantidade produzida.', 'erro');
+
+  const cfgSaida      = _prodConfigs.find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(nomeSaida));
+  const nomeKeySaida  = cfgSaida ? (cfgSaida.nomeKey || normalizarNomeItem(cfgSaida.nome)) : normalizarNomeItem(nomeSaida);
+  const unidadeSaida  = cfgSaida?.unidade || 'un';
+  const nomeSaidaReal = cfgSaida?.nome || nomeSaida;
+
+  const btn = document.querySelector('#tela-registrar-producao .btn-primario');
+  if (btn) { btn.disabled = true; btn.textContent = 'Registrando...'; }
+
+  try {
+    const avisosNegativo = [];
+
+    /* Baixa cada insumo usado */
+    for (const insumo of _prodInsumos) {
+      const qtdAtual = estoqueCache[insumo.nomeKey]?.qtd || 0;
+      const qtdNova  = qtdAtual - insumo.qtd;
+      if (qtdNova < 0) avisosNegativo.push(insumo.nome);
+      await salvarItemEstoque(insumo.nomeKey, { nome: insumo.nome, unidade: insumo.unidade, qtd: qtdNova });
+      estoqueCache[insumo.nomeKey] = { ...(estoqueCache[insumo.nomeKey] || {}), nome: insumo.nome, unidade: insumo.unidade, qtd: qtdNova, nomeKey: insumo.nomeKey };
+      await registrarContagemHistorico({
+        nomeKey: insumo.nomeKey, nome: insumo.nome, unidade: insumo.unidade, qtd: insumo.qtd,
+        contadoPor: usuarioAtual?.nome || '—', tipo: 'producao_baixa',
+      });
+    }
+
+    /* Soma o que foi produzido */
+    const qtdAtualSaida = estoqueCache[nomeKeySaida]?.qtd || 0;
+    const qtdNovaSaida  = qtdAtualSaida + qtdSaida;
+    await salvarItemEstoque(nomeKeySaida, { nome: nomeSaidaReal, unidade: unidadeSaida, qtd: qtdNovaSaida });
+    estoqueCache[nomeKeySaida] = { ...(estoqueCache[nomeKeySaida] || {}), nome: nomeSaidaReal, unidade: unidadeSaida, qtd: qtdNovaSaida, nomeKey: nomeKeySaida };
+    await registrarContagemHistorico({
+      nomeKey: nomeKeySaida, nome: nomeSaidaReal, unidade: unidadeSaida, qtd: qtdSaida,
+      contadoPor: usuarioAtual?.nome || '—', tipo: 'producao_entrada',
+    });
+
+    toast(
+      avisosNegativo.length
+        ? `Produção registrada! Atenção: ${avisosNegativo.join(', ')} ficou com estoque negativo — confira a contagem.`
+        : `Produção registrada: ${nomeSaidaReal} +${qtdSaida} ${unidadeSaida}`,
+      avisosNegativo.length ? 'erro' : 'sucesso'
+    );
+
+    _prodInsumos = [];
+    renderizarProdInsumos();
+    if (nomeSInput) nomeSInput.value = '';
+    if (qtdSInput)  qtdSInput.value  = '';
+    const unEl = document.getElementById('prod-saida-un');
+    if (unEl) unEl.textContent = '';
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao registrar produção. Tente novamente.', 'erro');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '✓ Registrar produção'; }
+  }
+}
+
 async function salvarInventarioQtd(nomeKey, nome, unidade) {
   const input = document.getElementById(`inv-qty-${nomeKey}`);
   /* Campo vem vazio (não pré-preenchido com o valor antigo, pra forçar a
@@ -4447,6 +4609,15 @@ async function _abrirHistoricoContagemLegado() {
       '<div class="estado-vazio"><p>Erro ao carregar. Tente novamente.</p></div>';
   }
 }
+
+/* Tipos de lançamento no historico_contagem — cada ação de estoque grava um
+   desses, usado tanto na tabela de Histórico quanto na legenda dela. */
+const TIPO_HISTORICO = {
+  contagem:         { label: 'Contagem',        cor: '#111827', sinal: ''  },
+  entrada:          { label: 'Entrada',         cor: '#1D4ED8', sinal: '+' },
+  producao_baixa:   { label: 'Baixa (produção)', cor: '#B91C1C', sinal: '-' },
+  producao_entrada: { label: 'Produzido',       cor: '#6D28D9', sinal: '+' },
+};
 
 function renderizarHistoricoContagem(registros, containerId) {
   const el = document.getElementById(containerId || 'hist-cont-lista');
@@ -4505,13 +4676,13 @@ function renderizarHistoricoContagem(registros, containerId) {
     const cols = dias.map(dia => {
       const r = p.porDia[dia];
       if (!r) return `<td style="padding:8px 10px;text-align:center;color:#D1D5DB;border-bottom:1px solid #F3F4F6">—</td>`;
-      const ehEntrada = r.tipo === 'entrada';
+      const info = TIPO_HISTORICO[r.tipo] || TIPO_HISTORICO.contagem;
       const d = r.contadoEm?.toDate ? r.contadoEm.toDate() : new Date(r.contadoEm);
       const hora = !isNaN(d) ? `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
       return `
-        <td style="padding:8px 10px;text-align:center;font-weight:700;white-space:nowrap;border-bottom:1px solid #F3F4F6;color:${ehEntrada ? '#1D4ED8' : '#111827'}"
-          title="${ehEntrada ? 'Entrada de mercadoria' : 'Contagem'} — ${_escHtml(r.contadoPor || '—')} às ${hora}">
-          ${ehEntrada ? '+' : ''}${r.qtd}
+        <td style="padding:8px 10px;text-align:center;font-weight:700;white-space:nowrap;border-bottom:1px solid #F3F4F6;color:${info.cor}"
+          title="${info.label} — ${_escHtml(r.contadoPor || '—')} às ${hora}">
+          ${info.sinal}${r.qtd}
         </td>`;
     }).join('');
     return `
@@ -4524,10 +4695,9 @@ function renderizarHistoricoContagem(registros, containerId) {
   }).join('');
 
   el.innerHTML = `
-    <div style="font-size:11px;color:var(--cinza-500);margin-bottom:8px">
-      <span style="color:#1D4ED8;font-weight:700">Azul com +</span> = entrada de mercadoria &nbsp;·&nbsp;
-      <span style="color:#111827;font-weight:700">Preto</span> = contagem de estoque &nbsp;·&nbsp;
-      toque num número pra ver quem registrou e a que horas
+    <div style="font-size:11px;color:var(--cinza-500);margin-bottom:8px;display:flex;flex-wrap:wrap;gap:10px">
+      ${Object.values(TIPO_HISTORICO).map(t => `<span><span style="color:${t.cor};font-weight:700">${t.sinal || '·'}</span> ${_escHtml(t.label)}</span>`).join('')}
+      &nbsp;·&nbsp; toque num número pra ver quem registrou e a que horas
     </div>
     <div style="overflow-x:auto;border:1px solid #E5E7EB;border-radius:8px">
       <table style="border-collapse:collapse;width:100%;font-size:13px">

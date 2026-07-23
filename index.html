@@ -427,6 +427,7 @@
         <div style="display:flex;gap:8px">
           <button class="btn-secundario btn-sm" onclick="abrirInventario()">&#128203; Inventário</button>
           <button class="btn-secundario btn-sm" onclick="abrirEntradaMercadoria()">&#128230; Entrada</button>
+          <button class="btn-secundario btn-sm" onclick="abrirRegistrarProducao()">&#127871; Produção</button>
         </div>
       </div>
       <div id="colab-lista" class="lista-festas"></div>
@@ -494,6 +495,50 @@
           oninput="filtrarEntradaMercadoria(this.value)" />
       </div>
       <div id="entrada-mercadoria-conteudo"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: REGISTRAR PRODUÇÃO (SEPARADOR) ══════════ -->
+  <div id="tela-registrar-producao" class="tela hidden">
+    <div class="container">
+      <div class="secao-header">
+        <h2 class="titulo-tela">Registrar Produção</h2>
+        <button class="btn-secundario btn-sm" onclick="recarregarRegistrarProducao()">&#8635; Atualizar</button>
+      </div>
+      <p class="desc-tela">Registre um lote de produção: o que foi usado (sai do estoque) e o que foi produzido (entra no estoque).</p>
+
+      <div class="form-group">
+        <label>Insumos usados <span style="color:var(--cinza-500);font-weight:400">— sai do estoque</span></label>
+        <div class="inv-add-wrap">
+          <input type="text" id="prod-insumo-nome" list="prod-insumo-datalist"
+            class="inv-add-input" placeholder="Nome do insumo..."
+            autocomplete="off"
+            oninput="prodInsumoNomeInput(this.value)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault(); prodAdicionarInsumo();}" />
+          <datalist id="prod-insumo-datalist"></datalist>
+          <input type="number" id="prod-insumo-qtd" class="inv-add-qtd"
+            min="0" placeholder="Qtd usada"
+            onkeydown="if(event.key==='Enter'){event.preventDefault(); prodAdicionarInsumo();}" />
+          <span id="prod-insumo-un" class="inv-add-un"></span>
+          <button class="btn-secundario btn-sm" onclick="prodAdicionarInsumo()">&#43; Adicionar</button>
+        </div>
+        <div id="prod-insumos-lista" style="margin-top:8px"></div>
+      </div>
+
+      <div class="form-group" style="margin-top:20px">
+        <label>Produzido agora <span style="color:var(--cinza-500);font-weight:400">— entra no estoque</span></label>
+        <div class="inv-add-wrap">
+          <input type="text" id="prod-saida-nome" list="prod-saida-datalist"
+            class="inv-add-input" placeholder="Nome do produto final..."
+            autocomplete="off"
+            oninput="prodSaidaNomeInput(this.value)" />
+          <datalist id="prod-saida-datalist"></datalist>
+          <input type="number" id="prod-saida-qtd" class="inv-add-qtd" min="0" placeholder="Qtd produzida" />
+          <span id="prod-saida-un" class="inv-add-un"></span>
+        </div>
+      </div>
+
+      <button class="btn-primario" style="width:100%;margin-top:20px" onclick="confirmarRegistrarProducao()">&#10003; Registrar produção</button>
     </div>
   </div>
 
@@ -1262,7 +1307,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=39"></script>
-  <script src="js/app.js?v=55"></script>
+  <script src="js/app.js?v=56"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->
