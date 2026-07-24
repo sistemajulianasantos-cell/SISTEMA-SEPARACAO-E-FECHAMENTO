@@ -982,7 +982,7 @@
         <div class="form-group" style="display:flex;gap:12px">
           <div style="flex:1">
             <label>Rendimento (base) *</label>
-            <input type="number" id="ficha-rendimento" placeholder="Ex: 4.3" min="0" step="any" />
+            <input type="number" id="ficha-rendimento" placeholder="Ex: 4.3" min="0" step="any" oninput="renderizarFichaInsumosForm()" />
           </div>
           <div style="width:120px">
             <label>Unidade</label>
@@ -992,18 +992,43 @@
         <p class="form-hint">Quanto essa lista de insumos rende no total. Em Registrar Produção, o colaborador informa quanto quer produzir e o sistema calcula os insumos na proporção certa automaticamente.</p>
 
         <div class="form-group" style="margin-top:16px">
-          <label>Insumos (para o rendimento acima)</label>
+          <label>Insumos (para o rendimento acima) <span style="color:var(--cinza-500);font-weight:400">— sempre associado a um produto já cadastrado</span></label>
           <div id="ficha-insumos-lista"></div>
-          <div class="inv-add-wrap" style="margin-top:8px">
-            <input type="text" id="ficha-insumo-nome" list="ficha-insumo-datalist"
-              class="inv-add-input" placeholder="Nome do insumo..." autocomplete="off"
-              oninput="fichaInsumoNomeInput(this.value)"
-              onkeydown="if(event.key==='Enter'){event.preventDefault(); fichaAdicionarInsumo();}" />
-            <datalist id="ficha-insumo-datalist"></datalist>
+          <div class="inv-add-wrap" style="margin-top:8px;flex-wrap:wrap">
+            <select id="ficha-insumo-select" class="inv-add-input" onchange="fichaInsumoSelecionado(this.value)">
+              <option value="">Selecione o produto...</option>
+            </select>
             <input type="number" id="ficha-insumo-qtd" class="inv-add-qtd" min="0" step="any" placeholder="Qtd"
               onkeydown="if(event.key==='Enter'){event.preventDefault(); fichaAdicionarInsumo();}" />
             <span id="ficha-insumo-un" class="inv-add-un"></span>
+            <input type="number" id="ficha-insumo-preco" class="inv-add-qtd" min="0" step="any" placeholder="Preço R$ (opcional)"
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); fichaAdicionarInsumo();}" />
             <button class="btn-secundario btn-sm" onclick="fichaAdicionarInsumo()">&#43; Adicionar</button>
+          </div>
+          <p class="form-hint" id="ficha-custo-total-hint"></p>
+        </div>
+
+        <div class="form-group" style="margin-top:16px">
+          <label>Detalhes</label>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:160px">
+              <label style="font-weight:400;font-size:12px">Validade</label>
+              <input type="text" id="ficha-validade" placeholder="Ex: 36 dias" />
+            </div>
+            <div style="flex:1;min-width:160px">
+              <label style="font-weight:400;font-size:12px">Local de Armazenamento</label>
+              <input type="text" id="ficha-armazenamento" placeholder="Ex: Resfriado" />
+            </div>
+          </div>
+          <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px">
+            <div style="flex:1;min-width:160px">
+              <label style="font-weight:400;font-size:12px">Tempo de Produção</label>
+              <input type="text" id="ficha-tempo-producao" placeholder="Ex: Rápido" />
+            </div>
+            <div style="flex:1;min-width:160px">
+              <label style="font-weight:400;font-size:12px">Responsável</label>
+              <input type="text" id="ficha-responsavel" placeholder="Ex: Bar" />
+            </div>
           </div>
         </div>
       </div>
@@ -1368,7 +1393,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=40"></script>
-  <script src="js/app.js?v=58"></script>
+  <script src="js/app.js?v=59"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

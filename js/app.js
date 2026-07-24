@@ -7770,62 +7770,74 @@ async function abrirFormFicha(id) {
   _fichaEditId      = id || null;
   _fichaInsumosForm = [];
 
-  /* Sugestões de nome (itens já cadastrados) tanto pro produto final quanto pros insumos */
+  /* Sugestão de nome pro produto final (livre — pode ser algo ainda não
+     cadastrado, já que é o que vai ser produzido). Insumos, não: sempre um
+     select dos itens já cadastrados, pra nunca criar um produto órfão. */
   const configs = Object.values(itemConfigsCache).length ? Object.values(itemConfigsCache) : await listarItemConfigs();
   const dlNome = document.getElementById('ficha-nome-datalist');
   if (dlNome) dlNome.innerHTML = configs.map(c => `<option value="${_esc(c.nome)}">`).join('');
-  const dlInsumo = document.getElementById('ficha-insumo-datalist');
-  if (dlInsumo) dlInsumo.innerHTML = configs.map(c => `<option value="${_esc(c.nome)}">`).join('');
+  const selInsumo = document.getElementById('ficha-insumo-select');
+  if (selInsumo) {
+    const configsOrdenados = [...configs].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+    selInsumo.innerHTML = '<option value="">Selecione o produto...</option>' +
+      configsOrdenados.map(c => `<option value="${_esc(c.nomeKey)}">${_escHtml(c.nome)}</option>`).join('');
+  }
 
   if (id) {
     const fichas = fichasTecnicasCache.length ? fichasTecnicasCache : await listarFichasTecnicas();
     const ficha  = fichas.find(f => f.id === id);
     if (!ficha) return toast('Ficha não encontrada.', 'erro');
-    document.getElementById('ficha-nome').value          = ficha.nome || '';
-    document.getElementById('ficha-rendimento').value    = ficha.rendimento ?? '';
-    document.getElementById('ficha-rendimento-un').value = ficha.unidadeRendimento || '';
+    document.getElementById('ficha-nome').value           = ficha.nome || '';
+    document.getElementById('ficha-rendimento').value     = ficha.rendimento ?? '';
+    document.getElementById('ficha-rendimento-un').value  = ficha.unidadeRendimento || '';
+    document.getElementById('ficha-validade').value       = ficha.validade || '';
+    document.getElementById('ficha-armazenamento').value  = ficha.localArmazenamento || '';
+    document.getElementById('ficha-tempo-producao').value = ficha.tempoProducao || '';
+    document.getElementById('ficha-responsavel').value    = ficha.responsavel || '';
     _fichaInsumosForm = (ficha.ingredientes || []).map(i => ({ ...i }));
     historico.push('tela-form-ficha');
     mostrarTela('tela-form-ficha', 'Editar Ficha Técnica');
     document.getElementById('form-ficha-titulo').textContent = 'Editar Ficha Técnica';
   } else {
-    document.getElementById('ficha-nome').value          = '';
-    document.getElementById('ficha-rendimento').value    = '';
-    document.getElementById('ficha-rendimento-un').value = '';
+    ['ficha-nome','ficha-rendimento','ficha-rendimento-un','ficha-validade','ficha-armazenamento','ficha-tempo-producao','ficha-responsavel']
+      .forEach(id2 => { const el = document.getElementById(id2); if (el) el.value = ''; });
     historico.push('tela-form-ficha');
     mostrarTela('tela-form-ficha', 'Nova Ficha Técnica');
     document.getElementById('form-ficha-titulo').textContent = 'Nova Ficha Técnica';
   }
-  const nomeI = document.getElementById('ficha-insumo-nome'); if (nomeI) nomeI.value = '';
-  const qtdI  = document.getElementById('ficha-insumo-qtd');  if (qtdI)  qtdI.value  = '';
+  const qtdI   = document.getElementById('ficha-insumo-qtd');   if (qtdI)   qtdI.value   = '';
+  const precoI = document.getElementById('ficha-insumo-preco'); if (precoI) precoI.value = '';
+  const unEl   = document.getElementById('ficha-insumo-un');    if (unEl)   unEl.textContent = '';
   renderizarFichaInsumosForm();
 }
 
-function fichaInsumoNomeInput(val) {
-  const cfg  = Object.values(itemConfigsCache).find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(val));
+function fichaInsumoSelecionado(nomeKey) {
+  const cfg  = Object.values(itemConfigsCache).find(c => c.nomeKey === nomeKey);
   const unEl = document.getElementById('ficha-insumo-un');
   if (unEl) unEl.textContent = cfg?.unidade || '';
 }
 
 function fichaAdicionarInsumo() {
-  const nomeInput = document.getElementById('ficha-insumo-nome');
+  const selInsumo = document.getElementById('ficha-insumo-select');
   const qtdInput  = document.getElementById('ficha-insumo-qtd');
-  const nome = (nomeInput?.value || '').trim();
-  if (!nome) return toast('Informe o nome do insumo.', 'erro');
+  const precoInput= document.getElementById('ficha-insumo-preco');
+  const nomeKey   = selInsumo?.value || '';
+  if (!nomeKey) return toast('Selecione o produto do insumo.', 'erro');
   const qtd = parseFloat(qtdInput?.value) || 0;
   if (qtd <= 0) return toast('Informe a quantidade do insumo.', 'erro');
+  const preco = parseFloat(precoInput?.value) || 0;
 
-  const cfg      = Object.values(itemConfigsCache).find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(nome));
-  const nomeKey  = cfg ? (cfg.nomeKey || normalizarNomeItem(cfg.nome)) : normalizarNomeItem(nome);
+  const cfg      = Object.values(itemConfigsCache).find(c => c.nomeKey === nomeKey);
   const unidade  = cfg?.unidade || 'un';
-  const nomeReal = cfg?.nome || nome;
+  const nomeReal = cfg?.nome || nomeKey;
 
   const existente = _fichaInsumosForm.find(i => i.nomeKey === nomeKey);
-  if (existente) existente.qtd += qtd;
-  else _fichaInsumosForm.push({ nomeKey, nome: nomeReal, unidade, qtd });
+  if (existente) { existente.qtd += qtd; if (preco) existente.preco = preco; }
+  else _fichaInsumosForm.push({ nomeKey, nome: nomeReal, unidade, qtd, preco });
 
-  if (nomeInput) nomeInput.value = '';
-  if (qtdInput)  qtdInput.value  = '';
+  if (selInsumo)  selInsumo.value = '';
+  if (qtdInput)   qtdInput.value  = '';
+  if (precoInput) precoInput.value = '';
   const unEl = document.getElementById('ficha-insumo-un');
   if (unEl) unEl.textContent = '';
   renderizarFichaInsumosForm();
@@ -7837,18 +7849,32 @@ function fichaRemoverInsumo(nomeKey) {
 }
 
 function renderizarFichaInsumosForm() {
-  const el = document.getElementById('ficha-insumos-lista');
+  const el   = document.getElementById('ficha-insumos-lista');
+  const hint = document.getElementById('ficha-custo-total-hint');
   if (!el) return;
   if (!_fichaInsumosForm.length) {
     el.innerHTML = '<p style="font-size:12px;color:var(--cinza-500);padding:6px 0">Nenhum insumo adicionado ainda.</p>';
+    if (hint) hint.textContent = '';
     return;
   }
-  el.innerHTML = _fichaInsumosForm.map(i => `
+  el.innerHTML = _fichaInsumosForm.map(i => {
+    const custo = (i.preco || 0) * i.qtd;
+    return `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border:1px solid #F3F4F6;border-radius:6px;margin-bottom:6px;font-size:13px">
-      <span>${_escHtml(i.nome)} — <strong>${i.qtd}</strong> ${_escHtml(i.unidade)}</span>
+      <span>${_escHtml(i.nome)} — <strong>${i.qtd}</strong> ${_escHtml(i.unidade)}
+        ${i.preco ? `<span style="color:var(--cinza-500)"> · R$ ${i.preco.toFixed(2)}/un · custo R$ ${custo.toFixed(2)}</span>` : ''}
+      </span>
       <button class="btn-secundario btn-sm" onclick="fichaRemoverInsumo('${_esc(i.nomeKey)}')" style="padding:2px 8px">&#10005;</button>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
+
+  if (hint) {
+    const custoTotal = _fichaInsumosForm.reduce((soma, i) => soma + (i.preco || 0) * i.qtd, 0);
+    const rendimento = parseFloat(document.getElementById('ficha-rendimento')?.value) || 0;
+    hint.textContent = custoTotal
+      ? `Custo total: R$ ${custoTotal.toFixed(2)}${rendimento ? ` — R$ ${(custoTotal / rendimento).toFixed(2)} por unidade de rendimento` : ''}`
+      : '';
+  }
 }
 
 async function salvarFichaTecnica() {
@@ -7868,7 +7894,11 @@ async function salvarFichaTecnica() {
     nomeKey,
     rendimento,
     unidadeRendimento,
-    ingredientes: _fichaInsumosForm,
+    ingredientes:      _fichaInsumosForm,
+    validade:          document.getElementById('ficha-validade').value.trim(),
+    localArmazenamento:document.getElementById('ficha-armazenamento').value.trim(),
+    tempoProducao:     document.getElementById('ficha-tempo-producao').value.trim(),
+    responsavel:       document.getElementById('ficha-responsavel').value.trim(),
   };
   if (_fichaEditId) dados.id = _fichaEditId;
 
