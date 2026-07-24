@@ -507,7 +507,20 @@
       </div>
       <p class="desc-tela">Registre um lote de produção: o que foi usado (sai do estoque) e o que foi produzido (entra no estoque).</p>
 
-      <div class="form-group">
+      <div class="form-group" style="background:#F9FAFB;border:1px solid #E5E7EB;border-radius:8px;padding:12px">
+        <label>Calcular a partir de uma Ficha Técnica <span style="color:var(--cinza-500);font-weight:400">— opcional, evita conta manual</span></label>
+        <div class="inv-add-wrap">
+          <select id="prod-ficha-select" class="inv-add-input" onchange="prodFichaSelecionada(this.value)">
+            <option value="">Selecione uma ficha...</option>
+          </select>
+          <input type="number" id="prod-ficha-qtd" class="inv-add-qtd" min="0" step="any" placeholder="Quero produzir" />
+          <span id="prod-ficha-un" class="inv-add-un"></span>
+          <button class="btn-primario btn-sm" onclick="calcularInsumosDaFicha()">&#128202; Calcular</button>
+        </div>
+        <p class="form-hint" id="prod-ficha-hint"></p>
+      </div>
+
+      <div class="form-group" style="margin-top:16px">
         <label>Insumos usados <span style="color:var(--cinza-500);font-weight:400">— sai do estoque</span></label>
         <div class="inv-add-wrap">
           <input type="text" id="prod-insumo-nome" list="prod-insumo-datalist"
@@ -752,13 +765,15 @@
       </div>
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:12px">
         <div class="filtros-tabs" style="margin-bottom:0">
-          <button class="tab ativo" id="tab-itens-config" onclick="trocarAbaItens('config',this)">Configurações</button>
-          <button class="tab"       id="tab-itens-cat"    onclick="trocarAbaItens('categorias',this)">Categorias</button>
-          <button class="tab"       id="tab-itens-loc"    onclick="trocarAbaItens('localizacoes',this)">Localizações</button>
+          <button class="tab ativo" id="tab-itens-config"  onclick="trocarAbaItens('config',this)">Configurações</button>
+          <button class="tab"       id="tab-itens-cat"     onclick="trocarAbaItens('categorias',this)">Categorias</button>
+          <button class="tab"       id="tab-itens-loc"     onclick="trocarAbaItens('localizacoes',this)">Localizações</button>
+          <button class="tab"       id="tab-itens-fichas"  onclick="trocarAbaItens('fichas',this)">Fichas Técnicas</button>
         </div>
         <button class="btn-secundario btn-sm" id="btn-aplicar-class" onclick="backfillCategoriasNasFestas()" title="Aplicar categorias cadastradas nos itens das festas já importadas">
           &#9881; Aplicar Classificações nas Festas
         </button>
+        <button class="btn-primario btn-sm hidden" id="btn-nova-ficha" onclick="abrirFormFicha()">&#43; Nova Ficha</button>
       </div>
       <div class="busca-sep-wrap" id="busca-cadastro-wrap">
         <input type="search" id="busca-cadastro" class="busca-sep" placeholder="&#128269; Buscar produto..." oninput="filtrarCadastro(this.value)">
@@ -766,6 +781,7 @@
       <div id="cadastro-itens-lista"></div>
       <div id="cadastro-itens-cat" class="hidden"></div>
       <div id="cadastro-itens-loc" class="hidden"></div>
+      <div id="cadastro-itens-fichas" class="hidden"></div>
     </div>
   </div>
 
@@ -949,6 +965,51 @@
       <div class="rodape-form">
         <button class="btn-secundario" onclick="goBack()">Cancelar</button>
         <button class="btn-primario"   onclick="salvarCategoria()">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: FORM FICHA TÉCNICA (CEO) ══════════ -->
+  <div id="tela-form-ficha" class="tela hidden">
+    <div class="container">
+      <h2 class="titulo-tela" id="form-ficha-titulo">Nova Ficha Técnica</h2>
+      <div class="form-secao">
+        <div class="form-group">
+          <label>Nome do produto final *</label>
+          <input type="text" id="ficha-nome" list="ficha-nome-datalist" placeholder="Ex: Mix Maracujá" autocomplete="off" />
+          <datalist id="ficha-nome-datalist"></datalist>
+        </div>
+        <div class="form-group" style="display:flex;gap:12px">
+          <div style="flex:1">
+            <label>Rendimento (base) *</label>
+            <input type="number" id="ficha-rendimento" placeholder="Ex: 4.3" min="0" step="any" />
+          </div>
+          <div style="width:120px">
+            <label>Unidade</label>
+            <input type="text" id="ficha-rendimento-un" placeholder="L, kg, un..." />
+          </div>
+        </div>
+        <p class="form-hint">Quanto essa lista de insumos rende no total. Em Registrar Produção, o colaborador informa quanto quer produzir e o sistema calcula os insumos na proporção certa automaticamente.</p>
+
+        <div class="form-group" style="margin-top:16px">
+          <label>Insumos (para o rendimento acima)</label>
+          <div id="ficha-insumos-lista"></div>
+          <div class="inv-add-wrap" style="margin-top:8px">
+            <input type="text" id="ficha-insumo-nome" list="ficha-insumo-datalist"
+              class="inv-add-input" placeholder="Nome do insumo..." autocomplete="off"
+              oninput="fichaInsumoNomeInput(this.value)"
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); fichaAdicionarInsumo();}" />
+            <datalist id="ficha-insumo-datalist"></datalist>
+            <input type="number" id="ficha-insumo-qtd" class="inv-add-qtd" min="0" step="any" placeholder="Qtd"
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); fichaAdicionarInsumo();}" />
+            <span id="ficha-insumo-un" class="inv-add-un"></span>
+            <button class="btn-secundario btn-sm" onclick="fichaAdicionarInsumo()">&#43; Adicionar</button>
+          </div>
+        </div>
+      </div>
+      <div class="rodape-form">
+        <button class="btn-secundario" onclick="goBack()">Cancelar</button>
+        <button class="btn-primario"   onclick="salvarFichaTecnica()">Salvar</button>
       </div>
     </div>
   </div>
@@ -1306,8 +1367,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=3"></script>
-  <script src="js/firestore.js?v=39"></script>
-  <script src="js/app.js?v=57"></script>
+  <script src="js/firestore.js?v=40"></script>
+  <script src="js/app.js?v=58"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

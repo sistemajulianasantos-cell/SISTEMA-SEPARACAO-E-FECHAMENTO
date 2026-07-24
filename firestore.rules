@@ -80,5 +80,6 @@ service cloud.firestore {
     match /item_config/{id}        { allow read, write: if autenticadoReal(); }
     match /historico_contagem/{id} { allow read, write: if autenticadoReal(); }
     match /compras/{id}            { allow read, write: if autenticadoReal(); }
+    match /fichas_tecnicas/{id}    { allow read, write: if autenticadoReal(); }
   }
 }

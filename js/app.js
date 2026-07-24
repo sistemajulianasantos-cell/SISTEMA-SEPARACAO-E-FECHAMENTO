@@ -4429,22 +4429,81 @@ async function abrirRegistrarProducao() {
   const qtdI  = document.getElementById('prod-insumo-qtd');  if (qtdI)  qtdI.value  = '';
   const nomeS = document.getElementById('prod-saida-nome');  if (nomeS) nomeS.value = '';
   const qtdS  = document.getElementById('prod-saida-qtd');   if (qtdS)  qtdS.value  = '';
+  const fichaSel = document.getElementById('prod-ficha-select'); if (fichaSel) fichaSel.value = '';
+  const fichaQtd = document.getElementById('prod-ficha-qtd');    if (fichaQtd) fichaQtd.value = '';
+  const fichaUn  = document.getElementById('prod-ficha-un');     if (fichaUn)  fichaUn.textContent = '';
+  const fichaHint= document.getElementById('prod-ficha-hint');   if (fichaHint) fichaHint.textContent = '';
   await recarregarRegistrarProducao();
 }
 
 async function recarregarRegistrarProducao() {
   try {
-    const [configs, estoqueMap] = await Promise.all([listarItemConfigs(), buscarEstoque()]);
+    const [configs, estoqueMap, fichas] = await Promise.all([
+      listarItemConfigs(), buscarEstoque(), listarFichasTecnicas(),
+    ]);
     estoqueCache = estoqueMap;
     _prodConfigs = configs;
+    fichasTecnicasCache = fichas;
     const dl1 = document.getElementById('prod-insumo-datalist');
     if (dl1) dl1.innerHTML = configs.map(c => `<option value="${_esc(c.nome)}">`).join('');
     const dl2 = document.getElementById('prod-saida-datalist');
     if (dl2) dl2.innerHTML = configs.map(c => `<option value="${_esc(c.nome)}">`).join('');
+    const selFicha = document.getElementById('prod-ficha-select');
+    if (selFicha) {
+      selFicha.innerHTML = '<option value="">Selecione uma ficha...</option>' +
+        fichas.map(f => `<option value="${f.id}">${_escHtml(f.nome)}</option>`).join('');
+    }
   } catch (e) {
     console.error(e);
     toast('Erro ao carregar produtos.', 'erro');
   }
+}
+
+function prodFichaSelecionada(fichaId) {
+  const ficha = fichasTecnicasCache.find(f => f.id === fichaId);
+  const un    = document.getElementById('prod-ficha-un');
+  const hint  = document.getElementById('prod-ficha-hint');
+  if (un)   un.textContent   = ficha?.unidadeRendimento || '';
+  if (hint) hint.textContent = ficha
+    ? `Rendimento-base da ficha: ${ficha.rendimento} ${ficha.unidadeRendimento || ''} — ${(ficha.ingredientes || []).length} insumo(s)`
+    : '';
+}
+
+function calcularInsumosDaFicha() {
+  const fichaId = document.getElementById('prod-ficha-select')?.value;
+  if (!fichaId) return toast('Selecione uma ficha técnica.', 'erro');
+  const ficha = fichasTecnicasCache.find(f => f.id === fichaId);
+  if (!ficha) return toast('Ficha não encontrada.', 'erro');
+  const qtdDesejada = parseFloat(document.getElementById('prod-ficha-qtd')?.value) || 0;
+  if (qtdDesejada <= 0) return toast('Informe quanto quer produzir.', 'erro');
+  if (!ficha.rendimento) return toast('Essa ficha não tem rendimento-base cadastrado.', 'erro');
+
+  const fator = qtdDesejada / ficha.rendimento;
+
+  /* Recalcular substitui só os insumos que vieram de um cálculo anterior
+     dessa mesma ficha — não duplica, e não mexe no que foi adicionado à
+     mão além da ficha. */
+  _prodInsumos = _prodInsumos.filter(i => !i.daFicha);
+  (ficha.ingredientes || []).forEach(ing => {
+    const qtdCalculada = Math.round(ing.qtd * fator * 1000) / 1000;
+    const existente = _prodInsumos.find(i => i.nomeKey === ing.nomeKey);
+    if (existente) {
+      existente.qtd += qtdCalculada;
+      existente.daFicha = true;
+    } else {
+      _prodInsumos.push({ nomeKey: ing.nomeKey, nome: ing.nome, unidade: ing.unidade, qtd: qtdCalculada, daFicha: true });
+    }
+  });
+  renderizarProdInsumos();
+
+  /* Preenche também "produzido agora" com o produto e a quantidade da ficha */
+  const nomeSInput = document.getElementById('prod-saida-nome');
+  const qtdSInput  = document.getElementById('prod-saida-qtd');
+  if (nomeSInput) nomeSInput.value = ficha.nome;
+  if (qtdSInput)  qtdSInput.value  = qtdDesejada;
+  prodSaidaNomeInput(ficha.nome);
+
+  toast(`Insumos calculados para ${qtdDesejada} ${ficha.unidadeRendimento || ''} de ${ficha.nome}.`, 'sucesso');
 }
 
 function prodInsumoNomeInput(val) {
@@ -4497,7 +4556,9 @@ function renderizarProdInsumos() {
   }
   el.innerHTML = _prodInsumos.map(i => `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border:1px solid #F3F4F6;border-radius:6px;margin-bottom:6px;font-size:13px">
-      <span>${_escHtml(i.nome)} — <strong>${i.qtd}</strong> ${_escHtml(i.unidade)}</span>
+      <span>${_escHtml(i.nome)} — <strong>${i.qtd}</strong> ${_escHtml(i.unidade)}
+        ${i.daFicha ? '<span style="background:#EDE9FE;color:#6D28D9;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;margin-left:6px">FICHA</span>' : ''}
+      </span>
       <button class="btn-secundario btn-sm" onclick="prodRemoverInsumo('${_esc(i.nomeKey)}')" style="padding:2px 8px">&#10005;</button>
     </div>
   `).join('');
@@ -5348,8 +5409,9 @@ async function abrirCadastroItens(aba) {
   /* Garantir que a aba correta esteja ativa */
   const abaAlvo = aba || 'config';
   const btnAlvo = document.getElementById(
-    abaAlvo === 'localizacoes' ? 'tab-itens-loc' :
-    abaAlvo === 'categorias'   ? 'tab-itens-cat'  : 'tab-itens-config'
+    abaAlvo === 'localizacoes' ? 'tab-itens-loc'    :
+    abaAlvo === 'categorias'   ? 'tab-itens-cat'     :
+    abaAlvo === 'fichas'       ? 'tab-itens-fichas'  : 'tab-itens-config'
   );
   trocarAbaItens(abaAlvo, btnAlvo);
 }
@@ -5363,28 +5425,32 @@ function trocarAbaItens(aba, btn) {
   document.querySelectorAll('#tela-cadastro-itens .tab').forEach(b => b.classList.remove('ativo'));
   if (btn) btn.classList.add('ativo');
 
-  const elConf    = document.getElementById('cadastro-itens-lista');
-  const elCat     = document.getElementById('cadastro-itens-cat');
-  const elLoc     = document.getElementById('cadastro-itens-loc');
-  const btnNovo   = document.getElementById('btn-novo-item-config');
-  const btnNovoCat= document.getElementById('btn-nova-categoria');
-  const btnSel    = document.getElementById('btn-selecionar-itens');
-  const btnAplicar= document.getElementById('btn-aplicar-class');
-  const btnPadr   = document.getElementById('btn-padronizar-nomes');
-  const btnDup    = document.getElementById('btn-resolver-duplicados');
-  const busca     = document.getElementById('busca-cadastro-wrap');
+  const elConf     = document.getElementById('cadastro-itens-lista');
+  const elCat      = document.getElementById('cadastro-itens-cat');
+  const elLoc      = document.getElementById('cadastro-itens-loc');
+  const elFichas   = document.getElementById('cadastro-itens-fichas');
+  const btnNovo    = document.getElementById('btn-novo-item-config');
+  const btnNovoCat = document.getElementById('btn-nova-categoria');
+  const btnNovaFicha = document.getElementById('btn-nova-ficha');
+  const btnSel     = document.getElementById('btn-selecionar-itens');
+  const btnAplicar = document.getElementById('btn-aplicar-class');
+  const btnPadr    = document.getElementById('btn-padronizar-nomes');
+  const btnDup     = document.getElementById('btn-resolver-duplicados');
+  const busca      = document.getElementById('busca-cadastro-wrap');
 
   /* Reset todos */
   elConf?.classList.add('hidden');
   elCat?.classList.add('hidden');
   elLoc?.classList.add('hidden');
-  if (btnNovo)    btnNovo.classList.add('hidden');
-  if (btnNovoCat) btnNovoCat.classList.add('hidden');
-  if (btnSel)     btnSel.style.display = '';
-  if (btnAplicar) btnAplicar.classList.add('hidden');
-  if (btnPadr)    btnPadr.classList.add('hidden');
-  if (btnDup)     btnDup.classList.add('hidden');
-  if (busca)      busca.classList.add('hidden');
+  elFichas?.classList.add('hidden');
+  if (btnNovo)      btnNovo.classList.add('hidden');
+  if (btnNovoCat)   btnNovoCat.classList.add('hidden');
+  if (btnNovaFicha) btnNovaFicha.classList.add('hidden');
+  if (btnSel)       btnSel.style.display = '';
+  if (btnAplicar)   btnAplicar.classList.add('hidden');
+  if (btnPadr)      btnPadr.classList.add('hidden');
+  if (btnDup)       btnDup.classList.add('hidden');
+  if (busca)        busca.classList.add('hidden');
 
   if (aba === 'categorias') {
     elCat?.classList.remove('hidden');
@@ -5394,6 +5460,11 @@ function trocarAbaItens(aba, btn) {
   } else if (aba === 'localizacoes') {
     elLoc?.classList.remove('hidden');
     renderizarLocalizacoes();
+  } else if (aba === 'fichas') {
+    elFichas?.classList.remove('hidden');
+    if (btnNovaFicha) btnNovaFicha.classList.remove('hidden');
+    if (btnSel)        btnSel.style.display = 'none';
+    renderizarFichasTecnicas();
   } else {
     elConf?.classList.remove('hidden');
     if (btnNovo)    btnNovo.classList.remove('hidden');
@@ -7655,6 +7726,175 @@ async function confirmarDeletarCategoria(id, nome) {
   } catch(e) {
     console.error(e);
     toast('Erro ao remover categoria.', 'erro');
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   FICHAS TÉCNICAS CRUD — receita (rendimento-base + insumos) usada em
+   Registrar Produção pra converter automaticamente a quantidade.
+══════════════════════════════════════════════════ */
+let fichasTecnicasCache = [];
+let _fichaEditId        = null;
+let _fichaInsumosForm   = []; /* [{nomeKey, nome, unidade, qtd}] montado no form antes de salvar */
+
+async function renderizarFichasTecnicas() {
+  const el = document.getElementById('cadastro-itens-fichas');
+  if (!el) return;
+  el.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
+  try {
+    const fichas = await listarFichasTecnicas();
+    fichasTecnicasCache = fichas;
+    if (!fichas.length) {
+      el.innerHTML = estadoVazio('Nenhuma ficha técnica cadastrada. Clique em "+ Nova Ficha" para criar a primeira.');
+      return;
+    }
+    el.innerHTML = fichas.map(f => `
+      <div class="config-item-row">
+        <div class="config-item-info">
+          <div class="config-item-nome">${_escHtml(f.nome)}</div>
+          <div class="config-item-meta">Rendimento: ${f.rendimento} ${_escHtml(f.unidadeRendimento || '')} &nbsp;·&nbsp; ${(f.ingredientes || []).length} insumo(s)</div>
+        </div>
+        <div class="config-item-acoes">
+          <button class="btn-icone" title="Editar" onclick="abrirFormFicha('${f.id}')">&#9998;</button>
+          <button class="btn-icone btn-icone-del" title="Remover" onclick="confirmarDeletarFicha('${_esc(f.id)}','${_esc(f.nome)}')">&#128465;</button>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    console.error(e);
+    el.innerHTML = estadoVazio('Erro ao carregar. Tente novamente.');
+  }
+}
+
+async function abrirFormFicha(id) {
+  _fichaEditId      = id || null;
+  _fichaInsumosForm = [];
+
+  /* Sugestões de nome (itens já cadastrados) tanto pro produto final quanto pros insumos */
+  const configs = Object.values(itemConfigsCache).length ? Object.values(itemConfigsCache) : await listarItemConfigs();
+  const dlNome = document.getElementById('ficha-nome-datalist');
+  if (dlNome) dlNome.innerHTML = configs.map(c => `<option value="${_esc(c.nome)}">`).join('');
+  const dlInsumo = document.getElementById('ficha-insumo-datalist');
+  if (dlInsumo) dlInsumo.innerHTML = configs.map(c => `<option value="${_esc(c.nome)}">`).join('');
+
+  if (id) {
+    const fichas = fichasTecnicasCache.length ? fichasTecnicasCache : await listarFichasTecnicas();
+    const ficha  = fichas.find(f => f.id === id);
+    if (!ficha) return toast('Ficha não encontrada.', 'erro');
+    document.getElementById('ficha-nome').value          = ficha.nome || '';
+    document.getElementById('ficha-rendimento').value    = ficha.rendimento ?? '';
+    document.getElementById('ficha-rendimento-un').value = ficha.unidadeRendimento || '';
+    _fichaInsumosForm = (ficha.ingredientes || []).map(i => ({ ...i }));
+    historico.push('tela-form-ficha');
+    mostrarTela('tela-form-ficha', 'Editar Ficha Técnica');
+    document.getElementById('form-ficha-titulo').textContent = 'Editar Ficha Técnica';
+  } else {
+    document.getElementById('ficha-nome').value          = '';
+    document.getElementById('ficha-rendimento').value    = '';
+    document.getElementById('ficha-rendimento-un').value = '';
+    historico.push('tela-form-ficha');
+    mostrarTela('tela-form-ficha', 'Nova Ficha Técnica');
+    document.getElementById('form-ficha-titulo').textContent = 'Nova Ficha Técnica';
+  }
+  const nomeI = document.getElementById('ficha-insumo-nome'); if (nomeI) nomeI.value = '';
+  const qtdI  = document.getElementById('ficha-insumo-qtd');  if (qtdI)  qtdI.value  = '';
+  renderizarFichaInsumosForm();
+}
+
+function fichaInsumoNomeInput(val) {
+  const cfg  = Object.values(itemConfigsCache).find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(val));
+  const unEl = document.getElementById('ficha-insumo-un');
+  if (unEl) unEl.textContent = cfg?.unidade || '';
+}
+
+function fichaAdicionarInsumo() {
+  const nomeInput = document.getElementById('ficha-insumo-nome');
+  const qtdInput  = document.getElementById('ficha-insumo-qtd');
+  const nome = (nomeInput?.value || '').trim();
+  if (!nome) return toast('Informe o nome do insumo.', 'erro');
+  const qtd = parseFloat(qtdInput?.value) || 0;
+  if (qtd <= 0) return toast('Informe a quantidade do insumo.', 'erro');
+
+  const cfg      = Object.values(itemConfigsCache).find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(nome));
+  const nomeKey  = cfg ? (cfg.nomeKey || normalizarNomeItem(cfg.nome)) : normalizarNomeItem(nome);
+  const unidade  = cfg?.unidade || 'un';
+  const nomeReal = cfg?.nome || nome;
+
+  const existente = _fichaInsumosForm.find(i => i.nomeKey === nomeKey);
+  if (existente) existente.qtd += qtd;
+  else _fichaInsumosForm.push({ nomeKey, nome: nomeReal, unidade, qtd });
+
+  if (nomeInput) nomeInput.value = '';
+  if (qtdInput)  qtdInput.value  = '';
+  const unEl = document.getElementById('ficha-insumo-un');
+  if (unEl) unEl.textContent = '';
+  renderizarFichaInsumosForm();
+}
+
+function fichaRemoverInsumo(nomeKey) {
+  _fichaInsumosForm = _fichaInsumosForm.filter(i => i.nomeKey !== nomeKey);
+  renderizarFichaInsumosForm();
+}
+
+function renderizarFichaInsumosForm() {
+  const el = document.getElementById('ficha-insumos-lista');
+  if (!el) return;
+  if (!_fichaInsumosForm.length) {
+    el.innerHTML = '<p style="font-size:12px;color:var(--cinza-500);padding:6px 0">Nenhum insumo adicionado ainda.</p>';
+    return;
+  }
+  el.innerHTML = _fichaInsumosForm.map(i => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border:1px solid #F3F4F6;border-radius:6px;margin-bottom:6px;font-size:13px">
+      <span>${_escHtml(i.nome)} — <strong>${i.qtd}</strong> ${_escHtml(i.unidade)}</span>
+      <button class="btn-secundario btn-sm" onclick="fichaRemoverInsumo('${_esc(i.nomeKey)}')" style="padding:2px 8px">&#10005;</button>
+    </div>
+  `).join('');
+}
+
+async function salvarFichaTecnica() {
+  const nome = document.getElementById('ficha-nome').value.trim();
+  if (!nome) return toast('Informe o nome do produto final.', 'erro');
+  const rendimento = parseFloat(document.getElementById('ficha-rendimento').value);
+  if (!rendimento || rendimento <= 0) return toast('Informe o rendimento (maior que zero).', 'erro');
+  const unidadeRendimento = document.getElementById('ficha-rendimento-un').value.trim() || 'un';
+  if (!_fichaInsumosForm.length) return toast('Adicione pelo menos um insumo.', 'erro');
+
+  const cfgNome  = Object.values(itemConfigsCache).find(c => normalizarNomeItem(c.nome) === normalizarNomeItem(nome));
+  const nomeKey  = cfgNome ? (cfgNome.nomeKey || normalizarNomeItem(cfgNome.nome)) : normalizarNomeItem(nome);
+  const nomeReal = cfgNome?.nome || nome;
+
+  const dados = {
+    nome: nomeReal,
+    nomeKey,
+    rendimento,
+    unidadeRendimento,
+    ingredientes: _fichaInsumosForm,
+  };
+  if (_fichaEditId) dados.id = _fichaEditId;
+
+  try {
+    await salvarFichaTecnicaDB(dados);
+    toast('Ficha técnica salva.', 'sucesso');
+    goBack();
+    setTimeout(async () => {
+      if (historico[historico.length - 1] === 'tela-cadastro-itens') await renderizarFichasTecnicas();
+    }, 100);
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao salvar ficha técnica.', 'erro');
+  }
+}
+
+async function confirmarDeletarFicha(id, nome) {
+  if (!confirm(`Remover a ficha técnica "${nome}"?`)) return;
+  try {
+    await deletarFichaTecnicaDB(id);
+    fichasTecnicasCache = fichasTecnicasCache.filter(f => f.id !== id);
+    toast('Ficha técnica removida.', 'sucesso');
+    await renderizarFichasTecnicas();
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao remover ficha técnica.', 'erro');
   }
 }
 

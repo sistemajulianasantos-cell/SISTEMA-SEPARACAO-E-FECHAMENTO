@@ -360,6 +360,30 @@ async function deletarCategoriaDB(id) {
 }
 
 /* ════════════════════════════════════════
+   FICHAS TÉCNICAS — receitas de produção: rendimento-base + insumos, usadas
+   pra converter automaticamente a quantidade em Registrar Produção.
+════════════════════════════════════════ */
+
+async function listarFichasTecnicas() {
+  const snap = await db.collection('fichas_tecnicas').get();
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+}
+
+async function salvarFichaTecnicaDB(dados) {
+  if (dados.id) {
+    const { id, ...resto } = dados;
+    return db.collection('fichas_tecnicas').doc(id).update({ ...resto, updatedAt: TS() });
+  }
+  return db.collection('fichas_tecnicas').add({ ...dados, criadoEm: TS(), updatedAt: TS() });
+}
+
+async function deletarFichaTecnicaDB(id) {
+  return db.collection('fichas_tecnicas').doc(id).delete();
+}
+
+/* ════════════════════════════════════════
    CONFIGURAÇÕES DE ITENS (grupos, prioridade, stand-by)
 ════════════════════════════════════════ */
 
