@@ -4225,7 +4225,7 @@ function renderizarInventario() {
           ${contado ? `
           <div style="text-align:right;margin-top:6px">
             <button class="btn-secundario btn-sm" style="color:var(--vermelho)"
-              onclick="desfazerContagemInventario('${_esc(key)}','${_esc(c.nome)}','${_esc(un)}')">
+              onclick="desfazerContagemInventario(this,'${_esc(key)}','${_esc(c.nome)}','${_esc(un)}')">
               &#8617; Desfazer
             </button>
           </div>` : ''}
@@ -4660,8 +4660,7 @@ async function salvarInventarioQtd(nomeKey, nome, unidade) {
    achar uma contagem anterior, avisa antes de zerar. A própria ação de
    desfazer vira uma nova contagem no histórico (não apaga a errada — fica
    registrado que existiu e foi corrigida, igual um estorno). */
-async function desfazerContagemInventario(nomeKey, nome, unidade) {
-  const btn = document.querySelector(`#inv-card-${nomeKey} .btn-secundario`);
+async function desfazerContagemInventario(btn, nomeKey, nome, unidade) {
   if (btn) { btn.disabled = true; btn.textContent = 'Desfazendo...'; }
   try {
     const registros = await listarHistoricoContagem(500);
