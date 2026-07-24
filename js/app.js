@@ -4672,11 +4672,15 @@ async function desfazerContagemInventario(btn, nomeKey, nome, unidade) {
       : `Não encontrei uma contagem anterior de "${nome}" pra restaurar. Desfazer mesmo assim e zerar o estoque?`;
     if (!confirm(msg)) return;
 
-    const agora = new Date();
-    await salvarItemEstoque(nomeKey, { nome, unidade, qtd: valorAnterior, ultimaContagemEm: agora });
-    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd: valorAnterior, nomeKey, ultimaContagemEm: agora };
+    /* Desfazer não conta como uma contagem nova — o item precisa voltar
+       pra "A Contar" pra ser recontado de verdade, não ficar parado em
+       "Contados" com o número só corrigido. Por isso ultimaContagemEm
+       recua pro passado em vez de virar "agora". */
+    const passado = new Date(0);
+    await salvarItemEstoque(nomeKey, { nome, unidade, qtd: valorAnterior, ultimaContagemEm: passado });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd: valorAnterior, nomeKey, ultimaContagemEm: passado };
     await registrarContagemHistorico({ nomeKey, nome, unidade, qtd: valorAnterior, contadoPor: usuarioAtual?.nome || '—', tipo: 'contagem' });
-    toast(`Contagem de "${nome}" desfeita — voltou pra ${valorAnterior} ${unidade || 'un'}.`, 'sucesso');
+    toast(`Contagem de "${nome}" desfeita — voltou pra ${valorAnterior} ${unidade || 'un'} e pra aba "A Contar".`, 'sucesso');
     renderizarInventario();
   } catch (e) {
     console.error(e);
