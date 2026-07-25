@@ -2355,15 +2355,15 @@ async function concluirConferencia() {
   if (!festaAtual) return;
   const btn = document.getElementById('btn-conf-concluir');
 
-  /* Validar fotos obrigatórias por item (apenas itens que devem ser conferidos) */
+  /* Foto obrigatória por item: avisa mas não bloqueia a liberação da festa
+     (bloqueio temporariamente desativado — TODO: revisar este processo). */
   const semFoto = (festaAtual.itens || []).filter((item, i) => {
     const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
     if (cfg && cfg.conferirCoord === false) return false;
     return cfg?.exigeFoto && !fotosCache.confItens[i] && !item.fotoConferencia;
   });
   if (semFoto.length) {
-    toast(`Foto obrigatória em: ${semFoto.map(i => i.nome).join(', ')}`, 'erro');
-    return;
+    toast(`Aviso: foto pendente em: ${semFoto.map(i => i.nome).join(', ')}. Liberando mesmo assim.`, 'aviso');
   }
 
   btn.disabled    = true;
@@ -2394,18 +2394,15 @@ async function concluirConferencia() {
       return { ...item, qtdConferida, ...(fotoConferencia ? { fotoConferencia } : {}) };
     }));
 
-    /* Se algum item obrigatório continua sem foto após a tentativa, avisa e não
-       finaliza — mas as quantidades já digitadas continuam salvas nos inputs. */
+    /* Se algum item obrigatório continua sem foto após a tentativa, avisa mas
+       não bloqueia (bloqueio temporariamente desativado — TODO: revisar). */
     const aindaSemFoto = itens.filter((item) => {
       const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
       if (cfg && cfg.conferirCoord === false) return false;
       return cfg?.exigeFoto && !item.fotoConferencia;
     });
     if (aindaSemFoto.length) {
-      toast(`Falha ao enviar foto de: ${aindaSemFoto.map(i => i.nome).join(', ')}. Tente novamente.`, 'erro');
-      btn.disabled    = false;
-      btn.textContent = 'Confirmar Conferência — Liberar para Festa';
-      return;
+      toast(`Aviso: falha ao enviar foto de: ${aindaSemFoto.map(i => i.nome).join(', ')}. Liberando mesmo assim.`, 'aviso');
     }
 
     const divergencias = itens
