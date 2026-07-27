@@ -5259,6 +5259,7 @@ async function confirmarCompra() {
 async function sincronizarFestasDeContratos() {
   try {
     const contratos = await buscarContratosGestao();
+    console.log('[syncContratos] contratos lidos do gestao:', contratos === null ? 'INDISPONÍVEL (null — projeto secundário não respondeu)' : contratos.length);
     if (!contratos || !contratos.length) return;
 
     const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
@@ -5267,13 +5268,17 @@ async function sincronizarFestasDeContratos() {
       const d = new Date(c.data + 'T12:00:00');
       return !isNaN(d) && d >= hoje;
     });
+    console.log('[syncContratos] futuros e não cancelados:', futuros.length, futuros.map(c => ({ id: c.id, nome: c.nomeEvento || c.nome, data: c.data, status: c.status })));
     if (!futuros.length) return;
 
     const festasExistentes = await buscarTodasFestas();
+    console.log('[syncContratos] festas já existentes aqui:', festasExistentes.length);
 
     let criadas = 0;
     for (const c of futuros) {
-      if (_festaJaExisteParaContrato(c, festasExistentes)) continue;
+      const jaExiste = _festaJaExisteParaContrato(c, festasExistentes);
+      console.log('[syncContratos] contrato', c.id, '"' + (c.nomeEvento || c.nome) + '"', c.data, jaExiste ? '→ já tem festa, pulando' : '→ vai criar festa nova');
+      if (jaExiste) continue;
       const nomeEvento = c.nomeEvento || c.nome || 'Evento';
       await salvarFesta({
         nome:             nomeEvento,
