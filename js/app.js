@@ -5316,8 +5316,16 @@ async function confirmarCompra() {
    do controle-gestao-main que ainda não tem festa correspondente aqui.
    Nunca atualiza uma festa já existente (mesmo que o contrato mude depois),
    e nunca roda em cima de contrato cancelado. Silencioso: se o outro
-   projeto estiver indisponível, não interrompe o carregamento da tela. */
+   projeto estiver indisponível, não interrompe o carregamento da tela.
+   carregarCEO() chama esta função a cada navegação (login, voltar pra
+   lista, criar/editar/excluir festa); sem a trava abaixo, duas chamadas
+   disparadas em sequência rápida liam "festas existentes" antes de
+   qualquer uma delas gravar, e cada uma criava sua própria festa pro
+   mesmo contrato — daí cards duplicados. */
+let _syncContratosEmAndamento = false;
 async function sincronizarFestasDeContratos() {
+  if (_syncContratosEmAndamento) return;
+  _syncContratosEmAndamento = true;
   try {
     const contratos = await buscarContratosGestao();
     console.log('[syncContratos] contratos lidos do gestao:', contratos === null ? 'INDISPONÍVEL (null — projeto secundário não respondeu)' : contratos.length);
@@ -5362,6 +5370,8 @@ async function sincronizarFestasDeContratos() {
     }
   } catch (e) {
     console.error('Erro ao sincronizar festas de contratos:', e);
+  } finally {
+    _syncContratosEmAndamento = false;
   }
 }
 
