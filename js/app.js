@@ -1116,6 +1116,13 @@ async function carregarCEO() {
     categoriasCache = cats;
   } catch(e) { console.error('Erro ao carregar dados iniciais:', e); }
 
+  /* Cross-project (controle-gestao-main): cria festas a partir dos Contratos
+     e carrega elenco/escalação pra mostrar resumo de equipe nos cards. Roda
+     em paralelo, sem bloquear a tela — nunca derruba o app se o outro
+     projeto estiver indisponível (mesma disciplina da aba Equipe). */
+  sincronizarFestasDeContratos();
+  carregarCachesEquipeParaCards();
+
   unsubFestas = escutarFestas({}, festas => {
     todasFestasCache = festas;
     renderizarStatsCEO(festas);
@@ -2717,6 +2724,34 @@ function addItemCriar(preset = null) {
   document.getElementById('itens-criar-lista').appendChild(row);
 }
 
+/* Auto-criar configs de item para itens com categoria vinda do PDF (silencioso,
+   sem bloquear) — usado tanto na criação da festa quanto ao importar um PDF
+   numa festa já existente. Usa o nome sem sufixo de fornecimento (ex:
+   "CONSIGNADO") para não poluir o cadastro. */
+function _autoCriarConfigsDeItensPDF(itens) {
+  itens.filter(it => it.categoria).forEach(it => {
+    const nomeLimpo = nomeBasDisplay(it.nome);
+    const key = normalizarNomeItem(nomeLimpo);
+    if (!itemConfigsCache[key] && !itemConfigsCache[nomeBaseKey(key)]) {
+      const dados = {
+        nome:            nomeLimpo,
+        nomeKey:         key,
+        grupo:           it.categoria,
+        ordemSeparacao:  999,
+        prioridade:      '',
+        eProducao:       false,
+        exibirSeparacao: true,
+        exigeFoto:       false,
+        refrigerado:     false,
+        diasAntesEvento: 1,
+      };
+      salvarItemConfigDB(dados)
+        .then(() => { itemConfigsCache[key] = dados; })
+        .catch(() => {});
+    }
+  });
+}
+
 async function submitCriarFesta() {
   const nome    = document.getElementById('cf-nome').value.trim();
   const cliente = document.getElementById('cf-cliente').value.trim();
@@ -2765,29 +2800,7 @@ async function submitCriarFesta() {
 
     toast(`Festa "${nome}" criada com sucesso.`, 'sucesso');
 
-    /* Auto-criar configs de item para itens com categoria do PDF (silencioso, sem bloquear)
-       Usa o nome sem sufixo de fornecimento (ex: "CONSIGNADO") para não poluir o cadastro. */
-    itens.filter(it => it.categoria).forEach(it => {
-      const nomeLimpo = nomeBasDisplay(it.nome);
-      const key = normalizarNomeItem(nomeLimpo);
-      if (!itemConfigsCache[key] && !itemConfigsCache[nomeBaseKey(key)]) {
-        const dados = {
-          nome:            nomeLimpo,
-          nomeKey:         key,
-          grupo:           it.categoria,
-          ordemSeparacao:  999,
-          prioridade:      '',
-          eProducao:       false,
-          exibirSeparacao: true,
-          exigeFoto:       false,
-          refrigerado:     false,
-          diasAntesEvento: 1,
-        };
-        salvarItemConfigDB(dados)
-          .then(() => { itemConfigsCache[key] = dados; })
-          .catch(() => {});
-      }
-    });
+    _autoCriarConfigsDeItensPDF(itens);
 
     setTimeout(() => irParaPrincipal(), 1200);
 
@@ -3025,6 +3038,47 @@ function popularSelectAddItemEdicao() {
   datalist.innerHTML = disponiveis.map(c => `<option value="${_esc(c.nome)}">`).join('');
 }
 
+/* Importa itens de um PDF (Ordem de Separação) numa festa JÁ criada — só
+   preenche a lista de itens (mesmo parser usado na criação), nunca mexe em
+   nome/cliente/data/hora, que já vieram do Contrato de origem. Itens ficam
+   em _efItensExtras (mesmo staging do "+ Adicionar Item" manual) até ela
+   clicar em Salvar. */
+async function processarArquivoOREdicao(input) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  toast('Lendo PDF...', 'info');
+
+  try {
+    const linhas = await extrairLinhasPDF(file);
+    const dados  = parsearOR(linhas);
+
+    if (!dados.itens.length) {
+      toast('Nenhum item encontrado no PDF.', 'aviso');
+      return;
+    }
+
+    const jaNaFesta = new Set((festaAtual?.itens || []).concat(_efItensExtras).map(it => normalizarNomeItem(it.nome)));
+    let adicionados = 0;
+    dados.itens.forEach(it => {
+      const chave = normalizarNomeItem(it.nome);
+      if (jaNaFesta.has(chave)) return;
+      _efItensExtras.push({ ...it, _novo: true });
+      jaNaFesta.add(chave);
+      adicionados++;
+    });
+
+    renderizarEditarFesta(festaAtual);
+    const ignorados = dados.itens.length - adicionados;
+    toast(`${adicionados} item(ns) importado(s)${ignorados ? `, ${ignorados} já estava(m) na lista` : ''}. Confira as quantidades e clique em Salvar.`, 'sucesso');
+
+  } catch (e) {
+    console.error('Erro ao importar PDF:', e);
+    toast('Erro ao ler o PDF. Verifique o arquivo e tente novamente.', 'erro');
+  }
+}
+
 function adicionarItemEdicaoFesta() {
   const input = document.getElementById('ef-add-input');
   const cfg   = _resolverItemCatalogoPorNome(input?.value);
@@ -3104,6 +3158,7 @@ async function salvarEdicaoFesta() {
     /* Liberar separador */
     try { await atualizarFesta(festaEditandoId, { editandoAgora: null }); } catch(_) {}
 
+    _autoCriarConfigsDeItensPDF(itensAtuais);
     _efItensExtras = [];
 
     const msg = alteracoes.length
@@ -3572,6 +3627,8 @@ function htmlCardFesta(f, contexto) {
     }
   }
 
+  const resumoEquipe = _resumoEquipeFesta(f);
+
   return `
     <div class="card-festa st-${f.status}" onclick="${onclick}">
       <div class="card-festa-body">
@@ -3584,9 +3641,11 @@ function htmlCardFesta(f, contexto) {
           <div class="card-festa-topo">
             <div class="card-festa-nome">${_escHtml(f.nome)}</div>
             <span class="badge badge-${f.status}">${_escHtml(STATUS_LABELS[f.status] || f.status)}</span>
+            ${f.origemAuto ? `<span class="badge-ordem" title="Criada automaticamente a partir de um Contrato">🔗 Contrato</span>` : ''}
           </div>
           <div class="card-festa-meta">${_escHtml(f.cliente)}${f.hora ? ' — ' + _escHtml(f.hora) : ''}</div>
           ${f.local ? `<div class="card-festa-meta">${_escHtml(f.local)}</div>` : ''}
+          ${resumoEquipe ? `<div class="card-festa-meta">👥 ${_escHtml(resumoEquipe)}</div>` : ''}
           <div class="card-festa-rodape">
             <span>${(f.itens || []).length} itens</span>
             ${f.colaborador ? `<span>${_escHtml(f.colaborador)}</span>` : ''}
@@ -5186,6 +5245,84 @@ async function confirmarCompra() {
 }
 
 /* ══════════════════════════════════════════════════
+   SINCRONIZAÇÃO DE FESTAS A PARTIR DE CONTRATOS
+   (controle-gestao-main) — cross-project, só leitura de
+   contratos; grava festas normalmente aqui (projeto local).
+══════════════════════════════════════════════════ */
+
+/* Cria uma festa (sem itens — a lista é anexada depois, manualmente ou via
+   "Importar itens (PDF)" na tela de editar festa) para cada contrato futuro
+   do controle-gestao-main que ainda não tem festa correspondente aqui.
+   Nunca atualiza uma festa já existente (mesmo que o contrato mude depois),
+   e nunca roda em cima de contrato cancelado. Silencioso: se o outro
+   projeto estiver indisponível, não interrompe o carregamento da tela. */
+async function sincronizarFestasDeContratos() {
+  try {
+    const contratos = await buscarContratosGestao();
+    if (!contratos || !contratos.length) return;
+
+    const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    const futuros = contratos.filter(c => {
+      if (!c.data || c.status === 'cancelado') return false;
+      const d = new Date(c.data + 'T12:00:00');
+      return !isNaN(d) && d >= hoje;
+    });
+    if (!futuros.length) return;
+
+    const festasExistentes = await buscarTodasFestas();
+
+    let criadas = 0;
+    for (const c of futuros) {
+      if (_festaJaExisteParaContrato(c, festasExistentes)) continue;
+      const nomeEvento = c.nomeEvento || c.nome || 'Evento';
+      await salvarFesta({
+        nome:             nomeEvento,
+        cliente:          c.nome || '',
+        data:             new Date(c.data + 'T12:00:00'),
+        hora:             c.hrInicio || c.hrIni || '',
+        local:            c.local || '',
+        itens:            [],
+        criadoPor:        'Sincronização automática (Contratos)',
+        contratoOrigemId: c.id,
+        origemAuto:       true,
+      });
+      /* evita duplicar dentro do mesmo laço, antes do próximo .get() */
+      festasExistentes.push({ nome: nomeEvento, data: c.data, contratoOrigemId: c.id });
+      criadas++;
+    }
+
+    if (criadas > 0) {
+      toast(`${criadas} festa${criadas > 1 ? 's' : ''} criada${criadas > 1 ? 's' : ''} automaticamente a partir de Contratos.`, 'sucesso');
+    }
+  } catch (e) {
+    console.error('Erro ao sincronizar festas de contratos:', e);
+  }
+}
+
+/* Considera "já existe" por vínculo explícito (contratoOrigemId) OU por
+   nome+data batendo com uma festa já cadastrada manualmente antes desta
+   sincronização existir — evita duplicar histórico antigo. */
+function _festaJaExisteParaContrato(contrato, festasExistentes) {
+  if (festasExistentes.some(f => f.contratoOrigemId === contrato.id)) return true;
+  const chaveContrato = _chaveMatchEvento(contrato.nomeEvento || contrato.nome, contrato.data);
+  return festasExistentes.some(f => _chaveMatchEvento(f.nome, f.data) === chaveContrato);
+}
+
+/* Carrega elenco/escalação do controle-gestao-main pra mostrar um resumo
+   de equipe nos cards de festa (lista/agenda), sem precisar abrir a aba
+   Equipe separada. Mesmas caches que a aba Equipe usa. */
+async function carregarCachesEquipeParaCards() {
+  try {
+    const [roster, escalas] = await Promise.all([buscarEquipeGestao(), buscarEscalasGestao()]);
+    _equipeRosterCache  = roster;
+    _equipeEscalasCache = escalas;
+    if (!document.getElementById('tela-lista-festas')?.classList.contains('hidden')) atualizarVisaoCEO();
+  } catch (e) {
+    console.error('Erro ao carregar equipe para os cards:', e);
+  }
+}
+
+/* ══════════════════════════════════════════════════
    EQUIPE — escalação lida ao vivo do controle-gestao-main
    (dbGestao é read-only: nada aqui deve gravar no projeto
    secundário, só no campo equipeVinculoManual da própria festa)
@@ -5261,6 +5398,22 @@ function _matchEscalasParaFesta(festa) {
   }
   const chaveFesta = _chaveMatchEvento(festa.nome, festa.data);
   return _equipeEscalasCache.filter(e => _chaveMatchEvento(e.nomeEvento, e.dataEvento) === chaveFesta);
+}
+
+/* Resumo curto de equipe pro card da lista de festas (ex: "2 Bartender, 1 Head
+   Bartender") — reaproveita o mesmo match da aba Equipe. String vazia quando
+   não há vínculo ou a leitura cross-project ainda não carregou. */
+function _resumoEquipeFesta(festa) {
+  const escalas = _matchEscalasParaFesta(festa);
+  if (!escalas || !escalas.length) return '';
+  const roster  = _equipeRosterCache || [];
+  const porCargo = {};
+  escalas.forEach(e => {
+    const pessoa = roster.find(p => p.id === e.colaboradorId);
+    const cargo  = e.cargo || pessoa?.cargo || 'Equipe';
+    porCargo[cargo] = (porCargo[cargo] || 0) + 1;
+  });
+  return Object.entries(porCargo).map(([cargo, n]) => `${n} ${cargo}`).join(', ');
 }
 
 function htmlCardEquipeFesta(festa) {
