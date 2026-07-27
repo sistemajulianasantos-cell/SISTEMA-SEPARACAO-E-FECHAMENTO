@@ -2844,6 +2844,20 @@ function renderizarDetalhe(festa) {
        </div>`
     : '';
 
+  const importarItensHTML = (festa.status === 'agendada' || festa.status === 'separando')
+    ? `<div class="importar-or-box" style="margin-bottom:16px">
+        <input type="file" id="input-importar-or-detalhe" accept=".pdf" style="display:none"
+          onchange="processarArquivoORDetalhe(this, '${festa.id}')">
+        <div>
+          <div class="importar-or-titulo">Importar Ordem de Separacao</div>
+          <div class="importar-or-desc">Selecione o PDF gerado pelo sistema para preencher a lista de itens desta festa. Não altera nome, cliente, data ou local.</div>
+        </div>
+        <button class="btn-primario btn-sm" onclick="document.getElementById('input-importar-or-detalhe').click()">
+          Selecionar PDF
+        </button>
+       </div>`
+    : '';
+
   const excluirHTML = `
     <div style="padding-top:12px;border-top:var(--borda);margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <button class="btn-perigo" onclick="confirmarExcluirFesta('${festa.id}','${_esc(festa.nome)}','${festa.status}')">
@@ -2889,6 +2903,7 @@ function renderizarDetalhe(festa) {
     ${excluirHTML}
     ${avancarHTML}
     ${editarHTML}
+    ${importarItensHTML}
 
     <div class="detalhe-card">
       <h3>Itens (${itens.length})</h3>
@@ -3072,6 +3087,52 @@ async function processarArquivoOREdicao(input) {
     renderizarEditarFesta(festaAtual);
     const ignorados = dados.itens.length - adicionados;
     toast(`${adicionados} item(ns) importado(s)${ignorados ? `, ${ignorados} já estava(m) na lista` : ''}. Confira as quantidades e clique em Salvar.`, 'sucesso');
+
+  } catch (e) {
+    console.error('Erro ao importar PDF:', e);
+    toast('Erro ao ler o PDF. Verifique o arquivo e tente novamente.', 'erro');
+  }
+}
+
+/* Importa itens de um PDF (Ordem de Separação) direto na tela de Detalhe da
+   Festa (ex: festas sincronizadas de Contratos, que chegam sem itens) — grava
+   direto no Firestore, sem passar pela tela de Editar. Nunca mexe em
+   nome/cliente/data/hora. */
+async function processarArquivoORDetalhe(input, festaId) {
+  const file = input.files[0];
+  if (!file) return;
+  input.value = '';
+
+  toast('Lendo PDF...', 'info');
+
+  try {
+    const linhas = await extrairLinhasPDF(file);
+    const dados  = parsearOR(linhas);
+
+    if (!dados.itens.length) {
+      toast('Nenhum item encontrado no PDF.', 'aviso');
+      return;
+    }
+
+    const itensAtuais = festaAtual?.itens || [];
+    const jaNaFesta    = new Set(itensAtuais.map(it => normalizarNomeItem(it.nome)));
+    const novos = dados.itens.filter(it => {
+      const chave = normalizarNomeItem(it.nome);
+      if (jaNaFesta.has(chave)) return false;
+      jaNaFesta.add(chave);
+      return true;
+    });
+
+    if (!novos.length) {
+      toast('Todos os itens do PDF já estão nesta festa.', 'aviso');
+      return;
+    }
+
+    const itensFinal = itensAtuais.concat(novos);
+    await atualizarFesta(festaId, { itens: itensFinal });
+    _autoCriarConfigsDeItensPDF(itensFinal);
+
+    toast(`${novos.length} item(ns) importado(s) com sucesso.`, 'sucesso');
 
   } catch (e) {
     console.error('Erro ao importar PDF:', e);
