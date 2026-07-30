@@ -27,7 +27,7 @@
     form-action 'self';
   ">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=25">
+  <link rel="stylesheet" href="css/styles.css?v=27">
 </head>
 <body>
 
@@ -336,6 +336,16 @@
         <div class="form-group">
           <label>Local / Endereço</label>
           <input type="text" id="cf-local" placeholder="Endereço do evento" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Tipo de Evento</label>
+            <input type="text" id="cf-tipo-evento" placeholder="Ex: Casamento" list="tipo-evento-datalist" />
+          </div>
+          <div class="form-group">
+            <label>Nº de Convidados</label>
+            <input type="number" id="cf-convidados" min="0" placeholder="Ex: 150" />
+          </div>
         </div>
         <div class="form-group">
           <label>Colaborador Responsável</label>
@@ -705,6 +715,16 @@
           <div class="form-group">
             <label>Horario</label>
             <input type="time" id="ef-hora" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Tipo de Evento</label>
+            <input type="text" id="ef-tipo-evento" placeholder="Ex: Casamento" list="tipo-evento-datalist" />
+          </div>
+          <div class="form-group">
+            <label>Nº de Convidados</label>
+            <input type="number" id="ef-convidados" min="0" placeholder="Ex: 150" />
           </div>
         </div>
       </div>
@@ -1145,6 +1165,7 @@
         <button class="tab ativo" onclick="lcTrocarSecao('evento',this)">&#128203; Por Evento</button>
         <button class="tab"       onclick="lcTrocarSecao('alertas',this)">&#128276; Alertas <span id="badge-alertas-tab" class="sep-badge"></span></button>
         <button class="tab"       onclick="lcTrocarSecao('pedidos',this)">&#128230; Pedidos <span id="badge-andamento-tab" class="sep-badge sep-badge-ok"></span></button>
+        <button class="tab"       onclick="lcTrocarSecao('simular',this)">&#129518; Simular Compra</button>
       </div>
       <button class="btn-secundario btn-sm" onclick="lcAtualizar()">&#8635; Atualizar</button>
     </div>
@@ -1247,6 +1268,24 @@
         </div>
         <div id="compras-andamento"></div>
         <div id="compras-historico" class="hidden"></div>
+      </div>
+    </div>
+
+    <!-- ── SEÇÃO: SIMULAR COMPRA ── -->
+    <div id="lc-secao-simular" class="hidden">
+      <div class="container" style="padding-top:16px">
+        <p class="desc-tela">Estoque atual + o que está sendo pedido pelas festas ativas. Digite quanto pretende comprar de cada item para ver a quantidade final — é só uma simulação, nada aqui é salvo.</p>
+        <div class="barra-busca-wrap">
+          <input type="search" class="barra-busca" id="lc-sim-busca" placeholder="&#128269; Buscar item..." oninput="lcRenderizarSimulacao()" />
+        </div>
+        <div class="est-filtros-row">
+          <span class="est-filtros-label">Categoria</span>
+          <select id="lc-sim-filtro-cat" class="est-filtros-select" onchange="lcRenderizarSimulacao()">
+            <option value="">Todas as categorias</option>
+          </select>
+          <button class="btn-secundario btn-sm" style="margin-left:auto" onclick="lcSimLimpar()">Limpar simulação</button>
+        </div>
+        <div id="lc-simular-conteudo"><div class="estado-vazio"><p>Carregando...</p></div></div>
       </div>
     </div>
 
@@ -1382,6 +1421,17 @@
     </div>
   </div>
 
+  <!-- Datalist compartilhada: sugestões de Tipo de Evento -->
+  <datalist id="tipo-evento-datalist">
+    <option value="Casamento">
+    <option value="Aniversário">
+    <option value="Corporativo">
+    <option value="Confraternização">
+    <option value="Formatura">
+    <option value="Noivado">
+    <option value="Almoço">
+  </datalist>
+
   <!-- TOAST -->
   <div id="toast" class="toast hidden"></div>
 
@@ -1405,8 +1455,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=3"></script>
-  <script src="js/firestore.js?v=40"></script>
-  <script src="js/app.js?v=64"></script>
+  <script src="js/firestore.js?v=41"></script>
+  <script src="js/app.js?v=68"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

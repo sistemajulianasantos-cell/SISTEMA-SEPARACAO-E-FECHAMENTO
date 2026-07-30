@@ -2786,6 +2786,8 @@ async function submitCriarFesta() {
   if (!itens.length) return toast('Adicione pelo menos um item.', 'erro');
 
   try {
+    const convidadosVal = parseFloat(document.getElementById('cf-convidados').value);
+
     await salvarFesta({
       nome,
       cliente,
@@ -2794,6 +2796,8 @@ async function submitCriarFesta() {
       local:       document.getElementById('cf-local').value.trim(),
       colaborador: document.getElementById('cf-colaborador').value,
       obs:         document.getElementById('cf-obs').value.trim(),
+      tipoEvento:  document.getElementById('cf-tipo-evento').value.trim(),
+      convidados:  isNaN(convidadosVal) ? null : convidadosVal,
       itens,
       criadoPor:   usuarioAtual.nome,
     });
@@ -2839,7 +2843,7 @@ function renderizarDetalhe(festa) {
 
   const editarHTML = (festa.status === 'agendada' || festa.status === 'separando')
     ? `<div class="detalhe-acoes" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-        <button class="btn-secundario" onclick="abrirEditarFesta('${festa.id}')">Editar Data / Quantidades</button>
+        <button class="btn-secundario" onclick="abrirEditarFesta('${festa.id}')">Editar Detalhes / Quantidades</button>
         <button class="btn-secundario" onclick="ceoSepararFesta('${festa.id}')">Separar esta Festa</button>
        </div>`
     : '';
@@ -3014,6 +3018,8 @@ function renderizarEditarFesta(festa) {
     }
   }
   document.getElementById('ef-hora').value = festa.hora || '';
+  document.getElementById('ef-tipo-evento').value = festa.tipoEvento || '';
+  document.getElementById('ef-convidados').value  = festa.convidados != null ? festa.convidados : '';
 
   /* Preencher quantidades por item (itens já na festa + itens adicionados nesta sessão) */
   const itens     = festa.itens || [];
@@ -3175,8 +3181,11 @@ function removerItemExtraEdicao(idx) {
 async function salvarEdicaoFesta() {
   if (!festaAtual || !festaEditandoId) return;
 
-  const novaDataStr = document.getElementById('ef-data').value;
-  const novaHora    = document.getElementById('ef-hora').value;
+  const novaDataStr   = document.getElementById('ef-data').value;
+  const novaHora      = document.getElementById('ef-hora').value;
+  const novoTipo      = document.getElementById('ef-tipo-evento').value.trim();
+  const novosConv     = parseFloat(document.getElementById('ef-convidados').value);
+  const novosConvidados = isNaN(novosConv) ? null : novosConv;
 
   if (!novaDataStr) return toast('Informe a data do evento.', 'erro');
 
@@ -3207,11 +3216,17 @@ async function salvarEdicaoFesta() {
   if ((festaAtual.hora || '') !== novaHora) {
     alteracoes.push({ campo: 'Horario', de: festaAtual.hora || '—', para: novaHora });
   }
+  if ((festaAtual.tipoEvento || '') !== novoTipo) {
+    alteracoes.push({ campo: 'Tipo de Evento', de: festaAtual.tipoEvento || '—', para: novoTipo || '—' });
+  }
+  if ((festaAtual.convidados ?? null) !== novosConvidados) {
+    alteracoes.push({ campo: 'Convidados', de: festaAtual.convidados ?? '—', para: novosConvidados ?? '—' });
+  }
 
   try {
     await editarFestaDados(
       festaEditandoId,
-      { data: novaData, hora: novaHora, itens: itensAtuais },
+      { data: novaData, hora: novaHora, tipoEvento: novoTipo, convidados: novosConvidados, itens: itensAtuais },
       alteracoes,
       usuarioAtual.nome
     );
@@ -5314,6 +5329,9 @@ async function confirmarCompra() {
 /* Cria uma festa (sem itens — a lista é anexada depois, manualmente ou via
    "Importar itens (PDF)" na tela de editar festa) para cada contrato futuro
    do controle-gestao-main que ainda não tem festa correspondente aqui.
+   Também traz tipo de evento e nº de convidados do contrato (c.tipo →
+   tipoEvento, c.convidados → convidados) — a mesma informação que aparece
+   depois na tabela Analítico de Compras & Lista.
    Nunca atualiza uma festa já existente (mesmo que o contrato mude depois),
    e nunca roda em cima de contrato cancelado. Silencioso: se o outro
    projeto estiver indisponível, não interrompe o carregamento da tela.
@@ -5348,13 +5366,16 @@ async function sincronizarFestasDeContratos() {
       const jaExiste = _festaJaExisteParaContrato(c, festasExistentes);
       console.log('[syncContratos] contrato', c.id, '"' + (c.nomeEvento || c.nome) + '"', c.data, jaExiste ? '→ já tem festa, pulando' : '→ vai criar festa nova');
       if (jaExiste) continue;
-      const nomeEvento = c.nomeEvento || c.nome || 'Evento';
+      const nomeEvento    = c.nomeEvento || c.nome || 'Evento';
+      const convidadosNum = parseInt(c.convidados, 10);
       await salvarFesta({
         nome:             nomeEvento,
         cliente:          c.nome || '',
         data:             new Date(c.data + 'T12:00:00'),
         hora:             c.hrInicio || c.hrIni || '',
         local:            c.local || '',
+        tipoEvento:       c.tipo || '',
+        convidados:       isNaN(convidadosNum) ? null : convidadosNum,
         itens:            [],
         criadoPor:        'Sincronização automática (Contratos)',
         contratoOrigemId: c.id,
@@ -6872,7 +6893,9 @@ let _lcPeriodo      = 'semana';   /* 'semana' | '15dias' | 'mes' | 'tudo' | 'cus
 let _lcAba          = 'sintetico';
 let _lcFornecimento = 'todos';    /* 'todos' | 'romero' | 'consignado' | 'cliente' */
 
-let _lcSecaoAtual = 'evento'; /* 'evento' | 'alertas' | 'pedidos' */
+let _lcSecaoAtual = 'evento'; /* 'evento' | 'alertas' | 'pedidos' | 'simular' */
+
+let _lcSimQtds = {}; /* nomeKey -> qtd digitada na Simulação de Compra (só na sessão, nunca salvo) */
 
 async function abrirListaCompras(secao) {
   historico.push('tela-lista-compras');
@@ -6880,25 +6903,26 @@ async function abrirListaCompras(secao) {
 
   const secaoAlvo = secao || 'evento';
 
-  /* Popular dropdown de categorias (só para seção evento) */
-  const sel = document.getElementById('lc-filtro-cat');
-  if (sel) {
+  /* Popular dropdowns de categoria (evento + simular) */
+  const cats = categoriasCache.length ? categoriasCache : await listarCategorias();
+  ['lc-filtro-cat', 'lc-sim-filtro-cat'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
     sel.innerHTML = '<option value="">Todas as categorias</option>';
-    const cats = categoriasCache.length ? categoriasCache : await listarCategorias();
     cats.filter(c => c.exibirEstoque !== false).forEach(c => {
       const opt = document.createElement('option');
       opt.value = c.nome;
       opt.textContent = c.nome;
       sel.appendChild(opt);
     });
-  }
+  });
 
   /* Ativar seção correta */
   document.querySelectorAll('.lc-secao-tabs .tab').forEach(b => b.classList.remove('ativo'));
-  const tabIdx = { evento: 0, alertas: 1, pedidos: 2 }[secaoAlvo] ?? 0;
+  const tabIdx = { evento: 0, alertas: 1, pedidos: 2, simular: 3 }[secaoAlvo] ?? 0;
   const tabs = document.querySelectorAll('.lc-secao-tabs .tab');
   if (tabs[tabIdx]) tabs[tabIdx].classList.add('ativo');
-  ['evento','alertas','pedidos'].forEach(s => {
+  ['evento','alertas','pedidos','simular'].forEach(s => {
     const el = document.getElementById(`lc-secao-${s}`);
     if (el) el.classList.toggle('hidden', s !== secaoAlvo);
   });
@@ -6911,6 +6935,8 @@ async function abrirListaCompras(secao) {
     document.querySelectorAll('#lc-forn-tabs .tab').forEach((b, i) => b.classList.toggle('ativo', i === 0));
     lcSetPeriodo('semana', document.querySelector('#lc-periodo-tabs .tab[data-lc-periodo="semana"]'));
     await lcRenderizar();
+  } else if (secaoAlvo === 'simular') {
+    await lcAbrirSimulacao();
   } else {
     await recarregarCompras();
     if (secaoAlvo === 'pedidos') {
@@ -6923,6 +6949,8 @@ async function abrirListaCompras(secao) {
 function lcAtualizar() {
   if (_lcSecaoAtual === 'evento') {
     lcRenderizar();
+  } else if (_lcSecaoAtual === 'simular') {
+    lcAbrirSimulacao();
   } else {
     recarregarCompras();
   }
@@ -6932,12 +6960,14 @@ function lcTrocarSecao(secao, btn) {
   _lcSecaoAtual = secao;
   document.querySelectorAll('.lc-secao-tabs .tab').forEach(b => b.classList.remove('ativo'));
   if (btn) btn.classList.add('ativo');
-  ['evento','alertas','pedidos'].forEach(s => {
+  ['evento','alertas','pedidos','simular'].forEach(s => {
     const el = document.getElementById(`lc-secao-${s}`);
     if (el) el.classList.toggle('hidden', s !== secao);
   });
   if (secao === 'evento') {
     lcRenderizar();
+  } else if (secao === 'simular') {
+    lcAbrirSimulacao();
   } else {
     recarregarCompras();
     if (secao === 'pedidos') {
@@ -6972,23 +7002,26 @@ function lcSetFornecimento(forn, btn) {
   lcRenderizarConteudo();
 }
 
+async function _lcCarregarBase() {
+  const [estoqueMap, festas, cfgs, cats] = await Promise.all([
+    buscarEstoque(),
+    todasFestasCache.length ? Promise.resolve(todasFestasCache) : buscarTodasFestas(),
+    listarItemConfigs(),
+    listarCategorias(),
+  ]);
+  estoqueCache     = estoqueMap;
+  todasFestasCache = festas;
+  itemConfigsCache = {};
+  cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+  categoriasCache  = cats;
+}
+
 async function lcRenderizar() {
   const el = document.getElementById('lc-conteudo');
   if (el) el.innerHTML = '<div class="estado-vazio"><p>Calculando...</p></div>';
 
   try {
-    const [estoqueMap, festas, cfgs, cats] = await Promise.all([
-      buscarEstoque(),
-      todasFestasCache.length ? Promise.resolve(todasFestasCache) : buscarTodasFestas(),
-      listarItemConfigs(),
-      listarCategorias(),
-    ]);
-    estoqueCache     = estoqueMap;
-    todasFestasCache = festas;
-    itemConfigsCache = {};
-    cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
-    categoriasCache  = cats;
-
+    await _lcCarregarBase();
     lcRenderizarConteudo();
   } catch(e) {
     console.error(e);
@@ -7033,15 +7066,11 @@ function _lcFiltrarFestas() {
   });
 }
 
-function lcRenderizarConteudo() {
-  const el = document.getElementById('lc-conteudo');
-  if (!el) return;
-
-  const festas   = _lcFiltrarFestas();
-  const busca    = (document.getElementById('lc-busca')?.value || '').toLowerCase().trim();
-  const catFiltro = document.getElementById('lc-filtro-cat')?.value  || '';
-  const statusFiltro = document.getElementById('lc-filtro-status')?.value || 'todos';
-
+/* Agrega os itens de uma lista de festas com estoque calculado (usado em
+   "Por Evento" e em "Simular Compra" — cada um passa seu próprio recorte
+   de festas). "A Comprar" considera apenas qtd ROMERO+OUTRO (itens que
+   precisamos comprar). Consignado e Cliente não precisam de compra. */
+function _lcConstruirItens(festas) {
   /* Índice estoque por chave base — agrega variantes (ex: "aperol" + "aperol_consignado" → "aperol") */
   const estBaseIdx = {};
   Object.values(estoqueCache).forEach(e => {
@@ -7056,7 +7085,7 @@ function lcRenderizarConteudo() {
     return Object.values(itemConfigsCache).find(c => nomeBaseKey(c.nomeKey) === baseKey) || null;
   }
 
-  /* Agregar todos os itens das festas filtradas, rastreando fornecimento por item */
+  /* Agregar todos os itens das festas informadas, rastreando fornecimento por item */
   const mapa = {};
   festas.forEach(festa => {
     (festa.itens || []).forEach(item => {
@@ -7081,24 +7110,35 @@ function lcRenderizarConteudo() {
       else if (forn === 'romero')     mapa[key].qtdRomero     += qtd;
       else                            mapa[key].qtdOutro       += qtd;
       mapa[key].festas.push({
-        festaId:   festa.id,
-        festaNome: festa.nome,
-        festaData: festa.data,
-        festaStatus: festa.status,
+        festaId:         festa.id,
+        festaNome:       festa.nome,
+        festaData:       festa.data,
+        festaStatus:     festa.status,
+        festaTipoEvento: festa.tipoEvento || '',
+        festaConvidados: festa.convidados ?? null,
         qtd, forn,
       });
     });
   });
 
-  /* Base de itens com estoque calculado.
-     "A Comprar" considera apenas qtd ROMERO (itens que precisamos comprar).
-     Consignado e Cliente não precisam de compra. */
-  let todosItens = Object.values(mapa).map(it => {
+  return Object.values(mapa).map(it => {
     const estoque  = estBaseIdx[it.nomeKey] ?? 0;
     const qtdComprar = it.qtdRomero + it.qtdOutro; /* só o que precisamos comprar */
     const aComprar = Math.max(0, qtdComprar - estoque);
     return { ...it, estoque, qtdComprar, aComprar };
   });
+}
+
+function lcRenderizarConteudo() {
+  const el = document.getElementById('lc-conteudo');
+  if (!el) return;
+
+  const festas   = _lcFiltrarFestas();
+  const busca    = (document.getElementById('lc-busca')?.value || '').toLowerCase().trim();
+  const catFiltro = document.getElementById('lc-filtro-cat')?.value  || '';
+  const statusFiltro = document.getElementById('lc-filtro-status')?.value || 'todos';
+
+  let todosItens = _lcConstruirItens(festas);
 
   /* Filtro de fornecimento */
   if (_lcFornecimento !== 'todos') {
@@ -7171,6 +7211,134 @@ function lcRenderizarConteudo() {
   } else {
     el.innerHTML = gruposOrdenados.map(g => lcHtmlGrupoAnalitico(g)).join('');
   }
+}
+
+/* ══════════════════════════════════════════════════
+   SIMULAR COMPRA — estoque + o que está sendo pedido pelas
+   festas ativas, com um campo de "quanto pretendo comprar" que
+   calcula ao vivo a quantidade final. Não grava nada no Firestore.
+══════════════════════════════════════════════════ */
+
+async function lcAbrirSimulacao() {
+  const el = document.getElementById('lc-simular-conteudo');
+  if (el) el.innerHTML = '<div class="estado-vazio"><p>Calculando...</p></div>';
+
+  try {
+    await _lcCarregarBase();
+    lcRenderizarSimulacao();
+  } catch(e) {
+    console.error(e);
+    const el2 = document.getElementById('lc-simular-conteudo');
+    if (el2) el2.innerHTML = estadoVazio('Erro ao carregar. Tente novamente.');
+  }
+}
+
+function lcRenderizarSimulacao() {
+  const el = document.getElementById('lc-simular-conteudo');
+  if (!el) return;
+
+  /* Todas as festas ativas (não concluídas) — a simulação olha para toda a
+     necessidade futura, não só o recorte de período usado em "Por Evento". */
+  const festas    = todasFestasCache.filter(f => f.status !== 'concluida');
+  const busca     = (document.getElementById('lc-sim-busca')?.value || '').toLowerCase().trim();
+  const catFiltro = document.getElementById('lc-sim-filtro-cat')?.value || '';
+
+  let itens = _lcConstruirItens(festas);
+  if (busca)     itens = itens.filter(it => it.nome.toLowerCase().includes(busca));
+  if (catFiltro) itens = itens.filter(it => it.cfg?.grupo === catFiltro);
+
+  if (!itens.length) {
+    let msg = 'Nenhuma festa ativa no momento — nada para simular.';
+    if (busca || catFiltro) msg = 'Nenhum item encontrado com esse filtro.';
+    el.innerHTML = estadoVazio(msg);
+    return;
+  }
+
+  const catOrdem = {};
+  categoriasCache.forEach((c, i) => { catOrdem[c.nome] = c.ordem != null ? c.ordem : i + 1; });
+
+  const grupos = {};
+  itens.forEach(it => {
+    const g = it.cfg?.grupo || 'Sem Categoria';
+    if (!grupos[g]) grupos[g] = { ordem: catOrdem[g] ?? 999, itens: [] };
+    grupos[g].itens.push(it);
+  });
+
+  const gruposOrdenados = Object.entries(grupos)
+    .sort(([,a],[,b]) => a.ordem - b.ordem)
+    .map(([nome, g]) => ({ nome, ...g }));
+
+  el.innerHTML = gruposOrdenados.map(g => lcHtmlGrupoSimulacao(g)).join('');
+}
+
+function lcHtmlGrupoSimulacao(g) {
+  const grupoKey = g.nome.replace(/[^a-z0-9]/gi,'_').toLowerCase();
+  const rows = g.itens
+    .slice()
+    .sort((a,b) => {
+      const oA = a.cfg?.ordemSeparacao ?? 999;
+      const oB = b.cfg?.ordemSeparacao ?? 999;
+      return oA - oB || a.nome.localeCompare(b.nome, 'pt-BR');
+    })
+    .map(it => {
+      const compraAtual = _lcSimQtds[it.nomeKey] || 0;
+      const ficaria      = it.estoque + compraAtual;
+      const badgeR = it.cfg?.refrigerado ? '<span class="badge-refrigerado">&#10052;</span>' : '';
+
+      return `
+        <div class="lc-row lc-sim-row">
+          <div class="lc-row-nome">${_escHtml(nomeBasDisplay(it.nome))} ${badgeR}</div>
+          <div class="lc-row-num">${it.estoque} <span class="lc-row-un">${it.unidade}</span></div>
+          <div class="lc-row-num">${it.qtdComprar} <span class="lc-row-un">${it.unidade}</span></div>
+          <div class="lc-row-comprar">
+            <input type="number" class="lc-sim-input" min="0" step="0.1" placeholder="0"
+              value="${compraAtual || ''}"
+              oninput="lcSimAtualizarQtd('${_esc(it.nomeKey)}', this.value, ${it.estoque}, ${it.qtdComprar}, '${_esc(it.unidade)}')" />
+          </div>
+          <div class="lc-row-num lc-sim-ficaria ${ficaria >= it.qtdComprar ? 'ok-text' : 'deficit-text'}" id="lc-sim-ficaria-${it.nomeKey}">
+            ${ficaria} <span class="lc-row-un">${it.unidade}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+  return `
+    <div class="lc-grupo">
+      <div class="lc-grupo-header" onclick="toggleGrupo('lc_${grupoKey}')">
+        <span class="producao-grupo-seta">&#9660;</span>
+        <span class="lc-grupo-nome">${_escHtml(g.nome)}</span>
+      </div>
+      <div class="lc-grupo-corpo" id="grupo-lc_${grupoKey}">
+        <div class="lc-table-header">
+          <span class="lc-row-nome">Item</span>
+          <span class="lc-row-num">Estoque</span>
+          <span class="lc-row-num">Pedindo</span>
+          <span class="lc-row-comprar">Compra</span>
+          <span class="lc-row-num">Ficaria</span>
+        </div>
+        ${rows}
+      </div>
+    </div>
+  `;
+}
+
+function lcSimAtualizarQtd(nomeKey, valor, estoqueAtual, necessario, unidade) {
+  const n = parseFloat(valor);
+  if (isNaN(n) || n <= 0) delete _lcSimQtds[nomeKey];
+  else _lcSimQtds[nomeKey] = n;
+
+  const compra  = _lcSimQtds[nomeKey] || 0;
+  const ficaria = estoqueAtual + compra;
+  const el = document.getElementById(`lc-sim-ficaria-${nomeKey}`);
+  if (el) {
+    el.className   = `lc-row-num lc-sim-ficaria ${ficaria >= necessario ? 'ok-text' : 'deficit-text'}`;
+    el.innerHTML   = `${ficaria} <span class="lc-row-un">${unidade}</span>`;
+  }
+}
+
+function lcSimLimpar() {
+  _lcSimQtds = {};
+  lcRenderizarSimulacao();
 }
 
 function lcHtmlGrupoSintetico(g) {
@@ -7250,7 +7418,12 @@ function lcHtmlGrupoSintetico(g) {
   `;
 }
 
-const MESES_ABR_LC = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const LC_FORN_LABEL = {
+  romero:     { label: 'Romero',     cls: 'lc-forn-romero' },
+  consignado: { label: 'Consignado', cls: 'lc-forn-cons'   },
+  cliente:    { label: 'Cliente',    cls: 'lc-forn-cli'    },
+  outro:      { label: 'Outro',      cls: 'lc-forn-outro'  },
+};
 
 function lcHtmlGrupoAnalitico(g) {
   const grupoKey = g.nome.replace(/[^a-z0-9]/gi,'_').toLowerCase();
@@ -7262,19 +7435,30 @@ function lcHtmlGrupoAnalitico(g) {
       const diffCls = diff < 0 ? 'deficit-text' : 'ok-text';
       const badgeR  = it.cfg?.refrigerado ? '<span class="badge-refrigerado">&#10052;</span>' : '';
 
-      const subRows = it.festas.map(f => {
-        let dataTxt = '';
-        if (f.festaData) {
-          const d = toDate(f.festaData);
-          if (!isNaN(d)) dataTxt = ` — ${String(d.getDate()).padStart(2,'0')} ${MESES_ABR_LC[d.getMonth()]}`;
-        }
-        return `
-          <div class="analitico-sub-row lc-sub-row">
-            <span class="analitico-sub-nome">${_escHtml(f.festaNome)}${dataTxt}</span>
-            <span class="analitico-sub-qty">${f.qtd} ${it.unidade}</span>
-          </div>
-        `;
-      }).join('');
+      const subRows = it.festas
+        .slice()
+        .sort((a, b) => {
+          const dA = toDate(a.festaData), dB = toDate(b.festaData);
+          return (isNaN(dA) ? 0 : dA) - (isNaN(dB) ? 0 : dB);
+        })
+        .map(f => {
+          let dataTxt = '—';
+          if (f.festaData) {
+            const d = toDate(f.festaData);
+            if (!isNaN(d)) dataTxt = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+          }
+          const fornInfo = LC_FORN_LABEL[f.forn] || LC_FORN_LABEL.outro;
+          return `
+            <tr>
+              <td>${_escHtml(f.festaNome)}</td>
+              <td>${dataTxt}</td>
+              <td>${f.festaTipoEvento ? _escHtml(f.festaTipoEvento) : '—'}</td>
+              <td class="lc-analitico-num">${f.festaConvidados != null ? f.festaConvidados : '—'}</td>
+              <td><span class="lc-forn-badge ${fornInfo.cls}">${fornInfo.label}</span></td>
+              <td class="lc-analitico-num">${f.qtd} ${it.unidade}</td>
+            </tr>
+          `;
+        }).join('');
 
       return `
         <div class="lc-analitico-item">
@@ -7289,7 +7473,21 @@ function lcHtmlGrupoAnalitico(g) {
               </span>
             </div>
           </div>
-          <div class="analitico-sub-lista">${subRows}</div>
+          <div class="lc-analitico-tabela-wrap">
+            <table class="lc-analitico-tabela">
+              <thead>
+                <tr>
+                  <th>Festa</th>
+                  <th>Data</th>
+                  <th>Tipo de Evento</th>
+                  <th class="lc-analitico-num">Convidados</th>
+                  <th>De quem</th>
+                  <th class="lc-analitico-num">Qtd.</th>
+                </tr>
+              </thead>
+              <tbody>${subRows}</tbody>
+            </table>
+          </div>
         </div>
       `;
     }).join('');

@@ -2747,7 +2747,30 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .lc-analitico-resumo { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
 .lc-analitico-nums   { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 12px; color: var(--cinza-700); }
 .lc-analitico-comprar { font-weight: 700; }
-.lc-sub-row          { padding-left: 8px; }
+
+/* Tabela de festas por item — Data / Tipo de Evento / Convidados / De quem */
+.lc-analitico-tabela-wrap { overflow-x: auto; }
+.lc-analitico-tabela { width: 100%; border-collapse: collapse; font-size: 12px; }
+.lc-analitico-tabela th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--cinza-500);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--borda);
+  background: #FAFAFA;
+  white-space: nowrap;
+}
+.lc-analitico-tabela td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #F0F0F0;
+  color: var(--cinza-700);
+  white-space: nowrap;
+}
+.lc-analitico-tabela tr:last-child td { border-bottom: none; }
+.lc-analitico-tabela .lc-analitico-num { text-align: right; }
 
 /* Collapsed state (reutiliza classe do sistema) */
 .lc-grupo-corpo.collapsed { display: none; }
@@ -2757,6 +2780,29 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   .lc-row-num:first-of-type { display: block; }
   .lc-table-header span:not(:first-child):not(:last-child) { display: none; }
   .lc-busca-input { max-width: 100%; }
+}
+
+/* ── Simular Compra ── */
+.lc-sim-input {
+  width: 72px;
+  border: 1px solid var(--cinza-300, #D1D5DB);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 13px;
+  text-align: right;
+  background: var(--cinza-50, #F9FAFB);
+  color: var(--cinza-900, #111);
+  outline: none;
+}
+.lc-sim-input:focus { border-color: var(--roxo); background: #fff; }
+.lc-sim-ficaria { font-weight: 700; }
+
+/* Na Simulação, Estoque / Pedindo / Ficaria são o ponto central da tela —
+   mantém todas as colunas visíveis mesmo no mobile, ao contrário do
+   comportamento padrão de "Por Evento" que esconde colunas do meio. */
+@media (max-width: 600px) {
+  #lc-secao-simular .lc-row-num { display: block; }
+  #lc-secao-simular .lc-table-header span { display: inline-block; }
 }
 
 /* ── Inventário — adicionar item avulso ── */
