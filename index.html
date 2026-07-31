@@ -27,7 +27,7 @@
     form-action 'self';
   ">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=27">
+  <link rel="stylesheet" href="css/styles.css?v=28">
 </head>
 <body>
 
@@ -208,6 +208,8 @@
           <button class="tab"       data-filtro="concluida"   onclick="filtrarCEO('concluida',this)">Concluídas</button>
         </div>
         <div class="acoes-dir">
+          <!-- TEMPORÁRIO: remover depois da limpeza pontual das festas sincronizadas sem Tipo de Evento/Convidados -->
+          <button class="btn-secundario" onclick="abrirLimpezaFestasFuturas()" title="Ferramenta temporária: exclui festas 'Agendada' a partir de uma data e ressincroniza com Contratos">🧹 Limpar Futuras</button>
           <button class="btn-secundario" onclick="abrirUsuarios()">Usuários</button>
           <button class="btn-primario"   onclick="abrirCriarFesta()">Nova Festa</button>
         </div>
@@ -1346,6 +1348,25 @@
   <!-- tela-compras redirecionada para tela-lista-compras -->
   <div id="tela-compras" class="tela hidden"></div>
 
+  <!-- MODAL TEMPORÁRIO: LIMPAR FESTAS FUTURAS (remover depois de usado) -->
+  <div id="modal-limpeza-festas" class="modal-overlay hidden" onclick="fecharModalLimpezaFestas()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;width:95%">
+      <div class="modal-titulo">🧹 Limpar Festas Futuras (Contrato)</div>
+      <div style="font-size:13px;color:#6B7280;margin:8px 0 4px">
+        Exclui festas com status <strong>Agendada</strong> a partir da data abaixo (inclusive), e em seguida roda a sincronização com Contratos de novo — as recriadas já vêm com Tipo de Evento e Convidados. Festas com separação já iniciada (ou com data anterior) não entram nessa lista.
+      </div>
+      <div class="form-group" style="margin-top:10px">
+        <label>Excluir festas Agendadas a partir de</label>
+        <input type="date" id="limp-data-corte" style="width:100%" onchange="_limpezaBuscar()" />
+      </div>
+      <div id="limp-resultado" style="margin-top:10px;font-size:13px"></div>
+      <div class="modal-acoes" style="margin-top:16px">
+        <button class="btn-secundario" onclick="fecharModalLimpezaFestas()">Cancelar</button>
+        <button class="btn-primario" id="limp-btn-excluir" onclick="_limpezaExecutar()" disabled style="background:var(--vermelho)">Excluir e Ressincronizar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: SOLICITAR COMPRA -->
   <div id="modal-solicitar-compra" class="modal-overlay hidden" onclick="fecharModalSolicitarCompra()">
     <div class="modal-box" onclick="event.stopPropagation()">
@@ -1456,7 +1477,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=41"></script>
-  <script src="js/app.js?v=68"></script>
+  <script src="js/app.js?v=70"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

@@ -3705,6 +3705,12 @@ function htmlCardFesta(f, contexto) {
 
   const resumoEquipe = _resumoEquipeFesta(f);
 
+  const infoEventoParts = [];
+  if (f.tipoEvento) infoEventoParts.push(_escHtml(f.tipoEvento));
+  if (f.convidados != null) infoEventoParts.push(`${f.convidados} convidados`);
+  const infoEventoHtml = infoEventoParts.length
+    ? `<div class="card-festa-meta">${infoEventoParts.join(' · ')}</div>` : '';
+
   return `
     <div class="card-festa st-${f.status}" onclick="${onclick}">
       <div class="card-festa-body">
@@ -3720,6 +3726,7 @@ function htmlCardFesta(f, contexto) {
             ${f.origemAuto ? `<span class="badge-ordem" title="Criada automaticamente a partir de um Contrato">🔗 Contrato</span>` : ''}
           </div>
           <div class="card-festa-meta">${_escHtml(f.cliente)}${f.hora ? ' — ' + _escHtml(f.hora) : ''}</div>
+          ${infoEventoHtml}
           ${f.local ? `<div class="card-festa-meta">${_escHtml(f.local)}</div>` : ''}
           ${resumoEquipe ? `<div class="card-festa-meta">👥 ${_escHtml(resumoEquipe)}</div>` : ''}
           <div class="card-festa-rodape">
@@ -5403,6 +5410,90 @@ function _festaJaExisteParaContrato(contrato, festasExistentes) {
   if (festasExistentes.some(f => f.contratoOrigemId === contrato.id)) return true;
   const chaveContrato = _chaveMatchEvento(contrato.nomeEvento || contrato.nome, contrato.data);
   return festasExistentes.some(f => _chaveMatchEvento(f.nome, f.data) === chaveContrato);
+}
+
+/* ══════════════════════════════════════════════════
+   TEMPORÁRIO — Limpeza pontual das festas que foram sincronizadas
+   de Contratos antes de tipoEvento/convidados existirem. Exclui só
+   festas "Agendada" a partir de uma data e ressincroniza, pra vir
+   tudo certo do sincronizarFestasDeContratos() de novo.
+   Remover esta seção + o botão "🧹 Limpar Futuras" e o modal
+   #modal-limpeza-festas do index.html depois de usada uma vez.
+══════════════════════════════════════════════════ */
+
+let _limpezaFestasAlvo = [];
+
+function abrirLimpezaFestasFuturas() {
+  const amanha = new Date(); amanha.setDate(amanha.getDate() + 1);
+  document.getElementById('limp-data-corte').value =
+    `${amanha.getFullYear()}-${String(amanha.getMonth() + 1).padStart(2, '0')}-${String(amanha.getDate()).padStart(2, '0')}`;
+  _limpezaFestasAlvo = [];
+  document.getElementById('limp-resultado').innerHTML = '';
+  document.getElementById('limp-btn-excluir').disabled = true;
+  document.getElementById('modal-limpeza-festas').classList.remove('hidden');
+  _limpezaBuscar();
+}
+
+function fecharModalLimpezaFestas() {
+  document.getElementById('modal-limpeza-festas').classList.add('hidden');
+}
+
+function _limpezaBuscar() {
+  const corteStr = document.getElementById('limp-data-corte').value;
+  const elResult = document.getElementById('limp-resultado');
+  const btn      = document.getElementById('limp-btn-excluir');
+
+  if (!corteStr) { elResult.innerHTML = ''; btn.disabled = true; _limpezaFestasAlvo = []; return; }
+
+  const corte = new Date(corteStr + 'T00:00:00');
+  _limpezaFestasAlvo = todasFestasCache
+    .filter(f => {
+      if (f.status !== 'agendada') return false;
+      const d = toDate(f.data);
+      return !isNaN(d) && d >= corte;
+    })
+    .sort((a, b) => toDate(a.data) - toDate(b.data));
+
+  if (!_limpezaFestasAlvo.length) {
+    elResult.innerHTML = '<p style="color:var(--cinza-500)">Nenhuma festa Agendada encontrada a partir dessa data.</p>';
+    btn.disabled = true;
+    return;
+  }
+
+  const n = _limpezaFestasAlvo.length;
+  elResult.innerHTML = `
+    <p style="font-weight:700;margin-bottom:6px">${n} festa${n > 1 ? 's' : ''} ser${n > 1 ? 'ão' : 'á'} exclu${n > 1 ? 'ídas' : 'ída'}:</p>
+    <ul style="max-height:220px;overflow-y:auto;padding-left:18px;margin:0">
+      ${_limpezaFestasAlvo.map(f => `<li>${_escHtml(f.nome)} — ${formatarData(f.data)}${f.origemAuto ? ' 🔗' : ''}</li>`).join('')}
+    </ul>
+  `;
+  btn.disabled = false;
+}
+
+async function _limpezaExecutar() {
+  if (!_limpezaFestasAlvo.length) return;
+  const n = _limpezaFestasAlvo.length;
+  if (!confirm(`Excluir ${n} festa${n > 1 ? 's' : ''} Agendada${n > 1 ? 's' : ''} e ressincronizar com Contratos?\n\nEsta ação não pode ser desfeita.`)) return;
+
+  const btn = document.getElementById('limp-btn-excluir');
+  btn.disabled = true;
+  btn.textContent = 'Excluindo...';
+
+  try {
+    for (const f of _limpezaFestasAlvo) {
+      await deletarFesta(f.id);
+    }
+    toast(`${n} festa${n > 1 ? 's' : ''} excluída${n > 1 ? 's' : ''}. Ressincronizando...`, 'sucesso');
+    _limpezaFestasAlvo = [];
+    await sincronizarFestasDeContratos();
+    fecharModalLimpezaFestas();
+  } catch (e) {
+    console.error('Erro na limpeza de festas:', e);
+    toast('Erro ao excluir: ' + (e?.message || 'erro desconhecido'), 'erro');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Excluir e Ressincronizar';
+  }
 }
 
 /* Carrega elenco/escalação do controle-gestao-main pra mostrar um resumo
@@ -7431,11 +7522,23 @@ function lcHtmlGrupoAnalitico(g) {
     .slice()
     .sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'))
     .map(it => {
-      const diff    = it.estoque - it.necessario;
+      /* Mesma lógica do Sintético: o filtro de Fornecimento recalcula a
+         quantidade visível e restringe as linhas de festa exibidas. */
+      let qtdVis = it.necessario;
+      if (_lcFornecimento === 'romero')     qtdVis = it.qtdRomero + it.qtdOutro;
+      if (_lcFornecimento === 'consignado') qtdVis = it.qtdConsignado;
+      if (_lcFornecimento === 'cliente')    qtdVis = it.qtdCliente;
+
+      const diff    = it.estoque - qtdVis;
       const diffCls = diff < 0 ? 'deficit-text' : 'ok-text';
       const badgeR  = it.cfg?.refrigerado ? '<span class="badge-refrigerado">&#10052;</span>' : '';
+      const mostraCompra = _lcFornecimento === 'todos' || _lcFornecimento === 'romero';
 
-      const subRows = it.festas
+      const festasFiltradas = _lcFornecimento === 'todos'
+        ? it.festas
+        : it.festas.filter(f => f.forn === _lcFornecimento);
+
+      const subRows = festasFiltradas
         .slice()
         .sort((a, b) => {
           const dA = toDate(a.festaData), dB = toDate(b.festaData);
@@ -7465,16 +7568,22 @@ function lcHtmlGrupoAnalitico(g) {
           <div class="lc-analitico-resumo">
             <div class="lc-row-nome">${_escHtml(nomeBasDisplay(it.nome))} ${badgeR}</div>
             <div class="lc-analitico-nums">
-              <span>Necessário: <strong>${it.necessario}</strong> ${it.unidade}</span>
+              <span>Necessário: <strong>${qtdVis}</strong> ${it.unidade}</span>
               <span>Estoque: <strong>${it.estoque}</strong> ${it.unidade}</span>
               <span class="${diffCls}">Dif: ${diff < 0 ? '−'+Math.abs(diff) : '+'+diff}</span>
-              <span class="lc-analitico-comprar ${it.aComprar > 0 ? 'lc-falta' : 'lc-ok'}">
-                ${it.aComprar > 0 ? `Comprar: <strong>${it.aComprar} ${it.unidade}</strong>` : '&#10003; Estoque OK'}
-              </span>
+              ${mostraCompra
+                ? `<span class="lc-analitico-comprar ${it.aComprar > 0 ? 'lc-falta' : 'lc-ok'}">
+                     ${it.aComprar > 0 ? `Comprar: <strong>${it.aComprar} ${it.unidade}</strong>` : '&#10003; Estoque OK'}
+                   </span>`
+                : ''}
             </div>
           </div>
           <div class="lc-analitico-tabela-wrap">
             <table class="lc-analitico-tabela">
+              <colgroup>
+                <col style="width:26%"><col style="width:9%"><col style="width:23%">
+                <col style="width:12%"><col style="width:14%"><col style="width:16%">
+              </colgroup>
               <thead>
                 <tr>
                   <th>Festa</th>

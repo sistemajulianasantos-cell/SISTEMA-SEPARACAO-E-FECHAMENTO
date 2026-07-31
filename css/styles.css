@@ -2748,9 +2748,12 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .lc-analitico-nums   { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; font-size: 12px; color: var(--cinza-700); }
 .lc-analitico-comprar { font-weight: 700; }
 
-/* Tabela de festas por item — Data / Tipo de Evento / Convidados / De quem */
+/* Tabela de festas por item — Data / Tipo de Evento / Convidados / De quem.
+   table-layout: fixed + <colgroup> com % fixo faz as colunas de TODAS as
+   tabelas (uma por item) ficarem alinhadas entre si, em vez de cada uma
+   calcular sua própria largura a partir do conteúdo mais longo. */
 .lc-analitico-tabela-wrap { overflow-x: auto; }
-.lc-analitico-tabela { width: 100%; border-collapse: collapse; font-size: 12px; }
+.lc-analitico-tabela { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
 .lc-analitico-tabela th {
   text-align: left;
   font-size: 10px;
@@ -2762,12 +2765,14 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   border-bottom: 1px solid var(--borda);
   background: #FAFAFA;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .lc-analitico-tabela td {
   padding: 6px 8px;
   border-bottom: 1px solid #F0F0F0;
   color: var(--cinza-700);
-  white-space: nowrap;
+  overflow-wrap: break-word;
 }
 .lc-analitico-tabela tr:last-child td { border-bottom: none; }
 .lc-analitico-tabela .lc-analitico-num { text-align: right; }
