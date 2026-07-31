@@ -7154,10 +7154,11 @@ function _lcFiltrarFestas() {
   let diasFuturo = 7;
   if (_lcPeriodo === '15dias') diasFuturo = 15;
   if (_lcPeriodo === 'mes') {
+    const ini = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
     const fim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0, 23, 59, 59);
     return ativas.filter(f => {
       const d = toDate(f.data);
-      return !isNaN(d) && d >= hoje && d <= fim;
+      return !isNaN(d) && d >= ini && d <= fim;
     });
   }
 
