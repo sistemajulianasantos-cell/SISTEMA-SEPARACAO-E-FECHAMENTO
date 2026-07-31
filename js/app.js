@@ -249,7 +249,7 @@ function _tvRenderSeparando(separando) {
     return `
       <div class="tv-festa-card">
         <div class="tv-festa-nome">${_escHtml(f.nome)}</div>
-        <div class="tv-festa-meta">${_escHtml(f.cliente)}${f.hora ? ' · ' + _escHtml(f.hora) : ''}</div>
+        <div class="tv-festa-meta">${_escHtml(f.cliente)}${f.hora ? ' · ' + _escHtml(f.hora) : ''}${_infoEventoTexto(f) ? ' · ' + _infoEventoTexto(f) : ''}</div>
         ${f.colaborador ? `<div><span class="tv-separador-badge">👤 ${_escHtml(f.colaborador)}</span></div>` : ''}
         <div class="tv-progresso-barra-wrap">
           <div class="tv-progresso-barra${completo ? ' completo' : ''}" style="width:${pct}%"></div>
@@ -433,7 +433,7 @@ function _tvRenderAgenda(agendadasHoje, proximas, hojeKey) {
         <div class="tv-agenda-item hoje">
           <span class="tv-agenda-badge hoje">HOJE${f.hora ? ' · ' + _escHtml(f.hora) : ''}</span>
           <div class="tv-agenda-nome">${_escHtml(f.nome)}</div>
-          <div class="tv-agenda-meta">${_escHtml(f.cliente)} · ${total} itens</div>
+          <div class="tv-agenda-meta">${_escHtml(f.cliente)} · ${total} itens${_infoEventoTexto(f) ? ' · ' + _infoEventoTexto(f) : ''}</div>
         </div>
       `;
     }).join('');
@@ -450,7 +450,7 @@ function _tvRenderAgenda(agendadasHoje, proximas, hojeKey) {
         <div class="tv-agenda-item">
           <span class="tv-agenda-badge ${isAmanha ? 'amanha' : 'futuro'}">${isAmanha ? 'AMANHÃ' : formatarData(f.data)}</span>
           <div class="tv-agenda-nome">${_escHtml(f.nome)}</div>
-          <div class="tv-agenda-meta">${_escHtml(f.cliente)}${f.hora ? ' · ' + _escHtml(f.hora) : ''}</div>
+          <div class="tv-agenda-meta">${_escHtml(f.cliente)}${f.hora ? ' · ' + _escHtml(f.hora) : ''}${_infoEventoTexto(f) ? ' · ' + _infoEventoTexto(f) : ''}</div>
         </div>
       `;
     }).join('');
@@ -3705,11 +3705,8 @@ function htmlCardFesta(f, contexto) {
 
   const resumoEquipe = _resumoEquipeFesta(f);
 
-  const infoEventoParts = [];
-  if (f.tipoEvento) infoEventoParts.push(_escHtml(f.tipoEvento));
-  if (f.convidados != null) infoEventoParts.push(`${f.convidados} convidados`);
-  const infoEventoHtml = infoEventoParts.length
-    ? `<div class="card-festa-meta">${infoEventoParts.join(' · ')}</div>` : '';
+  const infoEventoTxt  = _infoEventoTexto(f);
+  const infoEventoHtml = infoEventoTxt ? `<div class="card-festa-meta">${infoEventoTxt}</div>` : '';
 
   return `
     <div class="card-festa st-${f.status}" onclick="${onclick}">
@@ -3740,6 +3737,16 @@ function htmlCardFesta(f, contexto) {
   `;
 }
 
+/* Tipo de Evento + Convidados, formatados igual em toda tela que mostra
+   dados da festa (card da lista, Separação/Conferência/Retorno/Galpão,
+   Detalhe). String vazia quando nenhum dos dois está preenchido. */
+function _infoEventoTexto(f) {
+  const partes = [];
+  if (f.tipoEvento) partes.push(_escHtml(f.tipoEvento));
+  if (f.convidados != null) partes.push(`${f.convidados} convidados`);
+  return partes.join(' · ');
+}
+
 function htmlInfoFesta(f) {
   const ehCEO = !!(usuarioAtual?.roles?.includes('ceo') || usuarioAtual?.role === 'ceo');
   const btnExcluir = ehCEO
@@ -3750,11 +3757,13 @@ function htmlInfoFesta(f) {
         </button>
        </div>`
     : '';
+  const infoEventoTxt = _infoEventoTexto(f);
   return `
     <h2>${_escHtml(f.nome)}</h2>
     <div class="info-linha">${_escHtml(f.cliente)}${f.data ? ' — ' + formatarData(f.data) : ''}</div>
     ${f.hora  ? `<div class="info-linha">${_escHtml(f.hora)}</div>` : ''}
     ${f.local ? `<div class="info-linha">${_escHtml(f.local)}</div>` : ''}
+    ${infoEventoTxt ? `<div class="info-linha">${infoEventoTxt}</div>` : ''}
     ${f.obs   ? `<div class="info-linha" style="opacity:.75;font-size:12px;margin-top:6px">${_escHtml(f.obs)}</div>` : ''}
     ${btnExcluir}
   `;
@@ -3766,6 +3775,7 @@ function htmlInfoLinhas(f) {
     f.hora        && `<div class="info-linha">${_escHtml(f.hora)}</div>`,
     f.cliente     && `<div class="info-linha">${_escHtml(f.cliente)}</div>`,
     f.local       && `<div class="info-linha">${_escHtml(f.local)}</div>`,
+    _infoEventoTexto(f) && `<div class="info-linha">${_infoEventoTexto(f)}</div>`,
     f.colaborador && `<div class="info-linha">Colaborador: ${_escHtml(f.colaborador)}</div>`,
     f.coordenador && `<div class="info-linha">Coordenador: ${_escHtml(f.coordenador)}</div>`,
   ].filter(Boolean).join('');
@@ -5648,6 +5658,7 @@ function htmlCardEquipeFesta(festa) {
             <div class="card-festa-nome">${festa.nome}</div>
           </div>
           <div class="card-festa-meta">${festa.cliente || ''}</div>
+          ${_infoEventoTexto(festa) ? `<div class="card-festa-meta">${_infoEventoTexto(festa)}</div>` : ''}
           ${corpoEquipe}
         </div>
       </div>
@@ -7952,7 +7963,7 @@ function renderizarRelPorFesta(festasNoPeriodo) {
         <div class="rel-festa-header">
           <div>
             <div class="rel-festa-nome">${_escHtml(f.nome)}</div>
-            <div class="rel-festa-meta">${formatarData(f.data)}${f.cliente?' · '+_escHtml(f.cliente):''}</div>
+            <div class="rel-festa-meta">${formatarData(f.data)}${f.cliente?' · '+_escHtml(f.cliente):''}${_infoEventoTexto(f)?' · '+_infoEventoTexto(f):''}</div>
           </div>
           <span class="badge badge-${f.status}">${_escHtml(STATUS_LABELS[f.status]||f.status)}</span>
         </div>
