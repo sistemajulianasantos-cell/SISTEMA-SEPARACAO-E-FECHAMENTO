@@ -4031,63 +4031,94 @@ function normalizarNomeItem(nome) {
     .replace(/^_+|_+$/g, '');
 }
 
-/* Sufixos que indicam TIPO DE FORNECIMENTO — mesmo produto, formas diferentes de obter */
+/* Sufixos que indicam TIPO DE FORNECIMENTO — mesmo produto, formas diferentes de obter.
+   extrairFornDoNome() sempre devolve a forma canônica daqui (masc./singular). */
 const SUFIXOS_FORNECIMENTO = [
   'consignado','cliente','romero','reserva','proprio','propria','terceiro',
   'cortesia','gratis','gratuito','locacao','doacao','empresa',
 ];
 
-/* Retorna o nomeKey sem o sufixo de fornecimento.
-   Trata tanto sufixo separado ("aperol_consignado") quanto colado ("aperol_1000mlromero"). */
+/* Variantes de grafia que aparecem no nome (import de PDF) mas apontam pro
+   mesmo sufixo canônico acima (ex.: "CONSIGNADA" no feminino). "bebida"/
+   "bebidas" não é fornecimento nenhum — é o nome da categoria que o PDF às
+   vezes cola no final do item ("750MLBEBIDAS", "750MLBEBIDA CONSIGNADO");
+   mapeia pra null de propósito: é ruído puro, sempre descartado do nome,
+   nunca indica de quem veio o produto. */
+const _ALIAS_SUFIXO_NOME = { consignada: 'consignado', bebida: null, bebidas: null };
+
+/* Palavras (sufixo real OU ruído de categoria) cortadas do final do nome ao
+   calcular a chave/nome base do produto — nomeBaseKey/nomeBasDisplay tratam
+   os dois tipos igual, só extrairFornDoNome() se importa com qual é qual. */
+const _CORTAR_DO_NOME = [...SUFIXOS_FORNECIMENTO, ...Object.keys(_ALIAS_SUFIXO_NOME)];
+
+/* Retorna o nomeKey sem sufixo de fornecimento e/ou ruído de categoria.
+   Trata sufixo/ruído separado ("aperol_consignado"), colado ("aperol_1000mlromero")
+   e os dois emendados ("aperol_750mlbebidas_consignada", "aperol_750mlbebidas") —
+   por isso repete a checagem em camadas até não sobrar mais nada pra cortar. */
 function nomeBaseKey(nomeKey) {
-  const s = nomeKey || '';
-  const partes = s.split('_').filter(Boolean);
-  if (partes.length < 1) return s;
-  const ultimo = partes[partes.length - 1];
-  /* Sufixo exato */
-  if (partes.length > 1 && SUFIXOS_FORNECIMENTO.includes(ultimo)) {
-    const idx = s.lastIndexOf('_' + ultimo);
-    if (idx !== -1) return s.slice(0, idx).replace(/_+$/, '');
-  }
-  /* Sufixo colado no final da última palavra (ex: "1000mlromero" → strip "romero") */
-  for (const suf of SUFIXOS_FORNECIMENTO) {
-    if (ultimo.endsWith(suf) && ultimo.length > suf.length) {
-      return s.slice(0, s.length - suf.length);
+  let s = nomeKey || '';
+  for (let i = 0; i < 3; i++) {
+    const partes = s.split('_').filter(Boolean);
+    if (partes.length < 1) break;
+    const ultimo = partes[partes.length - 1];
+    let novo = null;
+    /* Sufixo/ruído exato */
+    if (partes.length > 1 && _CORTAR_DO_NOME.includes(ultimo)) {
+      const idx = s.lastIndexOf('_' + ultimo);
+      if (idx !== -1) novo = s.slice(0, idx).replace(/_+$/, '');
     }
+    /* Colado no final da última palavra (ex: "1000mlromero" → strip "romero") */
+    if (novo === null) {
+      const suf = _CORTAR_DO_NOME.find(x => ultimo.endsWith(x) && ultimo.length > x.length);
+      if (suf) novo = s.slice(0, s.length - suf.length).replace(/_+$/, '');
+    }
+    if (novo === null || novo === s) break;
+    s = novo;
   }
   return s;
 }
 
-/* Retorna nome de exibição sem o sufixo.
-   Trata sufixo separado ("APEROL CONSIGNADO") e colado ("APEROL - 750MLROMERO"). */
+/* Retorna nome de exibição sem sufixo/ruído — mesma lógica em camadas de
+   nomeBaseKey, só que operando nas palavras do nome original (com espaço). */
 function nomeBasDisplay(nome) {
-  const s = (nome || '').trim();
-  if (!s) return s;
-  const partes = s.split(/\s+/);
-  const ultimo  = partes[partes.length - 1];
-  const ultimoN = normalizarNomeItem(ultimo);
-  /* Sufixo exato como palavra separada */
-  if (partes.length > 1 && SUFIXOS_FORNECIMENTO.includes(ultimoN)) {
-    return partes.slice(0, -1).join(' ');
-  }
-  /* Sufixo colado no final da última palavra (ex: "750MLROMERO" → "750ML") */
-  for (const suf of SUFIXOS_FORNECIMENTO) {
-    if (ultimoN.endsWith(suf) && ultimoN.length > suf.length) {
-      const semSuf = ultimo.slice(0, ultimo.length - suf.length);
-      return (partes.length > 1 ? partes.slice(0, -1).join(' ') + ' ' : '') + semSuf;
+  let s = (nome || '').trim();
+  for (let i = 0; i < 3 && s; i++) {
+    const partes = s.split(/\s+/);
+    const ultimo  = partes[partes.length - 1];
+    const ultimoN = normalizarNomeItem(ultimo);
+    let novo = null;
+    /* Sufixo/ruído exato como palavra separada */
+    if (partes.length > 1 && _CORTAR_DO_NOME.includes(ultimoN)) {
+      novo = partes.slice(0, -1).join(' ');
+    } else {
+      /* Colado no final da última palavra (ex: "750MLROMERO" → "750ML") */
+      const suf = _CORTAR_DO_NOME.find(x => ultimoN.endsWith(x) && ultimoN.length > x.length);
+      if (suf) {
+        const semSuf = ultimo.slice(0, ultimo.length - suf.length);
+        novo = (partes.length > 1 ? partes.slice(0, -1).join(' ') + ' ' : '') + semSuf;
+      }
     }
+    if (novo === null || novo === s) break;
+    s = novo.trim();
   }
   return s;
 }
 
-/* Extrai o sufixo de fornecimento embutido no nome (ex: "APEROL CONSIGNADO" → "consignado") */
+/* Extrai o sufixo de fornecimento embutido no nome (ex: "APEROL CONSIGNADO" → "consignado").
+   Nunca devolve ruído de categoria ("bebida"/"bebidas") — só um sufixo real. */
 function extrairFornDoNome(nome) {
   const partes = (nome || '').trim().split(/\s+/);
   const ultimo  = normalizarNomeItem(partes[partes.length - 1]);
-  if (partes.length > 1 && SUFIXOS_FORNECIMENTO.includes(ultimo)) return ultimo;
+  if (partes.length > 1) {
+    if (SUFIXOS_FORNECIMENTO.includes(ultimo)) return ultimo;
+    if (_ALIAS_SUFIXO_NOME[ultimo]) return _ALIAS_SUFIXO_NOME[ultimo];
+  }
   /* Colado no final */
   for (const suf of SUFIXOS_FORNECIMENTO) {
     if (ultimo.endsWith(suf) && ultimo.length > suf.length) return suf;
+  }
+  for (const [alias, canon] of Object.entries(_ALIAS_SUFIXO_NOME)) {
+    if (canon && ultimo.endsWith(alias) && ultimo.length > alias.length) return canon;
   }
   return null;
 }
@@ -7630,60 +7661,87 @@ function lcHtmlGrupoAnalitico(g) {
   `;
 }
 
+/* Reaproveita exatamente os mesmos dados/filtros da tela (_lcConstruirItens,
+   filtro de Fornecimento, busca, categoria, status) pra que o CSV exportado
+   sempre bata com o que está sendo exibido — nunca recalcula por conta própria. */
 function lcExportarCSV() {
   const festas   = _lcFiltrarFestas();
   const busca    = (document.getElementById('lc-busca')?.value || '').toLowerCase().trim();
   const catFiltro = document.getElementById('lc-filtro-cat')?.value || '';
   const statusFiltro = document.getElementById('lc-filtro-status')?.value || 'todos';
 
-  const estBaseIdx = {};
-  Object.values(estoqueCache).forEach(e => {
-    if (!e.nomeKey) return;
-    const baseK = nomeBaseKey(e.nomeKey);
-    estBaseIdx[baseK] = (estBaseIdx[baseK] || 0) + (e.qtd || 0);
-  });
+  let todosItens = _lcConstruirItens(festas);
 
-  const mapa = {};
-  festas.forEach(festa => {
-    (festa.itens || []).forEach(item => {
-      const key = nomeBaseKey(normalizarNomeItem(item.nome));
-      if (!mapa[key]) {
-        const cfg = itemConfigsCache[key]
-          || Object.values(itemConfigsCache).find(c => nomeBaseKey(c.nomeKey) === key)
-          || null;
-        mapa[key] = {
-          key, nome: nomeBasDisplay(item.nome), unidade: item.unidade || 'un',
-          necessario: 0, cfg,
-        };
-      }
-      mapa[key].necessario += item.qtdNecessaria || 0;
+  if (_lcFornecimento !== 'todos') {
+    todosItens = todosItens.filter(it => {
+      if (_lcFornecimento === 'romero')     return it.qtdRomero     > 0 || it.qtdOutro > 0;
+      if (_lcFornecimento === 'consignado') return it.qtdConsignado > 0;
+      if (_lcFornecimento === 'cliente')    return it.qtdCliente    > 0;
+      return true;
     });
-  });
+  }
 
-  let itens = Object.values(mapa).map(it => {
-    const estoque = estBaseIdx[it.key] ?? 0;
-    return { ...it, estoque, aComprar: Math.max(0, it.necessario - estoque) };
-  });
-
+  let itens = todosItens;
   if (busca)      itens = itens.filter(it => it.nome.toLowerCase().includes(busca));
   if (catFiltro)  itens = itens.filter(it => it.cfg?.grupo === catFiltro);
   if (statusFiltro === 'comprar') itens = itens.filter(it => it.aComprar > 0);
 
-  itens.sort((a,b) => {
+  itens = itens.slice().sort((a,b) => {
     const ga = a.cfg?.grupo || 'ZZZ';
     const gb = b.cfg?.grupo || 'ZZZ';
     return ga.localeCompare(gb,'pt-BR') || a.nome.localeCompare(b.nome,'pt-BR');
   });
 
-  const header = ['Categoria','Item','Unidade','Necessário','Estoque','A Comprar'];
-  const rows   = itens.map(it => [
-    it.cfg?.grupo || 'Sem Categoria',
-    it.nome,
-    it.unidade,
-    it.necessario,
-    it.estoque,
-    it.aComprar,
-  ]);
+  const mostraCompra = _lcFornecimento === 'todos' || _lcFornecimento === 'romero';
+
+  let header, rows;
+
+  if (_lcAba === 'sintetico') {
+    header = ['Categoria','Item','Unidade','Necessário','Estoque','A Comprar'];
+    rows   = itens.map(it => {
+      let qtdVis = it.necessario;
+      if (_lcFornecimento === 'romero')     qtdVis = it.qtdRomero + it.qtdOutro;
+      if (_lcFornecimento === 'consignado') qtdVis = it.qtdConsignado;
+      if (_lcFornecimento === 'cliente')    qtdVis = it.qtdCliente;
+      return [
+        it.cfg?.grupo || 'Sem Categoria',
+        nomeBasDisplay(it.nome),
+        it.unidade,
+        qtdVis,
+        it.estoque,
+        mostraCompra ? it.aComprar : '—',
+      ];
+    });
+  } else {
+    header = ['Categoria','Item','Festa','Data','Tipo de Evento','Convidados','De Quem','Qtd','Unidade'];
+    rows   = [];
+    itens.forEach(it => {
+      const festasFiltradas = _lcFornecimento === 'todos'
+        ? it.festas
+        : it.festas.filter(f => f.forn === _lcFornecimento);
+      festasFiltradas
+        .slice()
+        .sort((a, b) => {
+          const dA = toDate(a.festaData), dB = toDate(b.festaData);
+          return (isNaN(dA) ? 0 : dA) - (isNaN(dB) ? 0 : dB);
+        })
+        .forEach(f => {
+          const d = toDate(f.festaData);
+          const dataTxt = !isNaN(d) ? `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}` : '—';
+          rows.push([
+            it.cfg?.grupo || 'Sem Categoria',
+            nomeBasDisplay(it.nome),
+            f.festaNome,
+            dataTxt,
+            f.festaTipoEvento || '—',
+            f.festaConvidados != null ? f.festaConvidados : '—',
+            (LC_FORN_LABEL[f.forn] || LC_FORN_LABEL.outro).label,
+            f.qtd,
+            it.unidade,
+          ]);
+        });
+    });
+  }
 
   const csv  = [header, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
