@@ -13,6 +13,7 @@ let filtroData        = null;
 let todasFestasCache  = [];
 let roleAtivo         = null;   /* papel ativo quando usuário tem múltiplos papéis */
 let festaEditandoId   = null;   /* id da festa em edição */
+let linkConferenciaPendente = null; /* { festaId } quando um link de Conferência válido foi aberto */
 
 let timers    = {};
 let intervalos= {};
@@ -482,6 +483,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (params.get('cadastro') === 'coordenador') {
     mostrarTela('tela-primeiro-acesso');
     return;
+  }
+
+  /* Link temporário de Conferência: ?conf=<token> — ainda exige login normal
+     (ver roteamentoPosLogin), só pula direto pra festa certa depois. */
+  const confToken = params.get('conf');
+  if (confToken) {
+    try {
+      const link = await buscarLinkConferencia(confToken);
+      if (!link) {
+        toast('Link inválido.', 'erro');
+      } else if (!link.expiraEm || link.expiraEm.toMillis() < Date.now()) {
+        toast('Este link expirou. Peça um novo ao responsável.', 'erro');
+      } else {
+        linkConferenciaPendente = { festaId: link.festaId };
+        document.getElementById('login-aviso-link').classList.remove('hidden');
+      }
+    } catch (e) {
+      console.error('Erro ao validar link de conferência:', e);
+    }
   }
 
   try {
@@ -957,6 +977,19 @@ async function doLogin() {
 
 /* CEO sempre vai direto ao painel; outros com múltiplos papéis vêem o seletor */
 function roteamentoPosLogin(usuario) {
+  if (linkConferenciaPendente) {
+    const { festaId } = linkConferenciaPendente;
+    linkConferenciaPendente = null;
+    const rolesLink = usuario.roles || [usuario.role];
+    if (rolesLink.includes('coordenador') || rolesLink.includes('ceo')) {
+      if (!rolesLink.includes('ceo')) roleAtivo = 'coordenador';
+      abrirConferencia(festaId);
+      return;
+    }
+    toast('Esta conta não tem permissão de coordenador para usar este link.', 'erro');
+    /* segue para o roteamento normal abaixo */
+  }
+
   const roles = usuario.roles || [usuario.role];
   if (!roles.includes('ceo') && roles.length > 1) {
     mostrarTela('tela-roles');
@@ -2909,6 +2942,12 @@ function renderizarDetalhe(festa) {
     </div>
   `;
 
+  const linkConfHTML = `
+    <div class="detalhe-acoes" style="margin-bottom:16px">
+      <button class="btn-secundario" onclick="gerarELinkConferencia('${festa.id}')">🔗 Gerar link de Conferência (24h)</button>
+    </div>
+  `;
+
   const sepTimingHTML = festa.separacaoInicio ? (() => {
     const concluida = !!festa.separacaoFim;
     const dur = formatarDuracao(festa.separacaoInicio, festa.separacaoFim || null);
@@ -2943,6 +2982,7 @@ function renderizarDetalhe(festa) {
     </div>
 
     ${excluirHTML}
+    ${linkConfHTML}
     ${avancarHTML}
     ${editarHTML}
     ${importarItensHTML}
@@ -3025,6 +3065,30 @@ async function confirmarExcluirFesta(id, nome, status) {
 /* CEO usa a tela de separacao como se fosse colaborador */
 function ceoSepararFesta(id) {
   abrirSeparacao(id);
+}
+
+/* ── Link temporário de Conferência (24h) ── */
+async function gerarELinkConferencia(festaId) {
+  try {
+    const token = await gerarLinkConferencia(festaId);
+    const url = `${location.origin}${location.pathname}?conf=${token}`;
+    document.getElementById('lc-url').value = url;
+    document.getElementById('modal-link-conferencia').classList.remove('hidden');
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao gerar link.', 'erro');
+  }
+}
+
+function fecharModalLinkConferencia() {
+  document.getElementById('modal-link-conferencia').classList.add('hidden');
+}
+
+function copiarLinkConferencia() {
+  const input = document.getElementById('lc-url');
+  navigator.clipboard.writeText(input.value)
+    .then(() => toast('Link copiado!', 'sucesso'))
+    .catch(() => { input.select(); toast('Não deu pra copiar automaticamente — selecione e copie.', 'aviso'); });
 }
 
 /* ── Edição de data/quantidades ── */

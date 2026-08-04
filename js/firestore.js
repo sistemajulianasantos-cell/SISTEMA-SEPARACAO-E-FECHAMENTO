@@ -256,6 +256,22 @@ async function atualizarFesta(id, dados) {
   return db.collection('festas').doc(id).update(dados);
 }
 
+/* Link temporário (24h) que aponta pra uma festa específica, pra pular
+   direto pra Conferência dela (ver roteamentoPosLogin em js/app.js). Quem
+   abre o link ainda precisa logar de verdade — o token só evita ter que
+   procurar a festa na lista. */
+async function gerarLinkConferencia(festaId) {
+  const token    = crypto.randomUUID().replace(/-/g, '');
+  const expiraEm = firebase.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000);
+  await db.collection('links_conferencia').doc(token).set({ festaId, criadoEm: TS(), expiraEm });
+  return token;
+}
+
+async function buscarLinkConferencia(token) {
+  const doc = await db.collection('links_conferencia').doc(token).get();
+  return doc.exists ? doc.data() : null;
+}
+
 async function resetarParaAgendada(id, itens) {
   const DEL = () => firebase.firestore.FieldValue.delete();
   return db.collection('festas').doc(id).update({

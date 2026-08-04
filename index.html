@@ -100,6 +100,9 @@
       <div class="auth-marca">Romero Coquetéis</div>
       <h2 class="auth-titulo">Acesso ao Sistema</h2>
       <p class="auth-desc">Digite suas credenciais para continuar.</p>
+      <p id="login-aviso-link" class="msg-erro hidden" style="background:#EFF6FF;color:#1E3A8A">
+        Faça login para acessar a Conferência desta festa.
+      </p>
 
       <div class="form-group">
         <label>Nome de usuário</label>
@@ -1386,6 +1389,24 @@
     </div>
   </div>
 
+  <!-- MODAL: LINK DE CONFERÊNCIA -->
+  <div id="modal-link-conferencia" class="modal-overlay hidden" onclick="fecharModalLinkConferencia()">
+    <div class="modal-box" onclick="event.stopPropagation()">
+      <div class="modal-titulo">Link de Conferência (válido por 24h)</div>
+      <p style="margin-top:12px;font-size:13px;color:var(--cinza-400)">
+        Envie este link no grupo do WhatsApp da equipe. Quem abrir precisa
+        fazer login normalmente com usuário e senha de coordenador.
+      </p>
+      <div class="form-group" style="margin-top:12px">
+        <input type="text" id="lc-url" readonly style="width:100%" onclick="this.select()">
+      </div>
+      <div class="rodape-form" style="margin-top:16px">
+        <button class="btn-secundario" onclick="fecharModalLinkConferencia()">Fechar</button>
+        <button class="btn-primario" onclick="copiarLinkConferencia()">Copiar link</button>
+      </div>
+    </div>
+  </div>
+
   <!-- MODAL: TROCAR SENHA -->
   <div id="modal-trocar-senha" class="modal-overlay hidden" onclick="fecharModalTrocarSenha()">
     <div class="modal-box" onclick="event.stopPropagation()">
@@ -1477,8 +1498,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=3"></script>
-  <script src="js/firestore.js?v=41"></script>
-  <script src="js/app.js?v=75"></script>
+  <script src="js/firestore.js?v=42"></script>
+  <script src="js/app.js?v=76"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

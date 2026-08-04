@@ -81,5 +81,16 @@ service cloud.firestore {
     match /historico_contagem/{id} { allow read, write: if autenticadoReal(); }
     match /compras/{id}            { allow read, write: if autenticadoReal(); }
     match /fichas_tecnicas/{id}    { allow read, write: if autenticadoReal(); }
+
+    /* Link temporário de 24h pra Conferência de uma festa (gerado pelo CEO,
+       enviado por WhatsApp). Quem abre o link ainda precisa logar de verdade
+       (ver js/app.js) — o doc aqui só guarda festaId + validade, nada
+       sensível, e por isso pode ser lido antes do login real (sessão
+       anônima, "autenticado()") pra decidir se o link ainda vale. */
+    match /links_conferencia/{token} {
+      allow get:    if autenticado();
+      allow list:   if ehCeo();
+      allow create, update, delete: if ehCeo();
+    }
   }
 }
