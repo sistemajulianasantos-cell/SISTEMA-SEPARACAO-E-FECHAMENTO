@@ -1389,8 +1389,9 @@
   <!-- MODAL: TROCAR SENHA -->
   <div id="modal-trocar-senha" class="modal-overlay hidden" onclick="fecharModalTrocarSenha()">
     <div class="modal-box" onclick="event.stopPropagation()">
-      <div class="modal-titulo">Trocar minha senha</div>
-      <div class="form-group" style="margin-top:16px">
+      <div class="modal-titulo" id="ts-titulo">Trocar minha senha</div>
+      <div id="ts-aviso-obrigatorio" class="msg-erro hidden" style="margin-top:16px">Sua senha atual é muito curta. Por segurança, defina uma nova senha com pelo menos 6 caracteres para continuar.</div>
+      <div class="form-group" id="ts-campo-atual" style="margin-top:16px">
         <label>Senha atual</label>
         <input type="password" id="ts-senha-atual" style="width:100%" autocomplete="current-password">
       </div>
@@ -1404,7 +1405,7 @@
       </div>
       <div id="ts-erro" class="msg-erro hidden"></div>
       <div class="rodape-form" style="margin-top:16px">
-        <button class="btn-secundario" onclick="fecharModalTrocarSenha()">Cancelar</button>
+        <button class="btn-secundario" id="btn-ts-cancelar" onclick="fecharModalTrocarSenha()">Cancelar</button>
         <button class="btn-primario" id="btn-ts-salvar" onclick="confirmarTrocarSenha()">Salvar nova senha</button>
       </div>
     </div>

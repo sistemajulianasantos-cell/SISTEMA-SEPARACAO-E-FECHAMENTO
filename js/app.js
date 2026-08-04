@@ -872,7 +872,7 @@ async function finalizarSetup() {
   const confirma = document.getElementById('setup-confirma').value;
 
   if (!nome)              return toast('Informe o nome', 'erro');
-  if (senha.length < 4)   return toast('Senha deve ter ao menos 4 caracteres', 'erro');
+  if (senha.length < 6)   return toast('Senha deve ter ao menos 6 caracteres', 'erro');
   if (senha !== confirma) return toast('As senhas não coincidem', 'erro');
 
   try {
@@ -932,15 +932,17 @@ async function doLogin() {
     }
     document.getElementById('login-senha').value = '';
 
-    /* CEO sempre vai direto ao painel; outros com múltiplos papéis vêem o seletor */
-    const roles = usuario.roles || [usuario.role];
-    if (!roles.includes('ceo') && roles.length > 1) {
-      mostrarTela('tela-roles');
-      document.getElementById('roles-boas-vindas').textContent =
-        `Bem-vindo(a), ${usuario.nome}. Selecione como deseja acessar agora.`;
-      renderizarRolePicker(roles);
+    /* Senha legada com menos de 6 caracteres: força a troca antes de entrar
+       (ver _senhaFirebase em firestore.js — hoje só "completa por dentro"
+       senhas curtas, nunca força a pessoa a definir uma de verdade). */
+    if (senha.length < 6) {
+      abrirModalTrocarSenha({
+        obrigatoria: true,
+        senhaAtual: senha,
+        aoConcluir: () => roteamentoPosLogin(usuario),
+      });
     } else {
-      irParaPrincipal();
+      roteamentoPosLogin(usuario);
     }
 
   } catch (e) {
@@ -950,6 +952,19 @@ async function doLogin() {
   } finally {
     btn.disabled    = false;
     btn.textContent = 'Entrar';
+  }
+}
+
+/* CEO sempre vai direto ao painel; outros com múltiplos papéis vêem o seletor */
+function roteamentoPosLogin(usuario) {
+  const roles = usuario.roles || [usuario.role];
+  if (!roles.includes('ceo') && roles.length > 1) {
+    mostrarTela('tela-roles');
+    document.getElementById('roles-boas-vindas').textContent =
+      `Bem-vindo(a), ${usuario.nome}. Selecione como deseja acessar agora.`;
+    renderizarRolePicker(roles);
+  } else {
+    irParaPrincipal();
   }
 }
 
@@ -978,7 +993,7 @@ async function submitPrimeiroAcesso() {
   if (!nome || nome.trim().split(/\s+/).length < 2) {
     return mostrarErro('Informe nome e sobrenome completos.');
   }
-  if (senha.length < 4)   return mostrarErro('Senha deve ter ao menos 4 caracteres.');
+  if (senha.length < 6)   return mostrarErro('Senha deve ter ao menos 6 caracteres.');
   if (senha !== confirma) return mostrarErro('As senhas não coincidem.');
 
   btn.disabled    = true;
@@ -1049,16 +1064,33 @@ function logout() {
    TROCAR SENHA (autoatendimento)
 ══════════════════════════════════════════════════ */
 
-function abrirModalTrocarSenha() {
+/* Modo obrigatório: acionado a partir do login quando a senha atual tem
+   menos de 6 caracteres (ver doLogin em app.js). Nesse modo o campo "senha
+   atual" fica oculto e pré-preenchido (a pessoa acabou de digitá-la no
+   login), não dá pra cancelar nem fechar clicando fora, e só ao salvar com
+   sucesso o fluxo de roteamento pós-login (aoConcluir) é retomado. */
+let _trocaSenhaObrigatoria = false;
+let _trocaSenhaCallback    = null;
+
+function abrirModalTrocarSenha(opts = {}) {
   if (!usuarioAtual) return;
-  document.getElementById('ts-senha-atual').value    = '';
+  _trocaSenhaObrigatoria = !!opts.obrigatoria;
+  _trocaSenhaCallback    = opts.aoConcluir || null;
+
+  document.getElementById('ts-senha-atual').value    = opts.senhaAtual || '';
   document.getElementById('ts-senha-nova').value      = '';
   document.getElementById('ts-senha-confirma').value  = '';
   document.getElementById('ts-erro').classList.add('hidden');
+  document.getElementById('ts-titulo').textContent =
+    _trocaSenhaObrigatoria ? 'Defina uma nova senha' : 'Trocar minha senha';
+  document.getElementById('ts-aviso-obrigatorio').classList.toggle('hidden', !_trocaSenhaObrigatoria);
+  document.getElementById('ts-campo-atual').classList.toggle('hidden', _trocaSenhaObrigatoria);
+  document.getElementById('btn-ts-cancelar').classList.toggle('hidden', _trocaSenhaObrigatoria);
   document.getElementById('modal-trocar-senha').classList.remove('hidden');
 }
 
-function fecharModalTrocarSenha() {
+function fecharModalTrocarSenha(force) {
+  if (_trocaSenhaObrigatoria && !force) return;
   document.getElementById('modal-trocar-senha').classList.add('hidden');
 }
 
@@ -1073,7 +1105,7 @@ async function confirmarTrocarSenha() {
   erro.classList.add('hidden');
 
   if (!atual || !nova)     return mostrarErro('Preencha todos os campos.');
-  if (nova.length < 4)     return mostrarErro('A nova senha deve ter ao menos 4 caracteres.');
+  if (nova.length < 6)     return mostrarErro('A nova senha deve ter ao menos 6 caracteres.');
   if (nova !== confirma)   return mostrarErro('As senhas não coincidem.');
 
   btn.disabled    = true;
@@ -1081,8 +1113,14 @@ async function confirmarTrocarSenha() {
 
   try {
     await trocarSenhaUsuarioAtual(atual, nova);
-    fecharModalTrocarSenha();
+    fecharModalTrocarSenha(true);
     toast('Senha alterada com sucesso.', 'sucesso');
+    if (_trocaSenhaObrigatoria) {
+      const callback = _trocaSenhaCallback;
+      _trocaSenhaObrigatoria = false;
+      _trocaSenhaCallback    = null;
+      if (callback) callback();
+    }
   } catch (e) {
     const CODIGOS_SENHA_ATUAL_INCORRETA = [
       'auth/wrong-password', 'auth/invalid-credential', 'auth/invalid-login-credentials',
@@ -3337,7 +3375,7 @@ async function salvarUsuario() {
 
   if (!nome)              return toast('Informe o nome.', 'erro');
   if (!roles.length)      return toast('Selecione ao menos uma funcao.', 'erro');
-  if (senha.length < 4)   return toast('Senha deve ter ao menos 4 caracteres.', 'erro');
+  if (senha.length < 6)   return toast('Senha deve ter ao menos 6 caracteres.', 'erro');
   if (senha !== confirma) return toast('As senhas nao coincidem.', 'erro');
 
   const existente = await buscarUsuarioPorNome(nome);
