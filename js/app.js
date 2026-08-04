@@ -49,6 +49,9 @@ let _equipeContratosCache= null;  /* contratos do controle-gestao (para vínculo
 let _equipeFestasCache   = [];
 let _vinculoEquipeFestaId= null;  /* festa em edição no modal de vínculo manual */
 
+let _mapaPrecoInsumoGestao     = null;   /* nomeBaseKey → custoReposicao, lido do controle-gestao-main */
+let _insumosGestaoIndisponivel = false;  /* true = última tentativa de leitura falhou/projeto fora do ar */
+
 let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [], confItens: {} };
 let modoGrupoSep = 'categoria'; /* 'nenhum' | 'categoria' | 'setor' */
 let _tvClockTimer      = null;
@@ -1512,6 +1515,14 @@ async function abrirSeparacao(id) {
       renderizarSeparacao(festa);
     }
   });
+
+  /* "Valor da carga" é só pro CEO — carrega os preços em paralelo e
+     re-renderiza quando chegar (a tela já apareceu com o resto pronto). */
+  if (souCeo()) {
+    carregarPrecosGestao().then(() => {
+      if (festaAtual && festaAtual.status !== 'agendada') renderizarSeparacao(festaAtual);
+    });
+  }
 }
 
 function renderizarIniciarSeparacao(festa) {
@@ -1544,7 +1555,7 @@ async function confirmarInicioSeparacao() {
 }
 
 function renderizarSeparacao(festa) {
-  document.getElementById('sep-info').innerHTML = htmlInfoFesta(festa);
+  document.getElementById('sep-info').innerHTML = htmlInfoFesta(festa) + (souCeo() ? htmlValorCarga(festa) : '');
 
   /* Bloquear separador enquanto admin edita quantidades */
   if (festa.editandoAgora) {
@@ -5108,14 +5119,24 @@ async function abrirEstoque(abaInicial) {
   if (desc) desc.textContent = souCeo()
     ? 'Edite as quantidades em estoque. O sistema calcula automaticamente o saldo em relação às festas ativas.'
     : 'Consulte as quantidades em estoque. O sistema calcula automaticamente o saldo em relação às festas ativas.';
+  /* "Estoque R$" mostra custo de reposição (dado financeiro) — só CEO,
+     mesmo padrão de "podeEditar = souCeo()" já usado nesta tela. */
+  const btnValor = document.getElementById('estoque-tab-valor');
+  if (btnValor) btnValor.classList.toggle('hidden', !souCeo());
+
   abaEstoqueAtual = abaInicial || 'sintetico';
-  const tabIndex  = { sintetico: 0, analitico: 1, historico: 2 }[abaEstoqueAtual] ?? 0;
+  if (abaEstoqueAtual === 'valor' && !souCeo()) abaEstoqueAtual = 'sintetico';
+  const tabIndex  = { sintetico: 0, analitico: 1, valor: 2, historico: 3 }[abaEstoqueAtual] ?? 0;
   document.querySelectorAll('#estoque-tabs .tab').forEach((b, i) => {
     b.classList.toggle('ativo', i === tabIndex);
   });
   if (abaEstoqueAtual === 'historico') {
     const btn = document.querySelector('#estoque-tabs .tab[data-aba="historico"]');
     trocarAbaEstoque('historico', btn);
+  } else if (abaEstoqueAtual === 'valor') {
+    const btn = document.querySelector('#estoque-tabs .tab[data-aba="valor"]');
+    await recarregarEstoque();
+    trocarAbaEstoque('valor', btn);
   } else {
     await recarregarEstoque();
   }
@@ -5173,6 +5194,13 @@ function trocarAbaEstoque(aba, btn) {
         elHistorico.innerHTML = estadoVazio('Erro ao carregar histórico.');
       });
     }
+  } else if (aba === 'valor') {
+    if (elConteudo)  elConteudo.classList.remove('hidden');
+    if (elHistorico) elHistorico.classList.add('hidden');
+    renderizarEstoque(todasFestasCache, estoqueCache); /* mostra na hora, mesmo sem preço ainda */
+    carregarPrecosGestao().then(() => {
+      if (abaEstoqueAtual === 'valor') renderizarEstoque(todasFestasCache, estoqueCache);
+    });
   } else {
     if (elConteudo)  elConteudo.classList.remove('hidden');
     if (elHistorico) elHistorico.classList.add('hidden');
@@ -5243,16 +5271,61 @@ function renderizarEstoque(festas, estoqueMap) {
     grupos[g].push(it);
   });
 
-  const renderCard = it => abaEstoqueAtual === 'sintetico'
-    ? htmlEstoqueSintetico(it, estoqueMap[it.nomeKey])
-    : htmlEstoqueAnalitico(it, estoqueMap[it.nomeKey]);
+  const renderCard = it => {
+    if (abaEstoqueAtual === 'analitico') return htmlEstoqueAnalitico(it, estoqueMap[it.nomeKey]);
+    if (abaEstoqueAtual === 'valor')     return htmlEstoqueValor(it, estoqueMap[it.nomeKey]);
+    return htmlEstoqueSintetico(it, estoqueMap[it.nomeKey]);
+  };
 
-  document.getElementById('estoque-conteudo').innerHTML = Object.keys(grupos)
+  let resumoValorHTML = '';
+  if (abaEstoqueAtual === 'valor') {
+    let totalGeral = 0, semPreco = 0;
+    itens.forEach(it => {
+      const preco = precoInsumoPorNomeKey(it.nomeKey);
+      if (preco == null) { semPreco++; return; }
+      totalGeral += preco * (estoqueMap[it.nomeKey]?.qtd || 0);
+    });
+    resumoValorHTML = `
+      <div class="estoque-item-card" style="background:#F9FAFB">
+        <div class="estoque-item-header">
+          <div class="estoque-item-nome">Valor total em estoque</div>
+          <div class="estoque-item-total"><strong style="font-size:16px">${_fmtReais(totalGeral)}</strong></div>
+        </div>
+        ${semPreco ? `<p style="font-size:12px;color:var(--cinza-500);margin:4px 0 0">${semPreco} item(ns) sem preço vinculado no Cadastro de Insumos — não entram no total.</p>` : ''}
+        ${_insumosGestaoIndisponivel ? `<p style="font-size:12px;color:#B45309;margin:4px 0 0">⚠ Não foi possível carregar os preços do controle-gestao-main agora. Valores podem estar desatualizados.</p>` : ''}
+      </div>
+    `;
+  }
+
+  document.getElementById('estoque-conteudo').innerHTML = resumoValorHTML + Object.keys(grupos)
     .sort((a, b) => a.localeCompare(b, 'pt-BR'))
     .map(g => `
       <div class="grupo-titulo" style="margin-top:16px;margin-bottom:4px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--cinza-500);letter-spacing:.5px">${_escHtml(g)}</div>
       ${grupos[g].map(renderCard).join('')}
     `).join('');
+}
+
+function htmlEstoqueValor(item, est) {
+  const qtdEst = est?.qtd || 0;
+  const preco  = precoInsumoPorNomeKey(item.nomeKey);
+  const valor  = preco != null ? preco * qtdEst : null;
+  return `
+    <div class="estoque-item-card">
+      <div class="estoque-item-header">
+        <div class="estoque-item-nome">${_escHtml(item.nome)}</div>
+        <div class="estoque-item-total">${valor != null
+          ? `<strong>${_fmtReais(valor)}</strong>`
+          : '<span style="color:var(--cinza-500)">Sem preço vinculado</span>'}</div>
+      </div>
+      <div class="estoque-body-row">
+        <span class="estoque-body-label">Em estoque:</span>
+        <div class="estoque-qty-wrap">
+          <strong>${qtdEst}</strong>&nbsp;<span class="estoque-qty-un">${_escHtml(item.unidade)}</span>
+        </div>
+        ${preco != null ? `<span style="color:var(--cinza-500);font-size:12px;margin-left:8px">&times; ${_fmtReais(preco)}/${_escHtml(item.unidade)}</span>` : ''}
+      </div>
+    </div>
+  `;
 }
 
 function _esc(s) {
@@ -5879,6 +5952,64 @@ async function desvincularEquipeFesta(festaId) {
     console.error(e);
     toast('Erro ao desvincular.', 'erro');
   }
+}
+
+/* ══════════════════════════════════════════════════
+   PREÇOS — lidos ao vivo do Cadastro de Insumos do controle-gestao-main
+   (mesmo app secundário 'gestao' da aba Equipe; só leitura, nunca grava
+   nada lá). Usado pra "Valor da carga" (Separação) e aba "Estoque R$".
+══════════════════════════════════════════════════ */
+
+async function carregarPrecosGestao() {
+  const insumos = await buscarInsumosGestao();
+  _insumosGestaoIndisponivel = insumos === null;
+  const mapa = {};
+  (insumos || []).forEach(ins => {
+    const custo = Number(ins.custoReposicao) || 0;
+    if (!custo) return;
+    [ins.nome, ...(ins.aliases || [])].forEach(n => {
+      const chave = nomeBaseKey(normalizarNomeItem(n));
+      if (chave && !(chave in mapa)) mapa[chave] = custo;
+    });
+  });
+  _mapaPrecoInsumoGestao = mapa;
+  return mapa;
+}
+
+/* null = preço ainda não carregado ou item não encontrado no Cadastro de Insumos */
+function precoInsumoPorNomeKey(nomeKey) {
+  if (!_mapaPrecoInsumoGestao) return null;
+  const chave = nomeBaseKey(nomeKey);
+  return chave in _mapaPrecoInsumoGestao ? _mapaPrecoInsumoGestao[chave] : null;
+}
+
+function _fmtReais(v) {
+  return 'R$ ' + Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/* Soma o custo (qtdNecessaria × custoReposicao) de todos os itens de uma festa —
+   usado na Separação pra mostrar "Valor da carga" que está indo pro evento. */
+function _valorCargaFesta(festa) {
+  if (!_mapaPrecoInsumoGestao) return null;
+  let total = 0, semPreco = 0;
+  (festa.itens || []).forEach(it => {
+    const preco = precoInsumoPorNomeKey(nomeBaseKey(normalizarNomeItem(it.nome)));
+    if (preco == null) { semPreco++; return; }
+    total += preco * (it.qtdNecessaria || 0);
+  });
+  return { total, semPreco };
+}
+
+function htmlValorCarga(festa) {
+  if (!_mapaPrecoInsumoGestao) {
+    return `<div class="info-linha" style="margin-top:6px;color:var(--cinza-500)">Carregando valor da carga…</div>`;
+  }
+  const { total, semPreco } = _valorCargaFesta(festa);
+  return `
+    <div class="info-linha" style="margin-top:6px;font-weight:700">Valor da carga: ${_fmtReais(total)}</div>
+    ${semPreco ? `<div class="info-linha" style="font-size:12px;color:var(--cinza-500)">${semPreco} item(ns) sem preço vinculado no Cadastro de Insumos — não entram no total.</div>` : ''}
+    ${_insumosGestaoIndisponivel ? `<div class="info-linha" style="font-size:12px;color:#B45309">⚠ Preços do controle-gestao-main indisponíveis no momento.</div>` : ''}
+  `;
 }
 
 /* ══════════════════════════════════════════════════

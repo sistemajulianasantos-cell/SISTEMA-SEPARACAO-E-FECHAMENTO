@@ -1098,6 +1098,7 @@
       <div class="filtros-tabs" id="estoque-tabs">
         <button class="tab ativo" data-aba="sintetico" onclick="trocarAbaEstoque('sintetico',this)">Sintético</button>
         <button class="tab"       data-aba="analitico" onclick="trocarAbaEstoque('analitico',this)">Por Festa</button>
+        <button class="tab hidden" id="estoque-tab-valor" data-aba="valor" onclick="trocarAbaEstoque('valor',this)">Estoque R$</button>
         <button class="tab"       data-aba="historico" onclick="trocarAbaEstoque('historico',this)">Histórico de Contagem</button>
       </div>
       <div id="estoque-conteudo"></div>
@@ -1498,8 +1499,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=3"></script>
-  <script src="js/firestore.js?v=43"></script>
-  <script src="js/app.js?v=77"></script>
+  <script src="js/firestore.js?v=44"></script>
+  <script src="js/app.js?v=78"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->
