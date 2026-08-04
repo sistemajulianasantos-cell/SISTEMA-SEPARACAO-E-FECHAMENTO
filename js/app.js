@@ -5978,7 +5978,11 @@ async function carregarPrecosGestao() {
   _insumosGestaoIndisponivel = insumos === null;
   const mapa = {};
   (insumos || []).forEach(ins => {
-    const custo = Number(ins.custoReposicao) || 0;
+    /* preço manual (Cadastro de Insumos) tem prioridade sobre o de reposição —
+       mesma regra do precoEfetivoInsumo() no controle-gestao-main. */
+    const custo = (ins.precoManual != null && ins.precoManual !== '')
+      ? Number(ins.precoManual)
+      : Number(ins.custoReposicao) || 0;
     if (!custo) return;
     [ins.nome, ...(ins.aliases || [])].forEach(n => {
       const chave = nomeBaseKey(normalizarNomeItem(n));
