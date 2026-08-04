@@ -2944,7 +2944,7 @@ function renderizarDetalhe(festa) {
 
   const linkConfHTML = `
     <div class="detalhe-acoes" style="margin-bottom:16px">
-      <button class="btn-secundario" onclick="gerarELinkConferencia('${festa.id}')">🔗 Gerar link de Conferência (24h)</button>
+      <button class="btn-secundario" onclick="gerarELinkConferencia('${festa.id}','${_esc(festa.nome)}')">🔗 Gerar link de Conferência (24h)</button>
     </div>
   `;
 
@@ -3068,9 +3068,9 @@ function ceoSepararFesta(id) {
 }
 
 /* ── Link temporário de Conferência (24h) ── */
-async function gerarELinkConferencia(festaId) {
+async function gerarELinkConferencia(festaId, nomeFesta) {
   try {
-    const token = await gerarLinkConferencia(festaId);
+    const token = await gerarLinkConferencia(festaId, nomeFesta);
     const url = `${location.origin}${location.pathname}?conf=${token}`;
     document.getElementById('lc-url').value = url;
     document.getElementById('modal-link-conferencia').classList.remove('hidden');

@@ -256,12 +256,25 @@ async function atualizarFesta(id, dados) {
   return db.collection('festas').doc(id).update(dados);
 }
 
+function _slugFesta(nome) {
+  return (nome || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
+
 /* Link temporário (24h) que aponta pra uma festa específica, pra pular
    direto pra Conferência dela (ver roteamentoPosLogin em js/app.js). Quem
    abre o link ainda precisa logar de verdade — o token só evita ter que
-   procurar a festa na lista. */
-async function gerarLinkConferencia(festaId) {
-  const token    = crypto.randomUUID().replace(/-/g, '');
+   procurar a festa na lista, daí poder usar o nome da festa (mais fácil de
+   reconhecer) em vez de um id 100% aleatório. */
+async function gerarLinkConferencia(festaId, nomeFesta) {
+  const sufixo   = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+  const slug     = _slugFesta(nomeFesta);
+  const token    = slug ? `${slug}-${sufixo}` : sufixo;
   const expiraEm = firebase.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000);
   await db.collection('links_conferencia').doc(token).set({ festaId, criadoEm: TS(), expiraEm });
   return token;
