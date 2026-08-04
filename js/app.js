@@ -5057,6 +5057,19 @@ function renderizarHistoricoContagem(registros, containerId) {
     }
   });
 
+  /* Sem isso, só aparece na tabela quem já teve pelo menos um registro de
+     histórico (contagem/entrada/produção) — item cadastrado que nunca foi
+     contado nem movimentado simplesmente sumia da lista. Completa com todo
+     item do Cadastro que ainda não apareceu, mesmo que fique só com "—". */
+  Object.values(itemConfigsCache).forEach(cfg => {
+    if (!cfg.nomeKey || porProdutoDia[cfg.nomeKey]) return;
+    porProdutoDia[cfg.nomeKey] = {
+      nome:    cfg.nome,
+      unidade: cfg.unidade || estoqueCache[cfg.nomeKey]?.unidade || 'un',
+      porDia:  {},
+    };
+  });
+
   const dias = Object.keys(diasTs).sort((a, b) => diasTs[b] - diasTs[a]);
   const fmtDia = diaKey => {
     const [ano, mes, dia] = diaKey.split('-').map(Number);
