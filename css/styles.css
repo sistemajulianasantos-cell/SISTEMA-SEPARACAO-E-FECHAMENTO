@@ -29,6 +29,10 @@
   --raio:        6px;
 }
 
+html, body {
+  overflow-x: hidden;
+}
+
 body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: #F0EDE8;
@@ -56,12 +60,18 @@ body {
   height: 56px;
   max-width: 1000px;
   margin: 0 auto;
+  min-width: 0;
 }
 
-.header-left  { display: flex; align-items: center; gap: 14px; }
-.header-titulo { font-size: 15px; font-weight: 700; letter-spacing: .2px; }
-.header-subtitulo { font-size: 11px; color: rgba(255,255,255,.65); margin-top: 1px; }
-.header-right { display: flex; align-items: center; gap: 10px; }
+/* header-left é o único lado "flexível": encolhe e trunca o título
+   antes de deixar o cabeçalho estourar a largura da tela no mobile.
+   Sem min-width:0 aqui, o flexbox nunca encolhe abaixo do conteúdo
+   e o header força a página inteira a rolar na horizontal. */
+.header-left  { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1 1 auto; }
+.header-left > div { min-width: 0; overflow: hidden; }
+.header-titulo { font-size: 15px; font-weight: 700; letter-spacing: .2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-subtitulo { font-size: 11px; color: rgba(255,255,255,.65); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .header-usuario {
   font-size: 13px; color: rgba(255,255,255,.85);
   max-width: 130px; white-space: nowrap;
@@ -1103,12 +1113,21 @@ input, select, textarea { font-size: 16px !important; }
   .auth-container     { margin: 20px 14px 0; padding: 24px 18px; }
 
   /* Header */
-  .header             { padding: 0 12px; }
+  .header             { padding: 0 10px; }
   .header-content     { height: 50px; }
-  .header-usuario     { max-width: 80px; font-size: 12px; }
+  .header-left        { gap: 8px; }
+  .header-right       { gap: 6px; }
+  .header-usuario     { max-width: 60px; font-size: 12px; }
   .header-titulo      { font-size: 14px; }
   .btn-voltar,
-  .btn-sair           { padding: 6px 10px; font-size: 12px; }
+  .btn-sair           { padding: 6px 9px; font-size: 12px; }
+  .btn-inicio         { width: 34px; height: 34px; font-size: 16px; }
+
+  /* Header encolhe pra 50px no mobile — as barras sticky de baixo
+     precisam acompanhar, senão sobra um vão de fundo aparecendo
+     entre elas durante o scroll. */
+  .lc-filtros-hero,
+  .lc-secao-tabs-wrap { top: 50px; }
 
   /* Formulários */
   .form-row           { grid-template-columns: 1fr; }
@@ -1144,6 +1163,7 @@ input, select, textarea { font-size: 16px !important; }
   .data-btn-num       { font-size: 22px; }
 
   /* Tabela de itens (criar festa) */
+  .tabela-criar-header,
   .tabela-criar-header,
   .item-criar-row     { grid-template-columns: 1fr 74px 54px 36px; gap: 4px; }
 
@@ -2514,6 +2534,16 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .analise-lista-cliente { font-size: 11px; color: var(--cinza-500); }
 .analise-lista-colab  { font-size: 12px; color: var(--cinza-700); }
 .analise-lista-data   { font-size: 12px; color: var(--cinza-600); }
+
+/* No mobile as colunas fixas (120/80/90px) não cabem ao lado do nome —
+   empilha em uma coluna e rotula colaborador/data, já que o cabeçalho
+   da tabela some. */
+@media (max-width: 640px) {
+  .analise-lista-header { display: none; }
+  .analise-lista-row { grid-template-columns: 1fr; gap: 4px; }
+  .analise-lista-colab::before { content: "Colaborador: "; font-weight: 400; color: var(--cinza-400); }
+  .analise-lista-data::before  { content: "Data: "; font-weight: 400; color: var(--cinza-400); }
+}
 .analise-duracao {
   font-size: 13px;
   font-weight: 800;
@@ -2625,6 +2655,7 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 10px 16px;
   background: #fff;
@@ -2633,10 +2664,14 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   top: 60px;
   z-index: 91;
 }
+/* min-width:0 deixa as abas quebrarem linha dentro do espaço disponível
+   em vez de forçarem a barra (e a página) a estourar a largura no mobile */
 .lc-secao-tabs {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 .lc-secao-tabs .tab { font-size: 13px; padding: 7px 14px; }
 
