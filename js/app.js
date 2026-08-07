@@ -41,6 +41,7 @@ let _categoriaEditId   = null;
 let _modoSelecaoCadastro = false;
 let _itensSelecionados   = new Set();
 let _buscaCadastro       = '';
+let _filtroCadastroCat   = '';
 
 let _buscaEquipe         = '';
 let _equipeRosterCache   = null;  /* elenco do controle-gestao (null = indisponível) */
@@ -4399,6 +4400,20 @@ function _categoriaPermiteEstoque(grupo) {
   return !cat || cat.exibirEstoque !== false;
 }
 
+/* Mesmo esquema do exibirSeparacao: a categoria libera/bloqueia por padrão,
+   mas o item pode ter um override individual (exibirCompras=false) mesmo
+   com a categoria liberada — usado na Lista de Compras e nos Alertas de
+   estoque mínimo, pra tirar itens específicos sem esconder a categoria toda. */
+function deveExibirNaListaCompras(cfg) {
+  if (!cfg) return true;
+  if (cfg.exibirCompras === false) return false;
+  if (cfg.grupo) {
+    const cat = categoriasCache.find(c => c.nome === cfg.grupo);
+    if (cat && cat.exibirCompras === false) return false;
+  }
+  return true;
+}
+
 function filtrarInventario(valor) {
   _buscaInventario = valor;
   renderizarInventario();
@@ -6061,6 +6076,11 @@ function filtrarCadastro(termo) {
   renderizarCadastroItens();
 }
 
+function filtrarCadastroPorCategoria(valor) {
+  _filtroCadastroCat = valor || '';
+  renderizarCadastroItens();
+}
+
 function trocarAbaItens(aba, btn) {
   document.querySelectorAll('#tela-cadastro-itens .tab').forEach(b => b.classList.remove('ativo'));
   if (btn) btn.classList.add('ativo');
@@ -6123,13 +6143,26 @@ async function renderizarCadastroItens() {
   const busca = _buscaCadastro;
   const buscaWrap = document.getElementById('busca-cadastro-wrap');
   try {
-    /* Carregar configs e itens de todas as festas em paralelo */
-    const [configs, festas] = await Promise.all([
+    /* Carregar configs, categorias e itens de todas as festas em paralelo */
+    const [configs, festas, cats] = await Promise.all([
       listarItemConfigs(),
       todasFestasCache.length ? Promise.resolve(todasFestasCache) : buscarTodasFestas(),
+      categoriasCache.length ? Promise.resolve(categoriasCache) : listarCategorias(),
     ]);
     itemConfigsCache = {};
     configs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    if (!categoriasCache.length) categoriasCache = cats;
+
+    /* Popular o filtro por categoria preservando a seleção atual */
+    const selCat = document.getElementById('cadastro-filtro-cat');
+    if (selCat) {
+      const atual = _filtroCadastroCat;
+      selCat.innerHTML = '<option value="">Todas as categorias</option>'
+        + categoriasCache.slice().sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'))
+            .map(c => `<option value="${_escHtml(c.nome)}">${_escHtml(c.nome)}</option>`).join('')
+        + `<option value="Sem Categoria">Sem Categoria</option>`;
+      selCat.value = atual;
+    }
 
     /* Itens únicos de todas as festas */
     const nomesNasFestas = {};
@@ -6181,6 +6214,7 @@ async function renderizarCadastroItens() {
     const filtrar = (nome) => !busca || nome.toLowerCase().includes(busca);
 
     const htmlGrupos = Object.entries(grupos)
+      .filter(([grupo]) => !_filtroCadastroCat || grupo === _filtroCadastroCat)
       .sort(([nomeA], [nomeB]) => nomeA.localeCompare(nomeB, 'pt-BR'))
       .map(([grupo, grpData]) => {
         const itensFiltrados = grpData.itens
@@ -6194,7 +6228,9 @@ async function renderizarCadastroItens() {
           </div>`;
       }).join('');
 
-    const semConfigFiltrado = semConfig.filter(it => filtrar(it.nomeDisplay));
+    /* Itens sem config não têm categoria — só faz sentido mostrar essa
+       seção quando nenhum filtro de categoria específico está ativo */
+    const semConfigFiltrado = _filtroCadastroCat ? [] : semConfig.filter(it => filtrar(it.nomeDisplay));
     const htmlSemConfig = semConfigFiltrado.length ? `
       <div class="config-grupo-bloco">
         <div class="config-grupo-titulo producao-nao-clas-label">&#9888; Não configurados (${semConfigFiltrado.length})</div>
@@ -6229,6 +6265,7 @@ function htmlConfigItemRow(c) {
     return cat && cat.exibirSeparacao === false;
   })();
   const badgeSep    = (c.exibirSeparacao === false || catOculta) ? '<span class="badge-oculto-sep">Oculto sep.</span>' : '';
+  const badgeCompras = !deveExibirNaListaCompras(c) ? '<span class="badge-oculto-sep">Oculto compras</span>' : '';
   const nomeExibido = nomeBasDisplay(c.nome);
   const metaHtml    = `
     ${c.ordemSeparacao && c.ordemSeparacao !== 999 ? `<span class="badge-ordem">#${c.ordemSeparacao}</span>` : ''}
@@ -6240,7 +6277,7 @@ function htmlConfigItemRow(c) {
     <div class="config-item-row" data-item-id="${_esc(c.id)}" onclick="onClickItemCadastro('${_esc(c.id)}')">
       <input type="checkbox" class="chk-item-cadastro" onclick="event.stopPropagation();toggleSelecaoItemCadastro('${_esc(c.id)}')">
       <div class="config-item-info">
-        <div class="config-item-nome">${_escHtml(nomeExibido)} ${badgeProd} ${badgeSep}</div>
+        <div class="config-item-nome">${_escHtml(nomeExibido)} ${badgeProd} ${badgeSep} ${badgeCompras}</div>
         <div class="config-item-meta">${metaHtml}</div>
       </div>
       <div class="config-item-acoes">
@@ -6829,6 +6866,7 @@ async function abrirFormItemConfig(id, nomePreenchido) {
     document.getElementById('ic-refrigerado').checked    = !!cfg?.refrigerado;
     document.getElementById('ic-producao').checked        = !!cfg?.eProducao;
     document.getElementById('ic-separacao').checked       = cfg?.exibirSeparacao !== false;
+    document.getElementById('ic-compras').checked          = cfg?.exibirCompras   !== false;
     document.getElementById('ic-exige-foto').checked      = !!cfg?.exigeFoto;
     document.getElementById('ic-conferir-coord').checked  = cfg?.conferirCoord !== false;
     document.getElementById('ic-setor').value        = cfg?.setor        || '';
@@ -6911,6 +6949,7 @@ async function salvarItemConfig() {
 
   const eProducao       = document.getElementById('ic-producao').checked;
   const exibirSeparacao = document.getElementById('ic-separacao').checked;
+  const exibirCompras   = document.getElementById('ic-compras').checked;
   const exigeFoto       = document.getElementById('ic-exige-foto').checked;
   const conferirCoord   = document.getElementById('ic-conferir-coord').checked;
   const setor           = document.getElementById('ic-setor').value.trim();
@@ -6924,6 +6963,7 @@ async function salvarItemConfig() {
     prioridade,
     eProducao,
     exibirSeparacao,
+    exibirCompras,
     exigeFoto,
     conferirCoord,
     setor,
@@ -7481,6 +7521,8 @@ function _lcConstruirItens(festas) {
   festas.forEach(festa => {
     (festa.itens || []).forEach(item => {
       const key = nomeBaseKey(normalizarNomeItem(item.nome));
+      const cfg = _lcCfg(key);
+      if (!deveExibirNaListaCompras(cfg)) return;
       if (!mapa[key]) {
         mapa[key] = {
           nomeKey: key,
@@ -7489,7 +7531,7 @@ function _lcConstruirItens(festas) {
           necessario: 0,
           qtdRomero: 0, qtdConsignado: 0, qtdCliente: 0, qtdOutro: 0,
           festas:  [],
-          cfg:     _lcCfg(key),
+          cfg,
         };
       }
       const qtd  = item.qtdNecessaria || 0;
@@ -7541,9 +7583,10 @@ function lcRenderizarConteudo() {
     });
   }
 
-  /* Na visão "Por Evento" todos os itens das festas aparecem, independente da
-     configuração exibirEstoque da categoria. O flag exibirEstoque é usado no
-     Controle de Estoque, no Inventário e nos Alertas de estoque mínimo. */
+  /* Na visão "Por Evento" os itens aparecem independente da configuração
+     exibirEstoque da categoria (esse flag só vale pro Controle de Estoque e
+     Inventário) — mas já respeitam o exibirCompras (categoria + item),
+     filtrado dentro de _lcConstruirItens/deveExibirNaListaCompras. */
 
   /* Sumário calculado ANTES dos filtros de busca/status — mostra o quadro real */
   const elSum = document.getElementById('lc-sumario');
@@ -8538,6 +8581,7 @@ async function abrirFormCategoria(id) {
     document.getElementById('cat-ordem').value      = cat.ordem || '';
     document.getElementById('cat-separacao').checked = cat.exibirSeparacao !== false;
     document.getElementById('cat-estoque').checked   = cat.exibirEstoque   !== false;
+    document.getElementById('cat-compras').checked   = cat.exibirCompras   !== false;
     historico.push('tela-form-categoria');
     mostrarTela('tela-form-categoria', 'Editar Categoria');
   } else {
@@ -8545,6 +8589,7 @@ async function abrirFormCategoria(id) {
     document.getElementById('cat-ordem').value       = '';
     document.getElementById('cat-separacao').checked = true;
     document.getElementById('cat-estoque').checked   = true;
+    document.getElementById('cat-compras').checked   = true;
     historico.push('tela-form-categoria');
     mostrarTela('tela-form-categoria', 'Nova Categoria');
   }
@@ -8556,12 +8601,14 @@ async function salvarCategoria() {
   const ordemStr        = document.getElementById('cat-ordem').value.trim();
   const exibirSeparacao = document.getElementById('cat-separacao').checked;
   const exibirEstoque   = document.getElementById('cat-estoque').checked;
+  const exibirCompras   = document.getElementById('cat-compras').checked;
   const dados = {
     nome,
     nomeKey:          normalizarNomeItem(nome),
     ordem:            ordemStr ? parseInt(ordemStr) : 999,
     exibirSeparacao,
     exibirEstoque,
+    exibirCompras,
   };
   try {
     await salvarCategoriaDB(dados);
@@ -8828,6 +8875,7 @@ function atualizarBadgeCompras() {
 function _contarAlertasCompras() {
   return Object.values(itemConfigsCache).filter(cfg => {
     if (cfg.estoqueMinimo == null) return false;
+    if (!deveExibirNaListaCompras(cfg)) return false;
     const qtd = estoqueCache[cfg.nomeKey]?.qtd || 0;
     return qtd < cfg.estoqueMinimo;
   }).length;
@@ -8835,7 +8883,7 @@ function _contarAlertasCompras() {
 
 function _alertasCompras() {
   return Object.values(itemConfigsCache)
-    .filter(cfg => cfg.estoqueMinimo != null)
+    .filter(cfg => cfg.estoqueMinimo != null && deveExibirNaListaCompras(cfg))
     .map(cfg => {
       const qtdAtual = estoqueCache[cfg.nomeKey]?.qtd || 0;
       const falta    = cfg.estoqueMinimo - qtdAtual;

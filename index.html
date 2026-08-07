@@ -817,8 +817,11 @@
         </button>
         <button class="btn-primario btn-sm hidden" id="btn-nova-ficha" onclick="abrirFormFicha()">&#43; Nova Ficha</button>
       </div>
-      <div class="busca-sep-wrap" id="busca-cadastro-wrap">
-        <input type="search" id="busca-cadastro" class="busca-sep" placeholder="&#128269; Buscar produto..." oninput="filtrarCadastro(this.value)">
+      <div class="busca-sep-wrap" id="busca-cadastro-wrap" style="display:flex;gap:8px;flex-wrap:wrap">
+        <input type="search" id="busca-cadastro" class="busca-sep" style="flex:1;min-width:200px" placeholder="&#128269; Buscar produto..." oninput="filtrarCadastro(this.value)">
+        <select id="cadastro-filtro-cat" class="est-filtros-select" onchange="filtrarCadastroPorCategoria(this.value)">
+          <option value="">Todas as categorias</option>
+        </select>
       </div>
       <div id="cadastro-itens-lista"></div>
       <div id="cadastro-itens-cat" class="hidden"></div>
@@ -922,6 +925,18 @@
           <p class="form-hint">0 = somente no dia do evento &nbsp;|&nbsp; 1 = a partir do dia anterior</p>
         </div>
         <div class="form-secao-titulo">Controle de Compras</div>
+        <div class="form-group">
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-row-titulo">Aparece na Lista de Compras?</div>
+              <div class="toggle-row-desc">Desative pra este item específico não entrar na Lista de Compras nem nos Alertas de estoque mínimo, mesmo que a categoria dele participe</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="ic-compras" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
         <div class="form-row">
           <div class="form-group">
             <label>Estoque Mínimo</label>
@@ -994,11 +1009,23 @@
         <div class="form-group">
           <div class="toggle-row">
             <div>
-              <div class="toggle-row-titulo">Itens aparecem no Estoque, Inventário e Lista de Compras?</div>
-              <div class="toggle-row-desc">Desative para categorias como Coquetéis que são produzidos internamente, não têm estoque contável e não precisam ser comprados</div>
+              <div class="toggle-row-titulo">Itens aparecem no Estoque e Inventário?</div>
+              <div class="toggle-row-desc">Desative para categorias como Coquetéis que são produzidos internamente e não têm estoque contável</div>
             </div>
             <label class="toggle-switch">
               <input type="checkbox" id="cat-estoque" checked>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <div class="toggle-row">
+            <div>
+              <div class="toggle-row-titulo">Itens aparecem na Lista de Compras?</div>
+              <div class="toggle-row-desc">Desative para categorias que não precisam ser compradas (ex: itens do cliente, equipe). Pode ser reativado item a item no Cadastro.</div>
+            </div>
+            <label class="toggle-switch">
+              <input type="checkbox" id="cat-compras" checked>
               <span class="toggle-slider"></span>
             </label>
           </div>
@@ -1504,7 +1531,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=44"></script>
-  <script src="js/app.js?v=81"></script>
+  <script src="js/app.js?v=82"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->
