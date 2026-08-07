@@ -178,28 +178,35 @@ function renderizarPainelTV(festas) {
   const hojeKey  = normalizarData(new Date());
   const hojeDate = new Date(); hojeDate.setHours(0, 0, 0, 0);
 
+  /* Semana de calendário (segunda a domingo) que contém hoje — Agenda,
+     Produção e Em Separação na TV mostram só o que cai dentro dela, pra
+     não misturar eventos de semanas futuras no painel do dia a dia. */
+  const diaSemana     = hojeDate.getDay(); // 0=domingo .. 6=sábado
+  const diffSegunda   = diaSemana === 0 ? -6 : 1 - diaSemana;
+  const inicioSemana  = new Date(hojeDate); inicioSemana.setDate(hojeDate.getDate() + diffSegunda);
+  const fimSemana     = new Date(inicioSemana); fimSemana.setDate(inicioSemana.getDate() + 6);
+
   const separando     = festas.filter(f => {
     if (f.status !== 'separando') return false;
     const fd = toDate(f.data); fd.setHours(0, 0, 0, 0);
-    return fd >= hojeDate;
+    return fd >= hojeDate && fd <= fimSemana;
   });
   const agendadasHoje = festas.filter(f => f.status === 'agendada' && normalizarData(f.data) === hojeKey);
   const proximas = festas
     .filter(f => {
       if (f.status !== 'agendada') return false;
       const fd = toDate(f.data); fd.setHours(0, 0, 0, 0);
-      return fd > hojeDate;
+      return fd > hojeDate && fd <= fimSemana;
     })
-    .sort((a, b) => toDate(a.data) - toDate(b.data))
-    .slice(0, 6);
+    .sort((a, b) => toDate(a.data) - toDate(b.data));
 
   /* Produção TV: apenas itens eProducao, agrega por nomeBaseKey */
   const mapaProd = {};
   festas.filter(f => {
-    if (f.status === 'agendada') return true;
-    if (f.status !== 'separando') return false;
     const fd = toDate(f.data); fd.setHours(0, 0, 0, 0);
-    return fd >= hojeDate;
+    if (f.status === 'agendada') return fd >= inicioSemana && fd <= fimSemana;
+    if (f.status !== 'separando') return false;
+    return fd >= hojeDate && fd <= fimSemana;
   }).forEach(f => {
     (f.itens || []).forEach(item => {
       const key = nomeBaseKey(normalizarNomeItem(item.nome));
