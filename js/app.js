@@ -2937,7 +2937,7 @@ function renderizarDetalhe(festa) {
        </div>`
     : '';
 
-  const excluirHTML = festa.status === 'agendada'
+  const excluirHTML = _podeExcluirFesta(festa.nome, festa.status)
     ? `<div style="padding-top:12px;border-top:var(--borda);margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <button class="btn-perigo" onclick="confirmarExcluirFesta('${festa.id}','${_esc(festa.nome)}','${festa.status}')">
           Excluir Festa
@@ -3047,8 +3047,15 @@ function renderizarDetalhe(festa) {
   `;
 }
 
+/* Festas "Agendada" sempre podem ser excluídas. Festas de teste (nome contém
+   "teste") podem ser excluídas em qualquer status, pra permitir testar o
+   sistema livremente sem deixar lixo de separação/conferência pra trás. */
+function _podeExcluirFesta(nome, status) {
+  return status === 'agendada' || /teste/i.test(nome || '');
+}
+
 async function confirmarExcluirFesta(id, nome, status) {
-  if (status !== 'agendada') {
+  if (!_podeExcluirFesta(nome, status)) {
     alert(`Não é possível excluir "${nome}": a festa já está em "${STATUS_LABELS[status] || status}". Só é possível excluir festas com status "Agendada" (antes de iniciar a separação).`);
     return;
   }
@@ -3855,7 +3862,7 @@ function _infoEventoTexto(f) {
 
 function htmlInfoFesta(f) {
   const ehCEO = !!(usuarioAtual?.roles?.includes('ceo') || usuarioAtual?.role === 'ceo');
-  const btnExcluir = (ehCEO && f.status === 'agendada')
+  const btnExcluir = (ehCEO && _podeExcluirFesta(f.nome, f.status))
     ? `<div style="margin-top:10px">
         <button class="btn-perigo" style="font-size:12px;padding:5px 12px"
           onclick="confirmarExcluirFesta('${f.id}','${_esc(f.nome)}','${f.status}')">
