@@ -2598,32 +2598,46 @@ function renderizarRetorno(festa) {
 
   document.getElementById('ret-itens').innerHTML = (festa.itens || []).map((item, i) => {
     const badgeForn = htmlBadgeForn(item);
+    const enviado   = item.qtdConferida || item.qtdSeparada || 0;
+    const unidade   = item.unidade || 'un';
+    const consumidoInicial = item.qtdConsumida !== undefined ? item.qtdConsumida : '';
+    const danificadoInicial = item.qtdDanificada || 0;
+    const retornoInicial = Math.max(0, enviado - (parseFloat(consumidoInicial) || 0) - danificadoInicial);
     return `
     <div class="item-row">
       <div class="item-topo">
         <div>
           <div class="item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
           ${badgeForn || ''}
-          <div class="item-sub">Enviado: <strong>${item.qtdConferida || item.qtdSeparada || 0}</strong> ${_escHtml(item.unidade || 'un')}</div>
+          <div class="item-sub">Enviado: <strong>${enviado}</strong> ${_escHtml(unidade)}</div>
         </div>
       </div>
       <div class="item-entrada" style="margin-bottom:8px">
-        <label>Retornou:</label>
-        <input type="number" class="qty-input" id="ret-qty-${i}"
-          value="${item.qtdRetorno !== undefined ? item.qtdRetorno : ''}"
-          min="0" placeholder="0" />
-        <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
+        <label>Consumido:</label>
+        <input type="number" class="qty-input" id="ret-cons-${i}"
+          value="${consumidoInicial}"
+          min="0" placeholder="0" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}')" />
+        <span class="item-unidade">${_escHtml(unidade)}</span>
       </div>
       <div class="item-entrada">
         <label>Danificado:</label>
         <input type="number" class="qty-input" id="ret-dan-${i}"
-          value="${item.qtdDanificada || 0}"
-          min="0" placeholder="0" style="width:70px" />
-        <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
+          value="${danificadoInicial}"
+          min="0" placeholder="0" style="width:70px" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}')" />
+        <span class="item-unidade">${_escHtml(unidade)}</span>
       </div>
+      <div class="item-sub" id="ret-calc-${i}" style="margin-top:6px">Retorna pro galpão: <strong>${retornoInicial}</strong> ${_escHtml(unidade)}</div>
     </div>
   `;
   }).join('');
+}
+
+function calcularRetornoItem(i, enviado, unidade) {
+  const consumido  = parseFloat(document.getElementById(`ret-cons-${i}`)?.value) || 0;
+  const danificado = parseFloat(document.getElementById(`ret-dan-${i}`)?.value) || 0;
+  const retorno = Math.max(0, enviado - consumido - danificado);
+  const el = document.getElementById(`ret-calc-${i}`);
+  if (el) el.innerHTML = `Retorna pro galpão: <strong>${retorno}</strong> ${_escHtml(unidade)}`;
 }
 
 async function concluirRetorno() {
@@ -2633,11 +2647,13 @@ async function concluirRetorno() {
   btn.textContent = 'Salvando...';
 
   try {
-    const itens = (festaAtual.itens || []).map((item, i) => ({
-      ...item,
-      qtdRetorno:    parseFloat(document.getElementById(`ret-qty-${i}`)?.value) || 0,
-      qtdDanificada: parseFloat(document.getElementById(`ret-dan-${i}`)?.value) || 0,
-    }));
+    const itens = (festaAtual.itens || []).map((item, i) => {
+      const enviado    = item.qtdConferida || item.qtdSeparada || 0;
+      const consumido  = parseFloat(document.getElementById(`ret-cons-${i}`)?.value) || 0;
+      const danificado = parseFloat(document.getElementById(`ret-dan-${i}`)?.value) || 0;
+      const retorno    = Math.max(0, enviado - consumido - danificado);
+      return { ...item, qtdConsumida: consumido, qtdDanificada: danificado, qtdRetorno: retorno };
+    });
 
     let fotoUrls = [];
     if (fotosCache.retorno.filter(Boolean).length) {
@@ -2657,7 +2673,7 @@ async function concluirRetorno() {
     });
 
     toast('Retorno registrado. Festa enviada para o Galpao.', 'sucesso');
-    setTimeout(() => irParaPrincipal(), 1600);
+    abrirRelatorioRetorno({ ...festaAtual, itens, fotosRetorno: fotoUrls });
 
   } catch (e) {
     console.error(e);
@@ -2665,6 +2681,53 @@ async function concluirRetorno() {
     btn.disabled    = false;
     btn.textContent = 'Confirmar Retorno — Enviar para Galpão';
   }
+}
+
+/* ── RELATÓRIO SIMPLES DE RETORNO ──
+   Exibido logo após confirmar o Retorno: por item, quantidade enviada
+   (inicial) x quantidade que retornou (final), com a foto do item
+   (tirada na Conferência) logo abaixo das quantidades. */
+function abrirRelatorioRetorno(festa) {
+  pararListeners();
+  historico = [telaListaAtual()];
+  mostrarTela('tela-relatorio-retorno', 'Relatório de Retorno');
+
+  const itens = festa.itens || [];
+  const linhasItens = itens.map(item => {
+    const unidade = item.unidade || 'un';
+    const enviado = item.qtdConferida || item.qtdSeparada || 0;
+    const retorno = item.qtdRetorno || 0;
+    const foto    = item.fotoConferencia;
+    return `
+      <div class="item-row">
+        <div class="item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
+        <div class="item-sub">
+          Inicial: <strong>${enviado}</strong> ${_escHtml(unidade)}
+          &nbsp;→&nbsp;
+          Final: <strong>${retorno}</strong> ${_escHtml(unidade)}
+          ${item.qtdConsumida ? ` (consumido: ${item.qtdConsumida})` : ''}
+          ${item.qtdDanificada ? ` (danificado: ${item.qtdDanificada})` : ''}
+        </div>
+        ${foto ? `<div class="grade-fotos" style="margin-top:8px"><img src="${foto}" class="foto-thumb" onclick="window.open('${foto}','_blank')"></div>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  const fotosRetornoHTML = (festa.fotosRetorno || []).length ? `
+    <div class="detalhe-card" style="margin-top:16px">
+      <h3>Fotos do Retorno</h3>
+      <div class="grade-fotos">${festa.fotosRetorno.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
+    </div>
+  ` : '';
+
+  document.getElementById('relret-content').innerHTML = `
+    <div class="card-festa-info" style="margin-bottom:16px">
+      <h2>${_escHtml(festa.cliente || festa.nome)}</h2>
+      <div class="card-festa-meta">${_escHtml(festa.nome)}</div>
+    </div>
+    ${linhasItens}
+    ${fotosRetornoHTML}
+  `;
 }
 
 /* ── GALPÃO ── */
@@ -3408,6 +3471,7 @@ async function avancarParaRetorno(id) {
   try {
     await atualizarFesta(id, { status: 'retorno', festaFim: firebase.firestore.FieldValue.serverTimestamp() });
     toast('Festa enviada para Retorno.', 'sucesso');
+    abrirRetorno(id);
   } catch (e) {
     console.error(e);
     toast('Erro ao atualizar status.', 'erro');
@@ -3840,6 +3904,7 @@ function htmlCardFesta(f, contexto) {
     onclick = `abrirSeparacao('${f.id}')`;
   } else if (contexto === 'coordenador') {
     if      (f.status === 'conferencia') onclick = `abrirConferencia('${f.id}')`;
+    else if (f.status === 'festa')       onclick = `abrirDetalheFesta('${f.id}')`;
     else if (f.status === 'retorno')     onclick = `abrirRetorno('${f.id}')`;
     else if (f.status === 'galpao')      onclick = `abrirGalpao('${f.id}')`;
   }

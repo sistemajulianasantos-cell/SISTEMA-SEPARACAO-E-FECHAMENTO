@@ -612,6 +612,7 @@
       <h2 class="titulo-tela">Painel do Coordenador</h2>
       <div class="filtros-tabs">
         <button class="tab ativo" data-status="conferencia" onclick="filtrarCoord('conferencia',this)">Conferência</button>
+        <button class="tab"       data-status="festa"       onclick="filtrarCoord('festa',this)">Em Festa</button>
         <button class="tab"       data-status="retorno"     onclick="filtrarCoord('retorno',this)">Retorno</button>
         <button class="tab"       data-status="galpao"      onclick="filtrarCoord('galpao',this)">Galpão</button>
       </div>
@@ -676,6 +677,14 @@
       <button class="btn-confirmar btn-full" id="btn-ret-concluir" onclick="concluirRetorno()">
         Confirmar Retorno — Enviar para Galpão
       </button>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: RELATÓRIO DE RETORNO ══════════ -->
+  <div id="tela-relatorio-retorno" class="tela hidden">
+    <div class="container">
+      <div id="relret-content"></div>
+      <button class="btn-primario btn-full mt-lg" onclick="irParaPrincipal()">Concluir</button>
     </div>
   </div>
 
@@ -1530,8 +1539,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=3"></script>
-  <script src="js/firestore.js?v=45"></script>
-  <script src="js/app.js?v=88"></script>
+  <script src="js/firestore.js?v=46"></script>
+  <script src="js/app.js?v=89"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

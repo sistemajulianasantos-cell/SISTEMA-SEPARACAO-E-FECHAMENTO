@@ -87,7 +87,11 @@ function _appSecundario() {
 }
 
 async function contarUsuarios() {
-  const snap = await db.collection('usuarios').limit(1).get();
+  /* source: 'server' evita que a primeira leitura da aba (antes do canal
+     do Firestore terminar de conectar) devolva um snapshot vazio do cache
+     local, o que fazia aparecer "nenhum usuário cadastrado" à toa na
+     primeira abertura. */
+  const snap = await db.collection('usuarios').limit(1).get({ source: 'server' });
   return snap.size;
 }
 
