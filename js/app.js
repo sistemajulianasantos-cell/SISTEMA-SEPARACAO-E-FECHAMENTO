@@ -595,7 +595,9 @@ function goBack() {
       if (anterior === 'tela-coordenador')          carregarCoord(filtroAtualCoord);
       if (anterior === 'tela-usuarios')             carregarUsuarios();
       if (anterior === 'tela-historico-contagem')   abrirHistoricoContagem();
-      if (anterior === 'tela-inicial')              renderizarInicio(papelAtual());
+      if (anterior === 'tela-inicial') {
+        if (papelAtual() === 'coordenador') abrirHomeCoordenador(); else renderizarInicio(papelAtual());
+      }
       if (anterior === 'tela-agenda-meses')         renderizarAgendaMeses();
       if (anterior === 'tela-agenda-datas')         renderizarAgendaDatas(_agendaMesSelecionado);
       if (anterior === 'tela-equipe')               carregarEquipe();
@@ -630,12 +632,17 @@ function irParaPrincipal() {
 
   historico = ['tela-inicial'];
   mostrarTela('tela-inicial');
+
+  if (papel === 'coordenador') {
+    abrirHomeCoordenador();
+    return;
+  }
+
   renderizarInicio(papel);
 
   /* Pré-carrega os dados da tela principal de cada papel (alertas, badges) */
-  if (papel === 'ceo')                  carregarCEO();
-  else if (papel === 'coordenador')     carregarCoord(filtroAtualCoord);
-  else                                  carregarColab();
+  if (papel === 'ceo') carregarCEO();
+  else                 carregarColab();
 }
 
 /* ══════════════════════════════════════════════════
@@ -689,21 +696,6 @@ function renderizarInicio(papel) {
         </div>
       </div>
     `;
-  } else if (papel === 'coordenador') {
-    el.innerHTML = `
-      ${saudacao}
-      <div class="inicio-grid">
-        <div class="inicio-card" onclick="irInicioCoord('conferencia')">
-          <div class="inicio-card-nome">Conferência</div>
-        </div>
-        <div class="inicio-card" onclick="irInicioCoord('retorno')">
-          <div class="inicio-card-nome">Retorno</div>
-        </div>
-        <div class="inicio-card" onclick="irInicioCoord('galpao')">
-          <div class="inicio-card-nome">Galpão</div>
-        </div>
-      </div>
-    `;
   } else {
     /* separador, colaborador ou qualquer outro papel */
     el.innerHTML = `
@@ -727,6 +719,59 @@ function renderizarInicio(papel) {
       </div>
     `;
   }
+}
+
+/* ══════════════════════════════════════════════════
+   HOME DO COORDENADOR — acesso só à festa recebida por link (não
+   navega lista de todas as festas; ver feedback da Juliana em 08-11).
+══════════════════════════════════════════════════ */
+
+function abrirHomeCoordenador() {
+  const festaId = usuarioAtual?.festaLinkAtivaId;
+  if (!festaId) {
+    renderizarHomeCoordenador(null);
+    return;
+  }
+  unsubFesta = escutarFesta(festaId, festa => {
+    if (festa && festa.status === 'concluida') {
+      _limparAcessoCoordenador();
+      renderizarHomeCoordenador(null);
+      return;
+    }
+    renderizarHomeCoordenador(festa);
+  });
+}
+
+async function _limparAcessoCoordenador() {
+  if (!usuarioAtual) return;
+  usuarioAtual.festaLinkAtivaId = null;
+  try { await limparFestaLinkAtiva(usuarioAtual.id); } catch (e) { console.error('Erro ao limpar acesso da festa:', e); }
+}
+
+function renderizarHomeCoordenador(festa) {
+  const el = document.getElementById('inicio-conteudo');
+  if (!el) return;
+  const nome = (usuarioAtual?.nome || '').split(' ')[0] || '';
+  const saudacao = `<div class="inicio-saudacao">Olá${nome ? ', ' + nome : ''}!</div>`;
+
+  if (!festa) {
+    el.innerHTML = `${saudacao}${estadoVazio('Solicite o link da festa ao administrador para ter acesso.')}`;
+    return;
+  }
+
+  const ACAO_ETAPA = { conferencia: 'abrirConferencia', retorno: 'abrirRetorno', galpao: 'abrirGalpao' };
+  const funcao = ACAO_ETAPA[festa.status];
+
+  el.innerHTML = `
+    ${saudacao}
+    <div class="inicio-grid">
+      <div class="inicio-card${funcao ? '' : ' inicio-card-desabilitado'}"
+        ${funcao ? `onclick="${funcao}('${festa.id}')"` : ''}>
+        <div class="inicio-card-nome">${_escHtml(festa.nome)}</div>
+        <div class="inicio-card-sub">${funcao ? (STATUS_LABELS[festa.status] || festa.status) : 'Aguardando — ' + (STATUS_LABELS[festa.status] || festa.status)}</div>
+      </div>
+    </div>
+  `;
 }
 
 function abrirPainelTV() {
@@ -975,7 +1020,11 @@ function roteamentoPosLogin(usuario) {
     linkConferenciaPendente = null;
     const rolesLink = usuario.roles || [usuario.role];
     if (rolesLink.includes('coordenador') || rolesLink.includes('ceo')) {
-      if (!rolesLink.includes('ceo')) roleAtivo = 'coordenador';
+      if (!rolesLink.includes('ceo')) {
+        roleAtivo = 'coordenador';
+        usuario.festaLinkAtivaId = festaId;
+        salvarFestaLinkAtiva(usuario.id, festaId).catch(e => console.error('Erro ao salvar acesso da festa:', e));
+      }
       abrirConferencia(festaId);
       return;
     }
@@ -2116,10 +2165,11 @@ function filtrarCoord(status, btn) {
   carregarCoord(status);
 }
 
-/* Retorna a tela-lista do papel ativo (CEO → tela-ceo, coord → tela-coordenador) */
+/* Retorna a tela-lista do papel ativo (CEO → tela-ceo, coord → tela-inicial,
+   já que o coordenador não navega mais lista de festas) */
 function telaListaAtual() {
   const roles = usuarioAtual?.roles || [usuarioAtual?.role || ''];
-  return roles.includes('ceo') ? 'tela-ceo' : 'tela-coordenador';
+  return roles.includes('ceo') ? 'tela-ceo' : 'tela-inicial';
 }
 
 /* ── CONFERÊNCIA ── */

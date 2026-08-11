@@ -220,6 +220,17 @@ async function deletarUsuario(id) {
   return db.collection('usuarios').doc(id).delete();
 }
 
+/* Festa que o coordenador ganhou acesso via link — fica "grudado" na conta
+   dele até a festa ser concluída, pra não precisar abrir o link de novo a
+   cada login (ver firestore.rules: só esse campo pode ser autoeditado). */
+async function salvarFestaLinkAtiva(uid, festaId) {
+  return db.collection('usuarios').doc(uid).update({ festaLinkAtivaId: festaId });
+}
+
+async function limparFestaLinkAtiva(uid) {
+  return db.collection('usuarios').doc(uid).update({ festaLinkAtivaId: null });
+}
+
 /* ════════════════════════════════════════
    FESTAS
 ════════════════════════════════════════ */

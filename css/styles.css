@@ -1238,6 +1238,9 @@ input, select, textarea { font-size: 16px !important; }
 }
 .inicio-card:hover, .inicio-card:active { background: var(--cinza-50); border-color: var(--roxo); }
 .inicio-card-nome { font-size: 14px; font-weight: 700; color: var(--cinza-700); }
+.inicio-card-sub  { font-size: 12px; color: var(--cinza-500); }
+.inicio-card-desabilitado { cursor: default; }
+.inicio-card-desabilitado:hover, .inicio-card-desabilitado:active { background: var(--branco); border-color: var(--cinza-200); }
 .inicio-card-badge {
   position: absolute; top: 10px; right: 10px;
   display: inline-flex; align-items: center; justify-content: center;

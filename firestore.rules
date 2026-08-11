@@ -63,7 +63,15 @@ service cloud.firestore {
         || ehCeo()
       );
 
-      allow update: if ehCeo();
+      /* Atualização: o CEO edita qualquer perfil. A própria pessoa só pode
+         alterar o próprio "festaLinkAtivaId" (qual festa ela acessou por
+         link de Conferência) — nada mais, pra não conseguir se promover
+         de papel sozinha. */
+      allow update: if ehCeo() || (
+        autenticadoReal()
+        && request.auth.uid == uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['festaLinkAtivaId'])
+      );
 
       /* Exclusão: o CEO a qualquer momento, ou a própria pessoa apagando
          seu registro legado (mesmo nomeKey) no instante da migração. */
