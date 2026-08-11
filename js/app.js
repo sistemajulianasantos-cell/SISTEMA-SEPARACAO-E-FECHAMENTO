@@ -765,7 +765,7 @@ function renderizarHomeCoordenador(festa) {
     return;
   }
 
-  const ACAO_ETAPA = { conferencia: 'abrirConferencia', retorno: 'abrirRetorno', galpao: 'abrirGalpao' };
+  const ACAO_ETAPA = { conferencia: 'abrirConferencia', festa: 'avancarParaRetorno', retorno: 'abrirRetorno', galpao: 'abrirGalpao' };
   const funcao = ACAO_ETAPA[festa.status];
 
   el.innerHTML = `
