@@ -31,7 +31,7 @@
     form-action 'self';
   ">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=30">
+  <link rel="stylesheet" href="css/styles.css?v=31">
 </head>
 <body>
 
@@ -47,10 +47,10 @@
       </div>
       <div class="header-right">
         <button id="btn-inicio" class="btn-inicio hidden" onclick="irParaPrincipal()" title="Início">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11 12 4l8 7"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9"/></svg><span id="menu-badge" class="menu-badge hidden"></span>
+          Início<span id="menu-badge" class="menu-badge hidden"></span>
         </button>
         <span id="header-usuario" class="header-usuario"></span>
-        <button class="btn-sair" onclick="abrirModalTrocarSenha()" title="Trocar minha senha"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="14.5" r="4"/><line x1="10.5" y1="11.5" x2="20" y2="2"/><line x1="16" y1="6" x2="19" y2="9"/><line x1="13.3" y1="8.7" x2="15.3" y2="10.7"/></svg></button>
+        <button class="btn-sair" onclick="abrirModalTrocarSenha()" title="Trocar minha senha">Senha</button>
         <button class="btn-sair" onclick="logout()">Sair</button>
       </div>
     </div>
@@ -216,7 +216,7 @@
         </div>
         <div class="acoes-dir">
           <!-- TEMPORÁRIO: remover depois da limpeza pontual das festas sincronizadas sem Tipo de Evento/Convidados -->
-          <button class="btn-secundario" onclick="abrirLimpezaFestasFuturas()" title="Ferramenta temporária: exclui festas 'Agendada' a partir de uma data e ressincroniza com Contratos"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 6.5 8 6.5 20 6.5"/><path d="M9 6.5V4.2A1.5 1.5 0 0 1 10.5 2.7h3A1.5 1.5 0 0 1 15 4.2V6.5"/><path d="M18.2 6.5 17.3 19a2 2 0 0 1-2 1.8H8.7a2 2 0 0 1-2-1.8L5.8 6.5"/><line x1="10.2" y1="10.5" x2="10.2" y2="16.5"/><line x1="13.8" y1="10.5" x2="13.8" y2="16.5"/></svg> Limpar Futuras</button>
+          <button class="btn-secundario" onclick="abrirLimpezaFestasFuturas()" title="Ferramenta temporária: exclui festas 'Agendada' a partir de uma data e ressincroniza com Contratos">Limpar Futuras</button>
           <button class="btn-secundario" onclick="abrirUsuarios()">Usuários</button>
           <button class="btn-primario"   onclick="abrirCriarFesta()">Nova Festa</button>
         </div>
@@ -237,7 +237,7 @@
           oninput="filtrarEquipe(this.value)" />
       </div>
       <div id="equipe-status-gestao" class="equipe-status-gestao hidden">
-        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 22 20 H2 Z"/><line x1="12" y1="9.5" x2="12" y2="14"/><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/></svg> Não foi possível carregar a equipe do outro sistema agora. Tente novamente em instantes.
+        Não foi possível carregar a equipe do outro sistema agora. Tente novamente em instantes.
       </div>
       <div id="equipe-lista" class="lista-festas"></div>
     </div>
@@ -262,7 +262,7 @@
   <!-- ══════════ MODAL: PADRONIZAR NOMES (Cadastro) ══════════ -->
   <div id="modal-padronizar-nomes" class="modal-overlay hidden" onclick="fecharModalPadronizarNomes()">
     <div class="modal-box" onclick="event.stopPropagation()" style="max-width:640px;width:95%">
-      <div class="modal-titulo"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 3H5a2 2 0 0 0-2 2v7.5a1 1 0 0 0 .3.7l9 9a1 1 0 0 0 1.4 0l7.5-7.5a1 1 0 0 0 0-1.4l-9-9a1 1 0 0 0-.7-.3Z"/><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/></svg> Padronizar nomes</div>
+      <div class="modal-titulo">Padronizar nomes</div>
       <div style="font-size:13px;color:#6B7280;margin:8px 0 4px">
         Compara o nome atual de cada item com a lista padrão — no Cadastro e também nos itens das festas ativas (o que aparece no Controle de Estoque). Migra a contagem de estoque já feita para o nome novo, e cadastra sem categoria os produtos da lista que ainda não existem em nenhum lugar.
       </div>
@@ -277,7 +277,7 @@
   <!-- ══════════ MODAL: RESOLVER DUPLICADOS (Cadastro) ══════════ -->
   <div id="modal-resolver-duplicados" class="modal-overlay hidden" onclick="fecharModalResolverDuplicados()">
     <div class="modal-box" onclick="event.stopPropagation()" style="max-width:640px;width:95%">
-      <div class="modal-titulo"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Resolver duplicados</div>
+      <div class="modal-titulo">Resolver duplicados</div>
       <div style="font-size:13px;color:#6B7280;margin:8px 0 4px">
         Itens com o mesmo nome cadastrados mais de uma vez (nomes iguais, mas vínculos diferentes). Escolha qual manter em cada grupo — o sistema já sugere o que está de fato ligado a uma festa ativa. Os outros são removidos do Cadastro.
       </div>
@@ -444,9 +444,9 @@
       <div class="secao-header">
         <h2 class="titulo-tela">Festas para Separar</h2>
         <div style="display:flex;gap:8px">
-          <button class="btn-secundario btn-sm" onclick="abrirInventario()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><line x1="8" y1="10.5" x2="16" y2="10.5"/><line x1="8" y1="14.5" x2="16" y2="14.5"/><line x1="8" y1="18.5" x2="13" y2="18.5"/></svg> Inventário</button>
-          <button class="btn-secundario btn-sm" onclick="abrirEntradaMercadoria()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8 12 3l9 5-9 5-9-5Z"/><path d="M3 8v9l9 5 9-5V8"/><line x1="12" y1="13" x2="12" y2="22"/></svg> Entrada</button>
-          <button class="btn-secundario btn-sm" onclick="abrirRegistrarProducao()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16l-8 9v6"/><line x1="8" y1="19" x2="16" y2="19"/></svg> Produção</button>
+          <button class="btn-secundario btn-sm" onclick="abrirInventario()">Inventário</button>
+          <button class="btn-secundario btn-sm" onclick="abrirEntradaMercadoria()">Entrada</button>
+          <button class="btn-secundario btn-sm" onclick="abrirRegistrarProducao()">Produção</button>
         </div>
       </div>
       <div id="colab-lista" class="lista-festas"></div>
@@ -534,7 +534,7 @@
           </select>
           <input type="number" id="prod-ficha-qtd" class="inv-add-qtd" min="0" step="any" placeholder="Quero produzir" />
           <span id="prod-ficha-un" class="inv-add-un"></span>
-          <button class="btn-primario btn-sm" onclick="calcularInsumosDaFicha()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2"/><line x1="8" y1="6.5" x2="16" y2="6.5"/><circle cx="8.3" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="15.7" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="8.3" cy="15" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="15" r=".9" fill="currentColor" stroke="none"/><circle cx="15.7" cy="15" r=".9" fill="currentColor" stroke="none"/><circle cx="8.3" cy="19" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r=".9" fill="currentColor" stroke="none"/><circle cx="15.7" cy="19" r=".9" fill="currentColor" stroke="none"/></svg> Calcular</button>
+          <button class="btn-primario btn-sm" onclick="calcularInsumosDaFicha()">Calcular</button>
         </div>
         <p class="form-hint" id="prod-ficha-hint"></p>
       </div>
@@ -787,9 +787,9 @@
       <div class="secao-header">
         <h2 class="titulo-tela">Cadastro</h2>
         <div style="display:flex;gap:8px">
-          <button class="btn-secundario btn-sm" id="btn-selecionar-itens" onclick="toggleModoSelecaoCadastro()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="4.5" width="15" height="15" rx="2.5"/></svg> Selecionar</button>
-          <button class="btn-secundario btn-sm hidden" id="btn-padronizar-nomes" onclick="abrirModalPadronizarNomes()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 3H5a2 2 0 0 0-2 2v7.5a1 1 0 0 0 .3.7l9 9a1 1 0 0 0 1.4 0l7.5-7.5a1 1 0 0 0 0-1.4l-9-9a1 1 0 0 0-.7-.3Z"/><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/></svg> Padronizar nomes</button>
-          <button class="btn-secundario btn-sm hidden" id="btn-resolver-duplicados" onclick="abrirModalResolverDuplicados()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Resolver duplicados</button>
+          <button class="btn-secundario btn-sm" id="btn-selecionar-itens" onclick="toggleModoSelecaoCadastro()">Selecionar</button>
+          <button class="btn-secundario btn-sm hidden" id="btn-padronizar-nomes" onclick="abrirModalPadronizarNomes()">Padronizar nomes</button>
+          <button class="btn-secundario btn-sm hidden" id="btn-resolver-duplicados" onclick="abrirModalResolverDuplicados()">Resolver duplicados</button>
           <button class="btn-primario" id="btn-novo-item-config" onclick="abrirFormItemConfig()">&#43; Novo Item</button>
           <button class="btn-primario hidden" id="btn-nova-categoria" onclick="abrirFormCategoria()">&#43; Nova Categoria</button>
         </div>
@@ -801,7 +801,7 @@
         </label>
         <div style="display:flex;align-items:center;gap:10px">
           <span id="selecao-contagem" style="font-size:13px;color:var(--cinza-600)">0 selecionados</span>
-          <button class="btn-primario btn-sm" id="btn-excluir-selecionados" onclick="excluirSelecionadosCadastro()" disabled style="background:var(--vermelho)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 6.5 8 6.5 20 6.5"/><path d="M9 6.5V4.2A1.5 1.5 0 0 1 10.5 2.7h3A1.5 1.5 0 0 1 15 4.2V6.5"/><path d="M18.2 6.5 17.3 19a2 2 0 0 1-2 1.8H8.7a2 2 0 0 1-2-1.8L5.8 6.5"/><line x1="10.2" y1="10.5" x2="10.2" y2="16.5"/><line x1="13.8" y1="10.5" x2="13.8" y2="16.5"/></svg> Excluir</button>
+          <button class="btn-primario btn-sm" id="btn-excluir-selecionados" onclick="excluirSelecionadosCadastro()" disabled style="background:var(--vermelho)">Excluir</button>
           <button class="btn-secundario btn-sm" onclick="toggleModoSelecaoCadastro()">Cancelar</button>
         </div>
       </div>
@@ -813,7 +813,7 @@
           <button class="tab"       id="tab-itens-fichas"  onclick="trocarAbaItens('fichas',this)">Fichas Técnicas</button>
         </div>
         <button class="btn-secundario btn-sm" id="btn-aplicar-class" onclick="backfillCategoriasNasFestas()" title="Aplicar categorias cadastradas nos itens das festas já importadas">
-          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2.4M12 18.6V21M21 12h-2.4M5.4 12H3M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7M18.4 18.4l-1.7-1.7M7.3 7.3 5.6 5.6"/></svg> Aplicar Classificações nas Festas
+          Aplicar Classificações nas Festas
         </button>
         <button class="btn-primario btn-sm hidden" id="btn-nova-ficha" onclick="abrirFormFicha()">&#43; Nova Ficha</button>
       </div>
@@ -1199,10 +1199,10 @@
     <!-- Abas principais da tela -->
     <div class="lc-secao-tabs-wrap">
       <div class="lc-secao-tabs">
-        <button class="tab ativo" onclick="lcTrocarSecao('evento',this)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><line x1="8" y1="10.5" x2="16" y2="10.5"/><line x1="8" y1="14.5" x2="16" y2="14.5"/><line x1="8" y1="18.5" x2="13" y2="18.5"/></svg> Por Evento</button>
-        <button class="tab"       onclick="lcTrocarSecao('alertas',this)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 10a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5H4.5S6 14 6 10Z"/><path d="M10 18.5a2 2 0 0 0 4 0"/></svg> Alertas <span id="badge-alertas-tab" class="sep-badge"></span></button>
-        <button class="tab"       onclick="lcTrocarSecao('pedidos',this)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8 12 3l9 5-9 5-9-5Z"/><path d="M3 8v9l9 5 9-5V8"/><line x1="12" y1="13" x2="12" y2="22"/></svg> Pedidos <span id="badge-andamento-tab" class="sep-badge sep-badge-ok"></span></button>
-        <button class="tab"       onclick="lcTrocarSecao('simular',this)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2.5" width="14" height="19" rx="2"/><line x1="8" y1="6.5" x2="16" y2="6.5"/><circle cx="8.3" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="15.7" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="8.3" cy="15" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="15" r=".9" fill="currentColor" stroke="none"/><circle cx="15.7" cy="15" r=".9" fill="currentColor" stroke="none"/><circle cx="8.3" cy="19" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r=".9" fill="currentColor" stroke="none"/><circle cx="15.7" cy="19" r=".9" fill="currentColor" stroke="none"/></svg> Simular Compra</button>
+        <button class="tab ativo" onclick="lcTrocarSecao('evento',this)">Por Evento</button>
+        <button class="tab"       onclick="lcTrocarSecao('alertas',this)">Alertas <span id="badge-alertas-tab" class="sep-badge"></span></button>
+        <button class="tab"       onclick="lcTrocarSecao('pedidos',this)">Pedidos <span id="badge-andamento-tab" class="sep-badge sep-badge-ok"></span></button>
+        <button class="tab"       onclick="lcTrocarSecao('simular',this)">Simular Compra</button>
       </div>
       <button class="btn-secundario btn-sm" onclick="lcAtualizar()">&#8635; Atualizar</button>
     </div>
@@ -1252,9 +1252,9 @@
             <span class="lc-filtros-label">Fornecimento</span>
             <div class="filtros-tabs" id="lc-forn-tabs">
               <button class="tab ativo" onclick="lcSetFornecimento('todos',this)">Todos</button>
-              <button class="tab"       onclick="lcSetFornecimento('romero',this)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8 12 3l9 5-9 5-9-5Z"/><path d="M3 8v9l9 5 9-5V8"/><line x1="12" y1="13" x2="12" y2="22"/></svg> Romero</button>
-              <button class="tab"       onclick="lcSetFornecimento('consignado',this)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><line x1="8" y1="10.5" x2="16" y2="10.5"/><line x1="8" y1="14.5" x2="16" y2="14.5"/><line x1="8" y1="18.5" x2="13" y2="18.5"/></svg> Consignado</button>
-              <button class="tab"       onclick="lcSetFornecimento('cliente',this)"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg> Cliente</button>
+              <button class="tab"       onclick="lcSetFornecimento('romero',this)">Romero</button>
+              <button class="tab"       onclick="lcSetFornecimento('consignado',this)">Consignado</button>
+              <button class="tab"       onclick="lcSetFornecimento('cliente',this)">Cliente</button>
             </div>
           </div>
 
@@ -1344,7 +1344,7 @@
         </div>
         <div class="tv-header-direita">
           <button class="tv-btn-fs" onclick="irParaPrincipal()">&#8592; Início</button>
-          <button id="tv-btn-fs" class="tv-btn-fs" onclick="toggleFullscreen()"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3.5H5A1.5 1.5 0 0 0 3.5 5v3"/><path d="M16 3.5h3A1.5 1.5 0 0 1 20.5 5v3"/><path d="M8 20.5H5A1.5 1.5 0 0 1 3.5 19v-3"/><path d="M16 20.5h3a1.5 1.5 0 0 0 1.5-1.5v-3"/></svg> Tela Cheia</button>
+          <button id="tv-btn-fs" class="tv-btn-fs" onclick="toggleFullscreen()">Tela Cheia</button>
           <button class="tv-btn-sair" onclick="logout()">Sair</button>
         </div>
       </div>
@@ -1386,7 +1386,7 @@
   <!-- MODAL TEMPORÁRIO: LIMPAR FESTAS FUTURAS (remover depois de usado) -->
   <div id="modal-limpeza-festas" class="modal-overlay hidden" onclick="fecharModalLimpezaFestas()">
     <div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;width:95%">
-      <div class="modal-titulo"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 6.5 8 6.5 20 6.5"/><path d="M9 6.5V4.2A1.5 1.5 0 0 1 10.5 2.7h3A1.5 1.5 0 0 1 15 4.2V6.5"/><path d="M18.2 6.5 17.3 19a2 2 0 0 1-2 1.8H8.7a2 2 0 0 1-2-1.8L5.8 6.5"/><line x1="10.2" y1="10.5" x2="10.2" y2="16.5"/><line x1="13.8" y1="10.5" x2="13.8" y2="16.5"/></svg> Limpar Festas Futuras (Contrato)</div>
+      <div class="modal-titulo">Limpar Festas Futuras (Contrato)</div>
       <div style="font-size:13px;color:#6B7280;margin:8px 0 4px">
         Exclui festas com status <strong>Agendada</strong> a partir da data abaixo (inclusive), e em seguida roda a sincronização com Contratos de novo — as recriadas já vêm com Tipo de Evento e Convidados. Festas com separação já iniciada (ou com data anterior) não entram nessa lista.
       </div>
@@ -1531,7 +1531,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=44"></script>
-  <script src="js/app.js?v=83"></script>
+  <script src="js/app.js?v=84"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

@@ -33,13 +33,6 @@ html, body {
   overflow-x: hidden;
 }
 
-.icon {
-  width: 1em; height: 1em;
-  display: inline-block;
-  vertical-align: -0.125em;
-  flex-shrink: 0;
-}
-
 body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: #F0EDE8;
@@ -1008,7 +1001,6 @@ body {
   border-radius: var(--raio);
   margin: 16px 0;
 }
-.aviso-editando-icone { font-size: 36px; margin-bottom: 12px; }
 .aviso-editando strong { display: block; font-size: 16px; color: #78350F; margin-bottom: 8px; }
 .aviso-editando p { font-size: 13px; color: var(--cinza-700); }
 
@@ -1245,7 +1237,6 @@ input, select, textarea { font-size: 16px !important; }
   text-align: center;
 }
 .inicio-card:hover, .inicio-card:active { background: var(--cinza-50); border-color: var(--roxo); }
-.inicio-card-icone { font-size: 28px; line-height: 1; color: var(--roxo); }
 .inicio-card-nome { font-size: 14px; font-weight: 700; color: var(--cinza-700); }
 .inicio-card-badge {
   position: absolute; top: 10px; right: 10px;
@@ -1772,8 +1763,6 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   font-size: 11px; color: var(--cinza-500);
   margin-top: 2px; display: flex; align-items: center; gap: 4px;
 }
-.item-localizacao-icone { font-size: 12px; }
-
 /* Título de seção no form */
 .form-secao-titulo {
   font-size: 11px; font-weight: 700; color: var(--cinza-500);
@@ -1856,8 +1845,6 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   font-size: 15px; font-weight: 800; color: #B91C1C;
   margin-bottom: 10px;
 }
-
-.alerta-hoje-titulo .alerta-icone { font-size: 18px; }
 
 .alerta-hoje-lista { display: flex; flex-direction: column; gap: 8px; }
 
