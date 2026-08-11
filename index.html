@@ -31,7 +31,7 @@
     form-action 'self';
   ">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=33">
+  <link rel="stylesheet" href="css/styles.css?v=34">
 </head>
 <body>
 
@@ -684,7 +684,10 @@
   <div id="tela-relatorio-retorno" class="tela hidden">
     <div class="container">
       <div id="relret-content"></div>
-      <button class="btn-primario btn-full mt-lg" onclick="irParaPrincipal()">Concluir</button>
+      <div class="no-print" style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn-secundario btn-full" onclick="window.print()">Gerar PDF</button>
+        <button class="btn-primario btn-full" onclick="irParaPrincipal()">Concluir</button>
+      </div>
     </div>
   </div>
 

@@ -2893,3 +2893,12 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   .inv-add-input { width: 100%; flex: none; }
   .inv-add-qtd { width: 80px; }
 }
+
+/* Relatório de Retorno — impressão / "Gerar PDF" (via diálogo de impressão
+   do navegador, sem depender de biblioteca externa) */
+@media print {
+  body * { visibility: hidden; }
+  #tela-relatorio-retorno, #tela-relatorio-retorno * { visibility: visible; }
+  #tela-relatorio-retorno { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
+  .no-print { display: none !important; }
+}
