@@ -2,6 +2,51 @@
    APP.JS — Lógica de UI, navegação e fluxos
    ============================================================ */
 
+/* ── Ícones (SVG inline, família única) ──
+   Uso: icon('nome') ou icon('nome','classe-extra'). Tamanho segue
+   o font-size do elemento pai (width/height: 1em). */
+const ICON_PATHS = {
+  check:        '<polyline points="5 13 10 18 19 7"/>',
+  close:        '<line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>',
+  checkCircle:  '<circle cx="12" cy="12" r="9"/><polyline points="8 12 11 15 16 9"/>',
+  alertTriangle:'<path d="M12 3 22 20 H2 Z"/><line x1="12" y1="9.5" x2="12" y2="14"/><circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/>',
+  alertCircle:  '<circle cx="12" cy="12" r="9"/><line x1="12" y1="7.5" x2="12" y2="13"/><circle cx="12" cy="16" r=".6" fill="currentColor" stroke="none"/>',
+  trash:        '<polyline points="4 6.5 8 6.5 20 6.5"/><path d="M9 6.5V4.2A1.5 1.5 0 0 1 10.5 2.7h3A1.5 1.5 0 0 1 15 4.2V6.5"/><path d="M18.2 6.5 17.3 19a2 2 0 0 1-2 1.8H8.7a2 2 0 0 1-2-1.8L5.8 6.5"/><line x1="10.2" y1="10.5" x2="10.2" y2="16.5"/><line x1="13.8" y1="10.5" x2="13.8" y2="16.5"/>',
+  link:         '<circle cx="8" cy="12" r="3"/><circle cx="16" cy="12" r="3"/><line x1="11" y1="12" x2="13" y2="12"/>',
+  camera:       '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8.2 7 9.5 4.7h5L15.8 7"/><circle cx="12" cy="13.5" r="3.3"/>',
+  edit:         '<path d="M12.5 20.5h8"/><path d="M16.4 3.9a2 2 0 0 1 2.8 2.8L8 18 4 19l1-4Z"/>',
+  mapPin:       '<path d="M12 21s-7-6.7-7-11.3A7 7 0 0 1 19 9.7C19 14.3 12 21 12 21Z"/><circle cx="12" cy="9.7" r="2.4"/>',
+  truck:        '<rect x="1.5" y="7" width="12.5" height="10" rx="1"/><path d="M14 10h4l3.5 3v4H14Z"/><circle cx="5.8" cy="18.5" r="1.7"/><circle cx="17" cy="18.5" r="1.7"/>',
+  maximize:     '<path d="M8 3.5H5A1.5 1.5 0 0 0 3.5 5v3"/><path d="M16 3.5h3A1.5 1.5 0 0 1 20.5 5v3"/><path d="M8 20.5H5A1.5 1.5 0 0 1 3.5 19v-3"/><path d="M16 20.5h3a1.5 1.5 0 0 0 1.5-1.5v-3"/>',
+  calendar:     '<rect x="3" y="5" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="3" x2="8" y2="7"/><line x1="16" y1="3" x2="16" y2="7"/>',
+  users:        '<circle cx="9" cy="8.2" r="3.2"/><path d="M3.3 19c0-3.3 2.7-5.6 5.7-5.6s5.7 2.3 5.7 5.6"/><circle cx="17.3" cy="9.3" r="2.5"/><path d="M15.9 13.4c2.2.5 3.8 2.5 3.8 5.6"/>',
+  user:         '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"/>',
+  box:          '<path d="M3 8 12 3l9 5-9 5-9-5Z"/><path d="M3 8v9l9 5 9-5V8"/><line x1="12" y1="13" x2="12" y2="22"/>',
+  cart:         '<circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/><path d="M2.2 3h2l2.4 12.2a2 2 0 0 0 2 1.6h8.4a2 2 0 0 0 2-1.6L21 7H6"/>',
+  tv:           '<rect x="3" y="4" width="18" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>',
+  barChart:     '<rect x="4" y="12" width="3.4" height="9" rx=".6"/><rect x="10.3" y="7" width="3.4" height="14" rx=".6"/><rect x="16.6" y="15" width="3.4" height="6" rx=".6"/>',
+  trendingUp:   '<polyline points="3 17 9 11 13 15 21 6"/><polyline points="15 6 21 6 21 12"/>',
+  folder:       '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>',
+  cornerUpLeft: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 6 6v1"/>',
+  warehouse:    '<path d="M3 10 12 4l9 6"/><rect x="3" y="10" width="18" height="11" rx="1"/><line x1="9" y1="21" x2="9" y2="14"/><line x1="15" y1="21" x2="15" y2="14"/>',
+  list:         '<circle cx="4.2" cy="6" r="1"/><circle cx="4.2" cy="12" r="1"/><circle cx="4.2" cy="18" r="1"/><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>',
+  clipboard:    '<rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><line x1="8" y1="10.5" x2="16" y2="10.5"/><line x1="8" y1="14.5" x2="16" y2="14.5"/><line x1="8" y1="18.5" x2="13" y2="18.5"/>',
+  cocktail:     '<path d="M4 4h16l-8 9v6"/><line x1="8" y1="19" x2="16" y2="19"/>',
+  square:       '<rect x="4.5" y="4.5" width="15" height="15" rx="2.5"/>',
+  home:         '<path d="M4 11 12 4l8 7"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-6h4v6h3a1 1 0 0 0 1-1v-9"/>',
+  key:          '<circle cx="7.5" cy="14.5" r="4"/><line x1="10.5" y1="11.5" x2="20" y2="2"/><line x1="16" y1="6" x2="19" y2="9"/><line x1="13.3" y1="8.7" x2="15.3" y2="10.7"/>',
+  tag:          '<path d="M12.5 3H5a2 2 0 0 0-2 2v7.5a1 1 0 0 0 .3.7l9 9a1 1 0 0 0 1.4 0l7.5-7.5a1 1 0 0 0 0-1.4l-9-9a1 1 0 0 0-.7-.3Z"/><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/>',
+  copy:         '<rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  bell:         '<path d="M6 10a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5H4.5S6 14 6 10Z"/><path d="M10 18.5a2 2 0 0 0 4 0"/>',
+  calculator:   '<rect x="5" y="2.5" width="14" height="19" rx="2"/><line x1="8" y1="6.5" x2="16" y2="6.5"/><circle cx="8.3" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="15.7" cy="11" r=".9" fill="currentColor" stroke="none"/><circle cx="8.3" cy="15" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="15" r=".9" fill="currentColor" stroke="none"/><circle cx="15.7" cy="15" r=".9" fill="currentColor" stroke="none"/><circle cx="8.3" cy="19" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r=".9" fill="currentColor" stroke="none"/><circle cx="15.7" cy="19" r=".9" fill="currentColor" stroke="none"/>',
+  search:       '<circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.3" y1="15.3" x2="21" y2="21"/>',
+  snowflake:    '<line x1="12" y1="2" x2="12" y2="22"/><line x1="4.5" y1="6.5" x2="19.5" y2="17.5"/><line x1="4.5" y1="17.5" x2="19.5" y2="6.5"/><line x1="12" y1="2" x2="9.5" y2="4.5"/><line x1="12" y1="2" x2="14.5" y2="4.5"/><line x1="12" y1="22" x2="9.5" y2="19.5"/><line x1="12" y1="22" x2="14.5" y2="19.5"/>',
+};
+function icon(name, cls) {
+  const body = ICON_PATHS[name] || '';
+  return `<svg class="icon${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+}
+
 /* ── Estado global ── */
 let usuarioAtual      = null;
 let festaAtual        = null;
@@ -152,7 +197,7 @@ function toggleFullscreen() {
 document.addEventListener('fullscreenchange', () => {
   const btn = document.getElementById('tv-btn-fs');
   if (!btn) return;
-  btn.textContent = document.fullscreenElement ? '✕ Sair da Tela Cheia' : '⛶ Tela Cheia';
+  btn.innerHTML = document.fullscreenElement ? `${icon('close')} Sair da Tela Cheia` : `${icon('maximize')} Tela Cheia`;
 });
 
 /* Navegador bloqueia tela cheia automática sem nenhuma interação — não tem
@@ -262,7 +307,7 @@ function _tvRenderSeparando(separando) {
       <div class="tv-festa-card">
         <div class="tv-festa-nome">${_escHtml(f.nome)}</div>
         <div class="tv-festa-meta">${_escHtml(f.cliente)}${f.hora ? ' · ' + _escHtml(f.hora) : ''}${_infoEventoTexto(f) ? ' · ' + _infoEventoTexto(f) : ''}</div>
-        ${f.colaborador ? `<div><span class="tv-separador-badge">👤 ${_escHtml(f.colaborador)}</span></div>` : ''}
+        ${f.colaborador ? `<div><span class="tv-separador-badge">${icon('user')} ${_escHtml(f.colaborador)}</span></div>` : ''}
         <div class="tv-progresso-barra-wrap">
           <div class="tv-progresso-barra${completo ? ' completo' : ''}" style="width:${pct}%"></div>
         </div>
@@ -273,7 +318,7 @@ function _tvRenderSeparando(separando) {
             ${mostrar.map(it => `<li>${_escHtml(nomeBasDisplay(it.nome))} — ${it.qtdNecessaria} ${_escHtml(it.unidade || 'un')}</li>`).join('')}
             ${resto > 0 ? `<li style="color:#475569;font-size:11px">... e mais ${resto} itens</li>` : ''}
           </ul>
-        ` : `<div class="tv-tudo-separado">✓ Todos os itens separados!</div>`}
+        ` : `<div class="tv-tudo-separado">${icon('check')} Todos os itens separados</div>`}
       </div>
     `;
   }).join('');
@@ -336,7 +381,7 @@ function _tvRenderProducao(producao) {
             </div>
           </div>
           <div class="tv-prod-detalhe">Estoque: ${p.qtdEst} &nbsp;|&nbsp; Falta: ${p.falta}</div>
-          <div class="tv-prod-aguardando-label">🚚 ${statusLabel} — aguardando chegada</div>
+          <div class="tv-prod-aguardando-label">${icon('truck')} ${statusLabel} — aguardando chegada</div>
           <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill tv-prod-barra-aguardando" style="width:${p.pct}%"></div></div>
         </div>`;
     }
@@ -364,7 +409,7 @@ function _tvRenderProducao(producao) {
           <div class="tv-prod-nome">${_escHtml(p.nome)}</div>
           <div style="text-align:right">
             <div class="tv-prod-qty">${p.total}</div>
-            <div class="tv-prod-ok-label">✓ ok</div>
+            <div class="tv-prod-ok-label">${icon('check')} ok</div>
           </div>
         </div>
         <div class="tv-prod-detalhe">Estoque: ${p.qtdEst}</div>
@@ -654,47 +699,47 @@ function renderizarInicio(papel) {
       <div class="inicio-secao-label">Principal</div>
       <div class="inicio-grid">
         <div class="inicio-card" onclick="irInicioProducao()">
-          <div class="inicio-card-icone">🍸</div>
+          <div class="inicio-card-icone">${icon('cocktail')}</div>
           <div class="inicio-card-nome">Produção</div>
         </div>
         <div class="inicio-card" onclick="irInicioAgenda()">
-          <div class="inicio-card-icone">📅</div>
+          <div class="inicio-card-icone">${icon('calendar')}</div>
           <div class="inicio-card-nome">Agenda</div>
         </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEquipe()">
-          <div class="inicio-card-icone">👥</div>
+          <div class="inicio-card-icone">${icon('users')}</div>
           <div class="inicio-card-nome">Equipe</div>
         </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEstoque()">
-          <div class="inicio-card-icone">📦</div>
+          <div class="inicio-card-icone">${icon('box')}</div>
           <div class="inicio-card-nome">Estoque</div>
         </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirListaCompras()">
-          <div class="inicio-card-icone">🛒</div>
+          <div class="inicio-card-icone">${icon('cart')}</div>
           <div class="inicio-card-nome">Compras &amp; Lista</div>
           <span id="badge-compras" class="inicio-card-badge hidden"></span>
         </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirPainelTV()">
-          <div class="inicio-card-icone">📺</div>
+          <div class="inicio-card-icone">${icon('tv')}</div>
           <div class="inicio-card-nome">Painel TV</div>
         </div>
       </div>
       <div class="inicio-secao-label">Administrativo</div>
       <div class="inicio-grid">
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirRelatorio()">
-          <div class="inicio-card-icone">📊</div>
+          <div class="inicio-card-icone">${icon('barChart')}</div>
           <div class="inicio-card-nome">Relatórios</div>
         </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirAnalise()">
-          <div class="inicio-card-icone">📈</div>
+          <div class="inicio-card-icone">${icon('trendingUp')}</div>
           <div class="inicio-card-nome">Análise</div>
         </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirCadastroItens()">
-          <div class="inicio-card-icone">🗂️</div>
+          <div class="inicio-card-icone">${icon('folder')}</div>
           <div class="inicio-card-nome">Cadastro</div>
         </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirUsuarios()">
-          <div class="inicio-card-icone">👤</div>
+          <div class="inicio-card-icone">${icon('user')}</div>
           <div class="inicio-card-nome">Usuários</div>
         </div>
       </div>
@@ -704,15 +749,15 @@ function renderizarInicio(papel) {
       ${saudacao}
       <div class="inicio-grid">
         <div class="inicio-card" onclick="irInicioCoord('conferencia')">
-          <div class="inicio-card-icone">✅</div>
+          <div class="inicio-card-icone">${icon('checkCircle')}</div>
           <div class="inicio-card-nome">Conferência</div>
         </div>
         <div class="inicio-card" onclick="irInicioCoord('retorno')">
-          <div class="inicio-card-icone">🔙</div>
+          <div class="inicio-card-icone">${icon('cornerUpLeft')}</div>
           <div class="inicio-card-nome">Retorno</div>
         </div>
         <div class="inicio-card" onclick="irInicioCoord('galpao')">
-          <div class="inicio-card-icone">🏭</div>
+          <div class="inicio-card-icone">${icon('warehouse')}</div>
           <div class="inicio-card-nome">Galpão</div>
         </div>
       </div>
@@ -723,23 +768,23 @@ function renderizarInicio(papel) {
       ${saudacao}
       <div class="inicio-grid">
         <div class="inicio-card" onclick="irInicioColab()">
-          <div class="inicio-card-icone">🧾</div>
+          <div class="inicio-card-icone">${icon('list')}</div>
           <div class="inicio-card-nome">Festas para Separar</div>
         </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirInventario()">
-          <div class="inicio-card-icone">📋</div>
+          <div class="inicio-card-icone">${icon('clipboard')}</div>
           <div class="inicio-card-nome">Inventário</div>
         </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEntradaMercadoria()">
-          <div class="inicio-card-icone">📦</div>
+          <div class="inicio-card-icone">${icon('box')}</div>
           <div class="inicio-card-nome">Entrada de Mercadoria</div>
         </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEstoque()">
-          <div class="inicio-card-icone">📊</div>
+          <div class="inicio-card-icone">${icon('barChart')}</div>
           <div class="inicio-card-nome">Controle de Estoque</div>
         </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirRegistrarProducao()">
-          <div class="inicio-card-icone">🍹</div>
+          <div class="inicio-card-icone">${icon('cocktail')}</div>
           <div class="inicio-card-nome">Registrar Produção</div>
         </div>
       </div>
@@ -1275,7 +1320,7 @@ function renderizarAlertaHoje(festas, containerId) {
   el.innerHTML = `
     <div class="alerta-hoje">
       <div class="alerta-hoje-titulo">
-        <span class="alerta-icone">🚨</span>
+        <span class="alerta-icone">${icon('alertCircle')}</span>
         <span>${titulo}</span>
       </div>
       <div class="alerta-hoje-lista">
@@ -1286,7 +1331,7 @@ function renderizarAlertaHoje(festas, containerId) {
           const btnClass = pendentes === 0 ? 'alerta-hoje-btn concluida' : 'alerta-hoje-btn';
           const badgeClass = pendentes === 0 ? 'alerta-hoje-badge zero' : 'alerta-hoje-badge';
           const badgeLabel = pendentes === 0
-            ? '✓ Separado'
+            ? `${icon('check')} Separado`
             : `${pendentes} de ${totalItens} pendente${pendentes !== 1 ? 's' : ''}`;
           return `
             <div class="alerta-hoje-item">
@@ -1569,7 +1614,7 @@ function renderizarSeparacao(festa) {
   if (festa.editandoAgora) {
     document.getElementById('sep-itens').innerHTML = `
       <div class="aviso-editando">
-        <div class="aviso-editando-icone">✏️</div>
+        <div class="aviso-editando-icone">${icon('edit')}</div>
         <strong>${_escHtml(festa.editandoAgora)} está editando as quantidades</strong>
         <p>Aguarde enquanto o administrador finaliza as alterações. A tela será atualizada automaticamente.</p>
       </div>
@@ -1590,7 +1635,7 @@ function renderizarSeparacao(festa) {
       : '';
     avisoHTML = `
       <div class="aviso-alteracao">
-        <strong>⚠ Quantidades alteradas pelo administrador</strong>
+        <strong>${icon('alertTriangle')} Quantidades alteradas pelo administrador</strong>
         <p>${_escHtml(ultima.alteradoPor)}${quando ? ' em ' + quando : ''}${detalhes ? ': ' + detalhes : ''}. Verifique os itens antes de continuar.</p>
       </div>
     `;
@@ -1635,12 +1680,12 @@ function renderizarSeparacao(festa) {
         }).join('')}
       ` : ''}
       ${standByFrig.length ? `
-        <div class="standby-section-titulo">&#10052; Refrigerados — Stand-by</div>
+        <div class="standby-section-titulo">${icon('snowflake')} Refrigerados — Stand-by</div>
         ${standByFrig.map(it => {
           const info = standByInfo(it, festa.data);
           return `
             <div class="item-standby-card">
-              <span class="item-standby-icone">&#10052;</span>
+              <span class="item-standby-icone">${icon('snowflake')}</span>
               <div class="item-standby-corpo">
                 <div class="item-standby-nome">${_escHtml(it.nome)}</div>
                 <div class="item-standby-msg">${_escHtml(info.msg)} &mdash; Qtd: <strong>${it.qtdNecessaria}</strong> ${_escHtml(it.unidade || 'un')}</div>
@@ -1773,7 +1818,7 @@ function htmlItemPendente(item, i) {
   const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
   const locParts = [cfg?.setor, cfg?.prateleira].filter(Boolean);
   const locHtml  = locParts.length
-    ? `<div class="item-localizacao"><span class="item-localizacao-icone">📍</span>${_escHtml(locParts.join(' / '))}</div>`
+    ? `<div class="item-localizacao"><span class="item-localizacao-icone">${icon('mapPin')}</span>${_escHtml(locParts.join(' / '))}</div>`
     : '';
   const badgeForn = htmlBadgeForn(item);
   return `
@@ -1782,7 +1827,7 @@ function htmlItemPendente(item, i) {
         <div class="item-pend-info">
           <div class="item-nome">
             ${_escHtml(nomeBasDisplay(item.nome))}
-            <button class="btn-editar-nome" title="Substituir / editar nome" onclick="editarNomeItem(${i})">✏️</button>
+            <button class="btn-editar-nome" title="Substituir / editar nome" onclick="editarNomeItem(${i})">${icon('edit')}</button>
           </div>
           ${badgeForn || ''}
           <div class="item-sub">${_escHtml(item.unidade || 'un')} &mdash; total: <strong>${item.qtdNecessaria}</strong></div>
@@ -1816,7 +1861,7 @@ function htmlItemSeparado(item, i) {
         ${badgeForn || ''}
         <div class="item-sub">
           Separado: <strong>${item.qtdSeparada}</strong> de <strong>${item.qtdNecessaria}</strong> ${_escHtml(item.unidade || 'un')}
-          ${parcial ? '<span class="badge-parcial">⚠ Parcial</span>' : ''}
+          ${parcial ? `<span class="badge-parcial">${icon('alertTriangle')} Parcial</span>` : ''}
         </div>
       </div>
       <button class="btn-desfazer" onclick="desfazerItem(${i})">Desfazer</button>
@@ -2175,17 +2220,17 @@ function htmlCardConfItem(item, ri, conferido) {
           ? `<img src="${item.fotoConferencia}" alt="foto">`
           : fotosCache.confItens[ri]
             ? `<img src="${URL.createObjectURL(fotosCache.confItens[ri])}" alt="foto">`
-            : `<div class="item-foto-placeholder">📷</div>`}
+            : `<div class="item-foto-placeholder">${icon('camera')}</div>`}
       </div>
       <div class="item-foto-label">
-        <div class="item-foto-label-titulo${temFoto ? ' ok' : ''}">${temFoto ? '✓ Foto anexada' : 'Foto obrigatória'}</div>
+        <div class="item-foto-label-titulo${temFoto ? ' ok' : ''}">${temFoto ? icon('check') + ' Foto anexada' : 'Foto obrigatória'}</div>
         <div class="item-foto-label-desc">${temFoto ? 'Toque para trocar' : 'Este item exige registro fotográfico'}</div>
       </div>
       <input type="file" id="conf-foto-input-${ri}" accept="image/*" capture="environment" style="display:none"
         onchange="onFotoItemConf(${ri}, this)" />
       <button class="btn-foto-item${temFoto ? ' ok' : ''}"
         onclick="document.getElementById('conf-foto-input-${ri}').click()">
-        ${temFoto ? '✓ OK' : '📷 Anexar'}
+        ${temFoto ? icon('check') + ' OK' : icon('camera') + ' Anexar'}
       </button>
     </div>
   ` : '';
@@ -2194,9 +2239,9 @@ function htmlCardConfItem(item, ri, conferido) {
   const sepVal   = item.qtdSeparada || 0;
   const msgInicial = confVal !== undefined
     ? (confVal > sepVal
-        ? `<span class="msg-item msg-alerta">⚠ Quantidade acima do separado</span>`
+        ? `<span class="msg-item msg-alerta">${icon('alertTriangle')} Quantidade acima do separado</span>`
         : confVal < sepVal
-          ? `<span class="msg-item msg-erro">⚠ Quantidade abaixo do separado</span>`
+          ? `<span class="msg-item msg-erro">${icon('alertTriangle')} Quantidade abaixo do separado</span>`
           : '')
     : '';
 
@@ -2206,7 +2251,7 @@ function htmlCardConfItem(item, ri, conferido) {
         <div>
           <div class="item-nome">
             ${_escHtml(nomeBasDisplay(item.nome))}
-            <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${ri})">✏️</button>
+            <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${ri})">${icon('edit')}</button>
           </div>
           ${htmlBadgeForn(item) || ''}
           ${souCeo() && item.separado && item.qtdSeparada !== undefined ? `
@@ -2229,7 +2274,7 @@ function htmlCardConfItem(item, ri, conferido) {
       ${fotoAreaHtml}
       ${conferido
         ? `<button class="btn-desfazer" onclick="reabrirItemConf(${ri})">↺ Reabrir</button>`
-        : `<button class="btn-confirmar btn-sm" onclick="marcarItemConferido(${ri})">✓ Marcar como Conferido</button>`}
+        : `<button class="btn-confirmar btn-sm" onclick="marcarItemConferido(${ri})">${icon('check')} Marcar como Conferido</button>`}
     </div>
   `;
 }
@@ -2267,7 +2312,7 @@ function renderizarConferencia(festa) {
       <button class="tab${abaConfAtual === 'aconferir' ? ' ativo' : ''}"
         onclick="trocarAbaConf('aconferir', this)">A Conferir (${pendentes.length})</button>
       <button class="tab${abaConfAtual === 'conferido' ? ' ativo' : ''}"
-        onclick="trocarAbaConf('conferido', this)">✓ Conferido (${conferidos.length})</button>
+        onclick="trocarAbaConf('conferido', this)">${icon('check')} Conferido (${conferidos.length})</button>
     </div>
   `;
 
@@ -2378,9 +2423,9 @@ async function onFotoItemConf(idx, input) {
     const urls = await uploadFotos([file], festaAtual.id, `conf_item_${idx}`);
     await persistirItemFesta(idx, { fotoConferencia: urls[0] });
     fotosCache.confItens[idx] = null; /* já persistida, não precisa reenviar no final */
-    titulo.textContent = '✓ Foto anexada';
+    titulo.innerHTML = `${icon('check')} Foto anexada`;
     desc.textContent   = 'Toque para trocar';
-    btn.textContent    = '✓ OK';
+    btn.innerHTML     = `${icon('check')} OK`;
   } catch (e) {
     console.error('Erro ao enviar foto do item:', e);
     toast('Falha ao enviar a foto. Tente novamente.', 'erro');
@@ -2389,7 +2434,7 @@ async function onFotoItemConf(idx, input) {
     desc.textContent   = 'Falha no envio — toque para tentar novamente';
     area.classList.remove('ok');
     btn.className = 'btn-foto-item';
-    btn.textContent = '📷 Anexar';
+    btn.innerHTML = `${icon('camera')} Anexar`;
   }
 }
 
@@ -2418,9 +2463,9 @@ function checarConf(i, separado) {
   if (val === separado) {
     el.innerHTML = '';
   } else if (val > separado) {
-    el.innerHTML = `<span class="msg-item msg-alerta">⚠ Quantidade acima do separado</span>`;
+    el.innerHTML = `<span class="msg-item msg-alerta">${icon('alertTriangle')} Quantidade acima do separado</span>`;
   } else {
-    el.innerHTML = `<span class="msg-item msg-erro">⚠ Quantidade abaixo do separado</span>`;
+    el.innerHTML = `<span class="msg-item msg-erro">${icon('alertTriangle')} Quantidade abaixo do separado</span>`;
   }
   atualizarBoxDivConf();
 }
@@ -2955,7 +3000,7 @@ function renderizarDetalhe(festa) {
   const excluirHTML = `
     <div style="padding-top:12px;border-top:var(--borda);margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
       <button class="btn-perigo" onclick="confirmarExcluirFesta('${festa.id}','${_esc(festa.nome)}','${festa.status}')">
-        🗑 Excluir Festa
+        ${icon('trash')} Excluir Festa
       </button>
       <span style="font-size:11px;color:var(--cinza-400)">Irreversível — use apenas para re-importar.</span>
     </div>
@@ -2963,7 +3008,7 @@ function renderizarDetalhe(festa) {
 
   const linkConfHTML = `
     <div class="detalhe-acoes" style="margin-bottom:16px">
-      <button class="btn-secundario" onclick="gerarELinkConferencia('${festa.id}','${_esc(festa.nome)}')">🔗 Gerar link de Conferência (24h)</button>
+      <button class="btn-secundario" onclick="gerarELinkConferencia('${festa.id}','${_esc(festa.nome)}')">${icon('link')} Gerar link de Conferência (24h)</button>
     </div>
   `;
 
@@ -3065,7 +3110,7 @@ function renderizarDetalhe(festa) {
 async function confirmarExcluirFesta(id, nome, status) {
   const emAndamento = !['agendada','concluida'].includes(status);
   const aviso = emAndamento
-    ? `\n\n⚠ ATENÇÃO: Esta festa está "${STATUS_LABELS[status] || status}". Excluir perderá todo o histórico de separação.`
+    ? `\n\nAtenção: esta festa está "${STATUS_LABELS[status] || status}". Excluir perderá todo o histórico de separação.`
     : '';
   if (!confirm(`Excluir a festa "${nome}"?${aviso}\n\nEsta ação não pode ser desfeita.`)) return;
   try {
@@ -3841,16 +3886,16 @@ function htmlCardFesta(f, contexto) {
           <div class="card-festa-topo">
             <div class="card-festa-nome">${_escHtml(f.nome)}</div>
             <span class="badge badge-${f.status}">${_escHtml(STATUS_LABELS[f.status] || f.status)}</span>
-            ${f.origemAuto ? `<span class="badge-ordem" title="Criada automaticamente a partir de um Contrato">🔗 Contrato</span>` : ''}
+            ${f.origemAuto ? `<span class="badge-ordem" title="Criada automaticamente a partir de um Contrato">${icon('link')} Contrato</span>` : ''}
           </div>
           <div class="card-festa-meta">${_escHtml(f.cliente)}${f.hora ? ' — ' + _escHtml(f.hora) : ''}</div>
           ${infoEventoHtml}
           ${f.local ? `<div class="card-festa-meta">${_escHtml(f.local)}</div>` : ''}
-          ${resumoEquipe ? `<div class="card-festa-meta">👥 ${_escHtml(resumoEquipe)}</div>` : ''}
+          ${resumoEquipe ? `<div class="card-festa-meta">${icon('users')} ${_escHtml(resumoEquipe)}</div>` : ''}
           <div class="card-festa-rodape">
             <span>${(f.itens || []).length} itens</span>
             ${f.colaborador ? `<span>${_escHtml(f.colaborador)}</span>` : ''}
-            ${(f.divergencias?.length > 0) ? `<span class="badge-divergencia-card">⚠ ${f.divergencias.length} divergência${f.divergencias.length !== 1 ? 's' : ''}</span>` : ''}
+            ${(f.divergencias?.length > 0) ? `<span class="badge-divergencia-card">${icon('alertTriangle')} ${f.divergencias.length} divergência${f.divergencias.length !== 1 ? 's' : ''}</span>` : ''}
           </div>
         </div>
       </div>
@@ -3874,7 +3919,7 @@ function htmlInfoFesta(f) {
     ? `<div style="margin-top:10px">
         <button class="btn-perigo" style="font-size:12px;padding:5px 12px"
           onclick="confirmarExcluirFesta('${f.id}','${_esc(f.nome)}','${f.status}')">
-          🗑 Excluir Festa
+          ${icon('trash')} Excluir Festa
         </button>
        </div>`
     : '';
@@ -3970,7 +4015,7 @@ function renderizarProducaoCEO() {
   /* Construir grupos conforme modo de ordenação */
   const grupos = {};
 
-  const PRIOR_LABEL = { alta: '🔴 Alta Prioridade', media: '🟡 Média Prioridade', baixa: '🟢 Baixa Prioridade' };
+  const PRIOR_LABEL = { alta: 'Alta Prioridade', media: 'Média Prioridade', baixa: 'Baixa Prioridade' };
   const PRIOR_ORD   = { alta: 0, media: 1, baixa: 2 };
 
   /* Mapear ordens das categorias para exibição */
@@ -4006,7 +4051,7 @@ function renderizarProducaoCEO() {
     <div class="producao-grupo producao-grupo-nao-clas">
       <div class="producao-grupo-header" onclick="toggleGrupo('_nao_classificados')">
         <span class="producao-grupo-seta">&#9660;</span>
-        <span class="producao-grupo-nome producao-nao-clas-label">&#9888; Não classificados</span>
+        <span class="producao-grupo-nome producao-nao-clas-label">${icon('alertTriangle')} Não classificados</span>
         <span class="producao-grupo-qtd">${naoClas.length} item${naoClas.length !== 1 ? 's' : ''}</span>
       </div>
       <div class="producao-grupo-itens" id="grupo-__nao_classificados">
@@ -4063,7 +4108,7 @@ function htmlProducaoSintetico(itens) {
     const pct    = item.total > 0 ? Math.min(100, Math.round((qtdEst / item.total) * 100)) : 100;
     const cfg    = item.cfg;
     const badgeRefrig = cfg?.refrigerado
-      ? '<span class="badge-refrigerado">&#10052; Refrig.</span>' : '';
+      ? `<span class="badge-refrigerado">${icon('snowflake')} Refrig.</span>` : '';
     const badgePrior  = cfg?.prioridade
       ? `<span class="badge-prioridade prior-${cfg.prioridade}">${cfg.prioridade}</span>` : '';
 
@@ -4098,7 +4143,7 @@ function htmlProducaoAnalitico(itens) {
     const diff   = qtdEst - item.total;
     const cfg    = item.cfg;
     const badgeRefrig = cfg?.refrigerado
-      ? '<span class="badge-refrigerado">&#10052;</span>' : '';
+      ? `<span class="badge-refrigerado">${icon('snowflake')}</span>` : '';
 
     const subRows = item.festas.map(f => {
       let dataTxt = '';
@@ -4444,7 +4489,7 @@ async function invAdicionarItem() {
     if (qtdInput)  qtdInput.value  = '';
     const unEl = document.getElementById('inv-add-un');
     if (unEl) unEl.textContent = '';
-    toast(`${nomeReal}: ${qtd} ${unidade} ✓`, 'sucesso');
+    toast(`${nomeReal}: ${qtd} ${unidade}`, 'sucesso');
     renderizarInventario();
   } catch (e) {
     console.error(e);
@@ -4515,13 +4560,13 @@ function renderizarInventario() {
       const qtdEst   = est.qtd != null ? est.qtd : '';
       const un       = c.unidade || est.unidade || '';
       const contado  = _itemContadoRecentemente(key);
-      const btnLabel = contado ? '&#9998; Atualizar' : '&#10003; Contar';
+      const btnLabel = contado ? `${icon('edit')} Atualizar` : `${icon('check')} Contar`;
       const btnStyle = contado ? 'background:var(--cinza-600)' : '';
       return `
         <div class="estoque-item-card" id="inv-card-${key}" style="margin-bottom:8px">
           <div class="estoque-item-header">
             <div class="estoque-item-nome">${_escHtml(c.nome)}</div>
-            <div style="font-size:12px;color:var(--cinza-500)">${contado ? '<span style="color:var(--verde-700);font-weight:600">&#10003; Contado</span>' : (un ? _escHtml(un) : '')}</div>
+            <div style="font-size:12px;color:var(--cinza-500)">${contado ? `<span style="color:var(--verde-700);font-weight:600">${icon('check')} Contado</span>` : (un ? _escHtml(un) : '')}</div>
           </div>
           <div class="estoque-body-row">
             <span class="estoque-body-label">Qtd.:</span>
@@ -4874,7 +4919,7 @@ function renderizarProdInsumos() {
       <span>${_escHtml(i.nome)} — <strong>${i.qtd}</strong> ${_escHtml(i.unidade)}
         ${i.daFicha ? '<span style="background:#EDE9FE;color:#6D28D9;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;margin-left:6px">FICHA</span>' : ''}
       </span>
-      <button class="btn-secundario btn-sm" onclick="prodRemoverInsumo('${_esc(i.nomeKey)}')" style="padding:2px 8px">&#10005;</button>
+      <button class="btn-secundario btn-sm" onclick="prodRemoverInsumo('${_esc(i.nomeKey)}')" style="padding:2px 8px">${icon('close')}</button>
     </div>
   `).join('');
 }
@@ -4940,7 +4985,7 @@ async function confirmarRegistrarProducao() {
     console.error(e);
     toast('Erro ao registrar produção. Tente novamente.', 'erro');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '✓ Registrar produção'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Registrar produção'; }
   }
 }
 
@@ -4954,7 +4999,7 @@ async function salvarInventarioQtd(nomeKey, nome, unidade) {
   try {
     await salvarItemEstoque(nomeKey, { nome, unidade, qtd, ultimaContagemEm: agora });
     estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey, ultimaContagemEm: agora };
-    toast(`${nome}: ${qtd} ${unidade || 'un'} ✓`, 'sucesso');
+    toast(`${nome}: ${qtd} ${unidade || 'un'}`, 'sucesso');
     renderizarInventario();
   } catch (e) {
     console.error(e);
@@ -5327,7 +5372,7 @@ function renderizarEstoque(festas, estoqueMap) {
           <div class="estoque-item-total"><strong style="font-size:16px">${_fmtReais(totalGeral)}</strong></div>
         </div>
         ${semPreco ? `<p style="font-size:12px;color:var(--cinza-500);margin:4px 0 0">${semPreco} item(ns) sem preço vinculado no Cadastro de Insumos — não entram no total.</p>` : ''}
-        ${_insumosGestaoIndisponivel ? `<p style="font-size:12px;color:#B45309;margin:4px 0 0">⚠ Não foi possível carregar os preços do controle-gestao-main agora. Valores podem estar desatualizados.</p>` : ''}
+        ${_insumosGestaoIndisponivel ? `<p style="font-size:12px;color:#B45309;margin:4px 0 0">${icon('alertTriangle')} Não foi possível carregar os preços do controle-gestao-main agora. Valores podem estar desatualizados.</p>` : ''}
       </div>
     `;
   }
@@ -5715,7 +5760,7 @@ function _limpezaBuscar() {
   elResult.innerHTML = `
     <p style="font-weight:700;margin-bottom:6px">${n} festa${n > 1 ? 's' : ''} ser${n > 1 ? 'ão' : 'á'} exclu${n > 1 ? 'ídas' : 'ída'}:</p>
     <ul style="max-height:220px;overflow-y:auto;padding-left:18px;margin:0">
-      ${_limpezaFestasAlvo.map(f => `<li>${_escHtml(f.nome)} — ${formatarData(f.data)}${f.origemAuto ? ' 🔗' : ''}</li>`).join('')}
+      ${_limpezaFestasAlvo.map(f => `<li>${_escHtml(f.nome)} — ${formatarData(f.data)}${f.origemAuto ? ' ' + icon('link') : ''}</li>`).join('')}
     </ul>
   `;
   btn.disabled = false;
@@ -6047,7 +6092,7 @@ function htmlValorCarga(festa) {
   return `
     <div class="info-linha" style="margin-top:6px;font-weight:700">Valor da carga: ${_fmtReais(total)}</div>
     ${semPreco ? `<div class="info-linha" style="font-size:12px;color:var(--cinza-500)">${semPreco} item(ns) sem preço vinculado no Cadastro de Insumos — não entram no total.</div>` : ''}
-    ${_insumosGestaoIndisponivel ? `<div class="info-linha" style="font-size:12px;color:#B45309">⚠ Preços do controle-gestao-main indisponíveis no momento.</div>` : ''}
+    ${_insumosGestaoIndisponivel ? `<div class="info-linha" style="font-size:12px;color:#B45309">${icon('alertTriangle')} Preços do controle-gestao-main indisponíveis no momento.</div>` : ''}
   `;
 }
 
@@ -6204,7 +6249,7 @@ async function renderizarCadastroItens() {
 
     const htmlDuplicados = duplicados.size ? `
       <div style="background:#FEF3C7;border:1px solid #FDE68A;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:13px;">
-        <strong style="color:#92400E;">⚠ Produtos duplicados (${duplicados.size}):</strong>
+        <strong style="color:#92400E;">${icon('alertTriangle')} Produtos duplicados (${duplicados.size}):</strong>
         <ul style="margin:4px 0 0 16px;color:#78350F;">
           ${[...duplicados].map(k => `<li>${_escHtml(configs.find(c=>c.nomeKey===k)?.nome || k)}</li>`).join('')}
         </ul>
@@ -6233,7 +6278,7 @@ async function renderizarCadastroItens() {
     const semConfigFiltrado = _filtroCadastroCat ? [] : semConfig.filter(it => filtrar(it.nomeDisplay));
     const htmlSemConfig = semConfigFiltrado.length ? `
       <div class="config-grupo-bloco">
-        <div class="config-grupo-titulo producao-nao-clas-label">&#9888; Não configurados (${semConfigFiltrado.length})</div>
+        <div class="config-grupo-titulo producao-nao-clas-label">${icon('alertTriangle')} Não configurados (${semConfigFiltrado.length})</div>
         <p class="producao-nao-clas-hint">Estes itens estão nas festas mas ainda não foram classificados.</p>
         ${semConfigFiltrado.sort((a,b) => a.nomeDisplay.localeCompare(b.nomeDisplay,'pt-BR')).map(it => `
           <div class="config-item-row">
@@ -6270,7 +6315,7 @@ function htmlConfigItemRow(c) {
   const metaHtml    = `
     ${c.ordemSeparacao && c.ordemSeparacao !== 999 ? `<span class="badge-ordem">#${c.ordemSeparacao}</span>` : ''}
     ${c.prioridade ? `<span class="badge-prioridade prior-${c.prioridade}">${c.prioridade}</span>` : ''}
-    ${c.refrigerado ? '<span class="badge-refrigerado">&#10052; Refrig.</span>' : ''}
+    ${c.refrigerado ? `<span class="badge-refrigerado">${icon('snowflake')} Refrig.</span>` : ''}
   `;
 
   return `
@@ -6281,8 +6326,8 @@ function htmlConfigItemRow(c) {
         <div class="config-item-meta">${metaHtml}</div>
       </div>
       <div class="config-item-acoes">
-        <button class="btn-icone" title="Editar" onclick="event.stopPropagation();abrirFormItemConfig('${c.id}')">&#9998;</button>
-        <button class="btn-icone btn-icone-del" title="Remover" onclick="event.stopPropagation();confirmarDeletarItemConfig('${_esc(c.id)}','${_esc(c.nome)}')">&#128465;</button>
+        <button class="btn-icone" title="Editar" onclick="event.stopPropagation();abrirFormItemConfig('${c.id}')">${icon('edit')}</button>
+        <button class="btn-icone btn-icone-del" title="Remover" onclick="event.stopPropagation();confirmarDeletarItemConfig('${_esc(c.id)}','${_esc(c.nome)}')">${icon('trash')}</button>
       </div>
     </div>
   `;
@@ -6575,7 +6620,7 @@ async function abrirModalPadronizarNomes() {
 
   const htmlAviso = avisosColisao.length ? `
     <div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:6px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#991B1B">
-      <strong>&#9888; Isso vai deixar ${avisosColisao.length} nome(s) duplicado(s) no Cadastro:</strong>
+      <strong>${icon('alertTriangle')} Isso vai deixar ${avisosColisao.length} nome(s) duplicado(s) no Cadastro:</strong>
       ${avisosColisao.map(_escHtml).join(', ')}. São itens diferentes (vínculo com estoque/festa diferente) que vão ficar com o mesmo nome exibido — depois de aplicar, use "Resolver duplicados" pra escolher qual manter.
     </div>` : '';
 
@@ -7032,12 +7077,12 @@ function toggleModoSelecaoCadastro() {
   if (_modoSelecaoCadastro) {
     lista?.classList.add('modo-selecao');
     barra?.classList.remove('hidden');
-    if (btnSel)  btnSel.textContent = '✕ Cancelar';
+    if (btnSel)  btnSel.innerHTML = `${icon('close')} Cancelar`;
     if (btnNovo) btnNovo.classList.add('hidden');
   } else {
     lista?.classList.remove('modo-selecao');
     barra?.classList.add('hidden');
-    if (btnSel)  btnSel.textContent = '☐ Selecionar';
+    if (btnSel)  btnSel.innerHTML = `${icon('square')} Selecionar`;
     if (btnNovo) btnNovo.classList.remove('hidden');
     /* Limpa checkboxes visualmente */
     lista?.querySelectorAll('.chk-item-cadastro').forEach(c => c.checked = false);
@@ -7110,7 +7155,7 @@ async function excluirSelecionadosCadastro() {
   } catch(e) {
     console.error(e);
     toast('Erro ao remover itens. Tente novamente.', 'erro');
-    if (btnDel) { btnDel.disabled = false; btnDel.textContent = '🗑 Excluir'; }
+    if (btnDel) { btnDel.disabled = false; btnDel.innerHTML = `${icon('trash')} Excluir`; }
   }
 }
 
@@ -7717,7 +7762,7 @@ function lcHtmlGrupoSimulacao(g) {
     .map(it => {
       const compraAtual = _lcSimQtds[it.nomeKey] || 0;
       const ficaria      = it.estoque + compraAtual;
-      const badgeR = it.cfg?.refrigerado ? '<span class="badge-refrigerado">&#10052;</span>' : '';
+      const badgeR = it.cfg?.refrigerado ? `<span class="badge-refrigerado">${icon('snowflake')}</span>` : '';
 
       return `
         <div class="lc-row lc-sim-row">
@@ -7795,7 +7840,7 @@ function lcHtmlGrupoSintetico(g) {
       const pct     = qtdVis > 0 ? Math.min(100, Math.round((it.estoque / qtdVis) * 100)) : 100;
       const diffCls = diff < 0 ? 'deficit-text' : 'ok-text';
       const diffTxt = diff < 0 ? `− ${Math.abs(diff)}` : `+${diff}`;
-      const badgeR  = it.cfg?.refrigerado ? '<span class="badge-refrigerado">&#10052;</span>' : '';
+      const badgeR  = it.cfg?.refrigerado ? `<span class="badge-refrigerado">${icon('snowflake')}</span>` : '';
       const badgeP  = it.cfg?.prioridade  ? `<span class="badge-prioridade prior-${it.cfg.prioridade}">${it.cfg.prioridade}</span>` : '';
 
       /* Badges de fornecimento — mostra breakdown quando houver mais de um tipo */
@@ -7810,7 +7855,7 @@ function lcHtmlGrupoSintetico(g) {
       const mostraCompra = _lcFornecimento === 'todos' || _lcFornecimento === 'romero';
       const compraHtml = mostraCompra
         ? `<div class="lc-row-comprar ${it.aComprar > 0 ? 'lc-falta' : 'lc-ok'}">
-             ${it.aComprar > 0 ? `<strong>${it.aComprar} ${it.unidade}</strong>` : '&#10003; OK'}
+             ${it.aComprar > 0 ? `<strong>${it.aComprar} ${it.unidade}</strong>` : `${icon('check')} OK`}
            </div>`
         : `<div class="lc-row-comprar" style="color:var(--cinza-400);font-size:12px">—</div>`;
 
@@ -7874,7 +7919,7 @@ function lcHtmlGrupoAnalitico(g) {
 
       const diff    = it.estoque - qtdVis;
       const diffCls = diff < 0 ? 'deficit-text' : 'ok-text';
-      const badgeR  = it.cfg?.refrigerado ? '<span class="badge-refrigerado">&#10052;</span>' : '';
+      const badgeR  = it.cfg?.refrigerado ? `<span class="badge-refrigerado">${icon('snowflake')}</span>` : '';
       const mostraCompra = _lcFornecimento === 'todos' || _lcFornecimento === 'romero';
 
       const festasFiltradas = _lcFornecimento === 'todos'
@@ -7916,7 +7961,7 @@ function lcHtmlGrupoAnalitico(g) {
               <span class="${diffCls}">Dif: ${diff < 0 ? '−'+Math.abs(diff) : '+'+diff}</span>
               ${mostraCompra
                 ? `<span class="lc-analitico-comprar ${it.aComprar > 0 ? 'lc-falta' : 'lc-ok'}">
-                     ${it.aComprar > 0 ? `Comprar: <strong>${it.aComprar} ${it.unidade}</strong>` : '&#10003; Estoque OK'}
+                     ${it.aComprar > 0 ? `Comprar: <strong>${it.aComprar} ${it.unidade}</strong>` : `${icon('check')} Estoque OK`}
                    </span>`
                 : ''}
             </div>
@@ -8222,7 +8267,7 @@ function renderizarRelPorItem(festasNoPeriodo, todasFestas, estoqueMap) {
 function htmlRelItemCard(it) {
   const aproveit   = it.saida > 0 ? Math.round((it.retorno / it.saida) * 100) : null;
   const espCls     = it.esperado < 0 ? 'deficit-text' : 'ok-text';
-  const badgeRefrig = it.cfg?.refrigerado ? '<span class="badge-refrigerado">&#10052;</span>' : '';
+  const badgeRefrig = it.cfg?.refrigerado ? `<span class="badge-refrigerado">${icon('snowflake')}</span>` : '';
 
   return `
     <div class="rel-card">
@@ -8560,8 +8605,8 @@ async function renderizarCategorias() {
           <div class="config-item-meta">${c.ordem ? `Ordem: #${c.ordem}` : 'Sem ordem definida'}</div>
         </div>
         <div class="config-item-acoes">
-          <button class="btn-icone" title="Editar" onclick="abrirFormCategoria('${c.id}')">&#9998;</button>
-          <button class="btn-icone btn-icone-del" title="Remover" onclick="confirmarDeletarCategoria('${_esc(c.id)}','${_esc(c.nome)}')">&#128465;</button>
+          <button class="btn-icone" title="Editar" onclick="abrirFormCategoria('${c.id}')">${icon('edit')}</button>
+          <button class="btn-icone btn-icone-del" title="Remover" onclick="confirmarDeletarCategoria('${_esc(c.id)}','${_esc(c.nome)}')">${icon('trash')}</button>
         </div>
       </div>
     `).join('');
@@ -8665,8 +8710,8 @@ async function renderizarFichasTecnicas() {
           <div class="config-item-meta">Rendimento: ${f.rendimento} ${_escHtml(f.unidadeRendimento || '')} &nbsp;·&nbsp; ${(f.ingredientes || []).length} insumo(s)</div>
         </div>
         <div class="config-item-acoes">
-          <button class="btn-icone" title="Editar" onclick="abrirFormFicha('${f.id}')">&#9998;</button>
-          <button class="btn-icone btn-icone-del" title="Remover" onclick="confirmarDeletarFicha('${_esc(f.id)}','${_esc(f.nome)}')">&#128465;</button>
+          <button class="btn-icone" title="Editar" onclick="abrirFormFicha('${f.id}')">${icon('edit')}</button>
+          <button class="btn-icone btn-icone-del" title="Remover" onclick="confirmarDeletarFicha('${_esc(f.id)}','${_esc(f.nome)}')">${icon('trash')}</button>
         </div>
       </div>
     `).join('');
@@ -8774,7 +8819,7 @@ function renderizarFichaInsumosForm() {
       <span>${_escHtml(i.nome)} — <strong>${i.qtd}</strong> ${_escHtml(i.unidade)}
         ${i.preco ? `<span style="color:var(--cinza-500)"> · R$ ${i.preco.toFixed(2)}/un · custo R$ ${custo.toFixed(2)}</span>` : ''}
       </span>
-      <button class="btn-secundario btn-sm" onclick="fichaRemoverInsumo('${_esc(i.nomeKey)}')" style="padding:2px 8px">&#10005;</button>
+      <button class="btn-secundario btn-sm" onclick="fichaRemoverInsumo('${_esc(i.nomeKey)}')" style="padding:2px 8px">${icon('close')}</button>
     </div>`;
   }).join('');
 
@@ -8937,7 +8982,7 @@ function _renderAlertas() {
     const cor   = a.falta > 0 ? '' : ' ok';
     const label = a.falta > 0
       ? `<span class="compra-falta-destaque">${a.falta} ${a.unidade} abaixo do mínimo</span>`
-      : `<span style="color:#15803d;font-weight:700">✓ Estoque ok</span>`;
+      : `<span style="color:#15803d;font-weight:700">${icon('check')} Estoque ok</span>`;
     const jaTemPedido = comprasCache.some(c => c.nomeKey === a.nomeKey && (c.status === 'pendente' || c.status === 'pedido'));
     return `
       <div class="compra-alerta-card${cor}">
@@ -8993,7 +9038,7 @@ function _renderAndamento() {
         </div>
         <div class="compra-pedido-acoes">
           ${c.status === 'pendente'
-            ? `<button class="btn-primario"   style="font-size:13px;padding:8px 14px" onclick="marcarComoPedido('${c.id}')">✓ Pedido Feito</button>`
+            ? `<button class="btn-primario"   style="font-size:13px;padding:8px 14px" onclick="marcarComoPedido('${c.id}')">${icon('check')} Pedido Feito</button>`
             : ''}
           <button class="btn-primario" style="font-size:13px;padding:8px 14px;background:#15803d;border-color:#15803d" onclick="abrirModalReceber('${c.id}')">Registrar Recebimento</button>
           <button class="btn-secundario" style="font-size:12px;padding:6px 10px" onclick="cancelarCompra('${c.id}')">Cancelar</button>

@@ -33,6 +33,13 @@ html, body {
   overflow-x: hidden;
 }
 
+.icon {
+  width: 1em; height: 1em;
+  display: inline-block;
+  vertical-align: -0.125em;
+  flex-shrink: 0;
+}
+
 body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: #F0EDE8;
@@ -1238,7 +1245,7 @@ input, select, textarea { font-size: 16px !important; }
   text-align: center;
 }
 .inicio-card:hover, .inicio-card:active { background: var(--cinza-50); border-color: var(--roxo); }
-.inicio-card-icone { font-size: 28px; line-height: 1; }
+.inicio-card-icone { font-size: 28px; line-height: 1; color: var(--roxo); }
 .inicio-card-nome { font-size: 14px; font-weight: 700; color: var(--cinza-700); }
 .inicio-card-badge {
   position: absolute; top: 10px; right: 10px;
