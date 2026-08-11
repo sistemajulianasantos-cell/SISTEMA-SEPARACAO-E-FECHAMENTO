@@ -1544,7 +1544,12 @@ async function confirmarInicioSeparacao() {
 }
 
 function renderizarSeparacao(festa) {
-  document.getElementById('sep-info').innerHTML = htmlInfoFesta(festa) + (souCeo() ? htmlValorCarga(festa) : '');
+  const linkConfBtn = souCeo()
+    ? `<div class="detalhe-acoes" style="margin:8px 0 16px">
+        <button class="btn-secundario" onclick="gerarELinkConferencia('${festa.id}','${_esc(festa.nome)}')">Gerar link de Conferência (24h)</button>
+      </div>`
+    : '';
+  document.getElementById('sep-info').innerHTML = htmlInfoFesta(festa) + (souCeo() ? htmlValorCarga(festa) : '') + linkConfBtn;
 
   /* Bloquear separador enquanto admin edita quantidades */
   if (festa.editandoAgora) {
@@ -2932,14 +2937,14 @@ function renderizarDetalhe(festa) {
        </div>`
     : '';
 
-  const excluirHTML = `
-    <div style="padding-top:12px;border-top:var(--borda);margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-      <button class="btn-perigo" onclick="confirmarExcluirFesta('${festa.id}','${_esc(festa.nome)}','${festa.status}')">
-        Excluir Festa
-      </button>
-      <span style="font-size:11px;color:var(--cinza-400)">Irreversível — use apenas para re-importar.</span>
-    </div>
-  `;
+  const excluirHTML = festa.status === 'agendada'
+    ? `<div style="padding-top:12px;border-top:var(--borda);margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button class="btn-perigo" onclick="confirmarExcluirFesta('${festa.id}','${_esc(festa.nome)}','${festa.status}')">
+          Excluir Festa
+        </button>
+        <span style="font-size:11px;color:var(--cinza-400)">Irreversível — use apenas para re-importar.</span>
+      </div>`
+    : '';
 
   const linkConfHTML = `
     <div class="detalhe-acoes" style="margin-bottom:16px">
@@ -3043,11 +3048,11 @@ function renderizarDetalhe(festa) {
 }
 
 async function confirmarExcluirFesta(id, nome, status) {
-  const emAndamento = !['agendada','concluida'].includes(status);
-  const aviso = emAndamento
-    ? `\n\nAtenção: esta festa está "${STATUS_LABELS[status] || status}". Excluir perderá todo o histórico de separação.`
-    : '';
-  if (!confirm(`Excluir a festa "${nome}"?${aviso}\n\nEsta ação não pode ser desfeita.`)) return;
+  if (status !== 'agendada') {
+    alert(`Não é possível excluir "${nome}": a festa já está em "${STATUS_LABELS[status] || status}". Só é possível excluir festas com status "Agendada" (antes de iniciar a separação).`);
+    return;
+  }
+  if (!confirm(`Excluir a festa "${nome}"?\n\nEsta ação não pode ser desfeita.`)) return;
   try {
     await deletarFesta(id);
     toast('Festa excluída.', 'sucesso');
@@ -3850,7 +3855,7 @@ function _infoEventoTexto(f) {
 
 function htmlInfoFesta(f) {
   const ehCEO = !!(usuarioAtual?.roles?.includes('ceo') || usuarioAtual?.role === 'ceo');
-  const btnExcluir = ehCEO
+  const btnExcluir = (ehCEO && f.status === 'agendada')
     ? `<div style="margin-top:10px">
         <button class="btn-perigo" style="font-size:12px;padding:5px 12px"
           onclick="confirmarExcluirFesta('${f.id}','${_esc(f.nome)}','${f.status}')">
@@ -6985,7 +6990,34 @@ async function salvarItemConfig() {
   }
 }
 
+/* Festas ainda não concluídas (agendada em diante) cujos itens usam este item do Cadastro */
+async function _festasUsandoItemCadastro(nomeKey) {
+  const festas = await buscarTodasFestas();
+  return festas.filter(f => {
+    if (f.status === 'concluida') return false;
+    return (f.itens || []).some(it => {
+      const cfg = buscarConfigItem(normalizarNomeItem(it.nome));
+      return cfg && cfg.nomeKey === nomeKey;
+    });
+  });
+}
+
 async function confirmarDeletarItemConfig(id, nome) {
+  const cfg = Object.values(itemConfigsCache).find(c => c.id === id);
+  if (cfg) {
+    let festasEmUso;
+    try {
+      festasEmUso = await _festasUsandoItemCadastro(cfg.nomeKey);
+    } catch (e) {
+      console.error(e);
+      toast('Não foi possível verificar o uso do item. Tente novamente.', 'erro');
+      return;
+    }
+    if (festasEmUso.length) {
+      alert(`Não é possível remover "${nome}": está em uso em ${festasEmUso.length} festa${festasEmUso.length !== 1 ? 's' : ''} ainda não concluída${festasEmUso.length !== 1 ? 's' : ''}:\n\n${festasEmUso.map(f => `- ${f.nome} (${STATUS_LABELS[f.status] || f.status})`).join('\n')}`);
+      return;
+    }
+  }
   if (!confirm(`Remover configuração de "${nome}"?\n\nIsso não afeta as festas já cadastradas.`)) return;
   try {
     await deletarItemConfigDB(id);
@@ -7075,9 +7107,37 @@ function _atualizarBarraSelecao() {
 async function excluirSelecionadosCadastro() {
   const ids = [..._itensSelecionados];
   if (!ids.length) return;
-  if (!confirm(`Remover ${ids.length} item${ids.length !== 1 ? 's' : ''} do cadastro?\n\nIsso não afeta as festas já cadastradas.`)) return;
   const btnDel = document.getElementById('btn-excluir-selecionados');
-  if (btnDel) { btnDel.disabled = true; btnDel.textContent = 'Removendo...'; }
+
+  if (btnDel) { btnDel.disabled = true; btnDel.textContent = 'Verificando...'; }
+  let festas;
+  try {
+    festas = await buscarTodasFestas();
+  } catch (e) {
+    console.error(e);
+    toast('Não foi possível verificar o uso dos itens. Tente novamente.', 'erro');
+    if (btnDel) { btnDel.disabled = false; btnDel.textContent = 'Excluir'; }
+    return;
+  }
+  const festasAtivas = festas.filter(f => f.status !== 'concluida');
+  const bloqueados = ids
+    .map(id => Object.values(itemConfigsCache).find(c => c.id === id))
+    .filter(cfg => cfg && festasAtivas.some(f => (f.itens || []).some(it => {
+      const c = buscarConfigItem(normalizarNomeItem(it.nome));
+      return c && c.nomeKey === cfg.nomeKey;
+    })));
+
+  if (bloqueados.length) {
+    alert(`Não é possível remover ${bloqueados.length} ite${bloqueados.length !== 1 ? 'ns' : 'm'} porque ${bloqueados.length !== 1 ? 'estão' : 'está'} em uso em festas ainda não concluídas:\n\n${bloqueados.map(c => c.nome).join(', ')}\n\nDesmarque ${bloqueados.length !== 1 ? 'esses itens' : 'esse item'} para remover o restante.`);
+    if (btnDel) { btnDel.disabled = false; btnDel.textContent = 'Excluir'; }
+    return;
+  }
+
+  if (!confirm(`Remover ${ids.length} item${ids.length !== 1 ? 's' : ''} do cadastro?\n\nIsso não afeta as festas já cadastradas.`)) {
+    if (btnDel) { btnDel.disabled = false; btnDel.textContent = 'Excluir'; }
+    return;
+  }
+  if (btnDel) { btnDel.textContent = 'Removendo...'; }
   try {
     await Promise.all(ids.map(id => deletarItemConfigDB(id)));
     ids.forEach(id => {
