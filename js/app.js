@@ -1593,12 +1593,7 @@ async function confirmarInicioSeparacao() {
 }
 
 function renderizarSeparacao(festa) {
-  const linkConfBtn = souCeo()
-    ? `<div class="detalhe-acoes" style="margin:8px 0 16px">
-        <button class="btn-secundario" onclick="gerarELinkConferencia('${festa.id}','${_esc(festa.nome)}')">Gerar link de Conferência (24h)</button>
-      </div>`
-    : '';
-  document.getElementById('sep-info').innerHTML = htmlInfoFesta(festa) + (souCeo() ? htmlValorCarga(festa) : '') + linkConfBtn;
+  document.getElementById('sep-info').innerHTML = htmlInfoFesta(festa) + (souCeo() ? htmlValorCarga(festa) : '') + htmlLinkConferenciaBtn(festa);
 
   /* Bloquear separador enquanto admin edita quantidades */
   if (festa.editandoAgora) {
@@ -2270,7 +2265,7 @@ function htmlCardConfItem(item, ri, conferido) {
 }
 
 function renderizarConferencia(festa) {
-  document.getElementById('conf-info').innerHTML = htmlInfoFesta(festa);
+  document.getElementById('conf-info').innerHTML = htmlInfoFesta(festa) + htmlLinkConferenciaBtn(festa);
 
   const buscaConf = document.getElementById('busca-conf-input')?.value || '';
 
@@ -2599,7 +2594,7 @@ function abrirRetorno(id) {
 }
 
 function renderizarRetorno(festa) {
-  document.getElementById('ret-info').innerHTML = htmlInfoFesta(festa);
+  document.getElementById('ret-info').innerHTML = htmlInfoFesta(festa) + htmlLinkConferenciaBtn(festa);
 
   document.getElementById('ret-itens').innerHTML = (festa.itens || []).map((item, i) => {
     const badgeForn = htmlBadgeForn(item);
@@ -2689,7 +2684,7 @@ function abrirGalpao(id) {
 }
 
 function renderizarGalpao(festa) {
-  document.getElementById('gal-info').innerHTML = htmlInfoFesta(festa);
+  document.getElementById('gal-info').innerHTML = htmlInfoFesta(festa) + htmlLinkConferenciaBtn(festa);
 
   document.getElementById('gal-itens').innerHTML = (festa.itens || []).map((item, i) => {
     const badgeForn = htmlBadgeForn(item);
@@ -2996,11 +2991,7 @@ function renderizarDetalhe(festa) {
       </div>`
     : '';
 
-  const linkConfHTML = `
-    <div class="detalhe-acoes" style="margin-bottom:16px">
-      <button class="btn-secundario" onclick="gerarELinkConferencia('${festa.id}','${_esc(festa.nome)}')">Gerar link de Conferência (24h)</button>
-    </div>
-  `;
+  const linkConfHTML = htmlLinkConferenciaBtn(festa);
 
   const sepTimingHTML = festa.separacaoInicio ? (() => {
     const concluida = !!festa.separacaoFim;
@@ -3929,6 +3920,19 @@ function htmlInfoFesta(f) {
     ${infoEventoTxt ? `<div class="info-linha">${infoEventoTxt}</div>` : ''}
     ${f.obs   ? `<div class="info-linha" style="opacity:.75;font-size:12px;margin-top:6px">${_escHtml(f.obs)}</div>` : ''}
     ${btnExcluir}
+  `;
+}
+
+/* Botão de gerar/reenviar o link de Conferência — precisa aparecer em toda
+   tela onde o CEO possa estar acompanhando a festa (separação, conferência,
+   retorno, galpão), não só nos Detalhes, senão fica sem como pegar o link
+   depois que a festa avança de etapa. */
+function htmlLinkConferenciaBtn(f) {
+  if (!souCeo()) return '';
+  return `
+    <div class="detalhe-acoes" style="margin:8px 0 16px">
+      <button class="btn-secundario" onclick="gerarELinkConferencia('${f.id}','${_esc(f.nome)}')">Gerar link de Conferência (24h)</button>
+    </div>
   `;
 }
 
