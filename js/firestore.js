@@ -258,6 +258,15 @@ function escutarFesta(id, callback) {
   });
 }
 
+/* Como escutarFesta, mas avisa (com null) quando a festa foi excluída —
+   usado onde o chamador precisa detectar e limpar uma referência órfã
+   (ex.: festaLinkAtivaId do coordenador apontando pra uma festa apagada). */
+function escutarFestaOuNula(id, callback) {
+  return db.collection('festas').doc(id).onSnapshot(doc => {
+    callback(doc.exists ? { id: doc.id, ...doc.data() } : null);
+  });
+}
+
 async function salvarFesta(dados) {
   return db.collection('festas').add({
     ...dados,

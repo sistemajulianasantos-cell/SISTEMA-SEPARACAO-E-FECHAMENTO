@@ -727,13 +727,19 @@ function renderizarInicio(papel) {
 ══════════════════════════════════════════════════ */
 
 function abrirHomeCoordenador() {
+  /* Limpa qualquer conteúdo de uma tela/papel anterior (ex.: cards do CEO)
+     que possa ter ficado no DOM — evita mostrá-lo por engano enquanto o
+     snapshot da festa (abaixo) ainda não respondeu. */
+  const elInicio = document.getElementById('inicio-conteudo');
+  if (elInicio) elInicio.innerHTML = '';
+
   const festaId = usuarioAtual?.festaLinkAtivaId;
   if (!festaId) {
     renderizarHomeCoordenador(null);
     return;
   }
-  unsubFesta = escutarFesta(festaId, festa => {
-    if (festa && festa.status === 'concluida') {
+  unsubFesta = escutarFestaOuNula(festaId, festa => {
+    if (!festa || festa.status === 'concluida') {
       _limparAcessoCoordenador();
       renderizarHomeCoordenador(null);
       return;
