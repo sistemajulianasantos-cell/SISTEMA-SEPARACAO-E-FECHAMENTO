@@ -3282,10 +3282,12 @@ function copiarLinkConferencia() {
 
 /* ── Edição de data/quantidades ── */
 let _efItensExtras = [];   /* itens do catálogo adicionados nesta sessão de edição, ainda não salvos */
+let _efItensRemovidos = new Set(); /* índices (em festa.itens) marcados para remover — só efetiva ao Salvar */
 
 async function abrirEditarFesta(id) {
   festaEditandoId = id;
   _efItensExtras  = [];
+  _efItensRemovidos = new Set();
   pararListeners();
   historico.push('tela-editar-festa');
   mostrarTela('tela-editar-festa', 'Editar Festa');
@@ -3325,6 +3327,22 @@ function renderizarEditarFesta(festa) {
   const todos     = itens.concat(_efItensExtras);
 
   const htmlItemRow = (item, i) => {
+    /* Item existente marcado pra remover: mostra riscado com "Desfazer",
+       sem campo de quantidade (a remoção só é gravada ao Salvar). */
+    if (!item._novo && _efItensRemovidos.has(i)) {
+      return `
+      <div class="item-row" style="opacity:.55">
+        <div class="item-topo">
+          <div>
+            <div class="item-nome" style="text-decoration:line-through">${_escHtml(item.nome)}</div>
+            <div class="item-sub">Será removido ao salvar</div>
+          </div>
+          <button class="btn-editar-nome" onclick="desfazerRemocaoItemEdicao(${i})">Desfazer</button>
+        </div>
+      </div>
+    `;
+    }
+
     const inputExistente = document.getElementById(`ef-qty-${i}`);
     const valorAtual = inputExistente ? inputExistente.value : item.qtdNecessaria;
     return `
@@ -3334,7 +3352,9 @@ function renderizarEditarFesta(festa) {
           <div class="item-nome">${_escHtml(item.nome)}</div>
           <div class="item-sub">Unidade: ${_escHtml(item.unidade || 'un')}</div>
         </div>
-        ${item._novo ? `<button class="btn-del-item" onclick="removerItemExtraEdicao(${i - itens.length})">x</button>` : ''}
+        ${item._novo
+          ? `<button class="btn-del-item" onclick="removerItemExtraEdicao(${i - itens.length})">x</button>`
+          : `<button class="btn-editar-nome" title="Remover item da festa" onclick="marcarItemParaRemocaoEdicao(${i})">Remover</button>`}
       </div>
       <div class="item-entrada">
         <label>Quantidade necessaria:</label>
@@ -3526,6 +3546,20 @@ function removerItemExtraEdicao(idx) {
   renderizarEditarFesta(festaAtual);
 }
 
+/* Marca um item já existente na festa para ser removido — só é efetivado de
+   verdade quando "Salvar Alterações" é clicado (mesmo padrão de qtd: fica
+   em rascunho na tela até salvar). Útil pra trocar um item por outro: marca
+   pra remover o antigo aqui e adiciona o novo pelo "+ Adicionar Item". */
+function marcarItemParaRemocaoEdicao(i) {
+  _efItensRemovidos.add(i);
+  renderizarEditarFesta(festaAtual);
+}
+
+function desfazerRemocaoItemEdicao(i) {
+  _efItensRemovidos.delete(i);
+  renderizarEditarFesta(festaAtual);
+}
+
 async function salvarEdicaoFesta() {
   if (!festaAtual || !festaEditandoId) return;
 
@@ -3543,6 +3577,10 @@ async function salvarEdicaoFesta() {
   const itens        = festaAtual.itens || [];
   const alteracoes   = [];
   const itensAtuais  = itens.concat(_efItensExtras).map((item, i) => {
+    if (!item._novo && _efItensRemovidos.has(i)) {
+      alteracoes.push({ campo: item.nome, de: item.qtdNecessaria, para: 'Item removido' });
+      return null;
+    }
     const novaQtd = parseFloat(document.getElementById(`ef-qty-${i}`)?.value) || 0;
     if (item._novo) {
       alteracoes.push({ campo: item.nome, de: 'Item adicionado', para: novaQtd });
@@ -3553,7 +3591,7 @@ async function salvarEdicaoFesta() {
       alteracoes.push({ campo: item.nome, de: item.qtdNecessaria, para: novaQtd });
     }
     return { ...item, qtdNecessaria: novaQtd };
-  });
+  }).filter(item => item !== null);
 
   /* Verificar mudança de data */
   const dataAtual = normalizarData(festaAtual.data);
@@ -3584,6 +3622,7 @@ async function salvarEdicaoFesta() {
 
     _autoCriarConfigsDeItensPDF(itensAtuais);
     _efItensExtras = [];
+    _efItensRemovidos = new Set();
 
     /* Atualiza o cache de festas na hora (sem esperar o próximo carregarCEO)
        pra Produção refletir as novas quantidades imediatamente, mesmo que o
