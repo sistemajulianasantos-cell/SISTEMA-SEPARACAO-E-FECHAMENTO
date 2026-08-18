@@ -5601,6 +5601,11 @@ function renderizarEstoque(festas, estoqueMap) {
     });
   }
   if (busca) itens = itens.filter(it => (it.nome || '').toLowerCase().includes(busca));
+  /* "Por Festa" existe pra ver o que cada festa está pedindo — item sem
+     nenhuma festa ativa só teria "Sem festa ativa" pra mostrar, então some
+     dessa aba (mas continua no Sintético/Estoque R$, pra dar pra registrar
+     estoque de qualquer item do Cadastro). */
+  if (abaEstoqueAtual === 'analitico') itens = itens.filter(it => it.festas.length);
   if (!itens.length) {
     document.getElementById('estoque-conteudo').innerHTML =
       estadoVazio('Nenhum item encontrado.');
