@@ -872,11 +872,25 @@
             <input type="number" id="ic-ordem" placeholder="1" min="1" />
           </div>
         </div>
-        <div class="form-group">
-          <label>Unidades por Caixa/Embalagem</label>
-          <input type="number" id="ic-un-embalagem" placeholder="Ex: 15" min="0" step="1" style="max-width:160px" />
-          <p class="form-hint">Preencha só se este item é contado em caixa/fardo/pacote (ex: 1 caixa de copo = 15 unidades). O sistema mostra a conversão em unidades ao lado da quantidade. Deixe em branco se não se aplica.</p>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Unidade de Medida</label>
+            <select id="ic-unidade">
+              <option value="un">UN (unidade)</option>
+              <option value="ml">ML (mililitro)</option>
+              <option value="lt">LT (litro)</option>
+              <option value="kg">KG (quilo)</option>
+              <option value="cx">CX (caixa)</option>
+              <option value="pct">PCT (pacote)</option>
+              <option value="fd">FD (fardo)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Unidades por Caixa/Embalagem</label>
+            <input type="number" id="ic-un-embalagem" placeholder="Ex: 15" min="0" step="1" />
+          </div>
         </div>
+        <p class="form-hint" style="margin-bottom:16px">"Unidades por Caixa/Embalagem": preencha só se este item é contado em caixa/fardo/pacote (ex: 1 caixa de copo = 15 unidades). O sistema mostra a conversão ao lado da quantidade. Deixe em branco se não se aplica.</p>
         <div class="form-group">
           <div class="toggle-row">
             <div>
@@ -1557,7 +1571,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=48"></script>
-  <script src="js/app.js?v=93"></script>
+  <script src="js/app.js?v=94"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

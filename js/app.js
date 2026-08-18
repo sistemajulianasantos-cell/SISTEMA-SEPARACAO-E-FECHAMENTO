@@ -3319,7 +3319,8 @@ function renderizarEditarFesta(festa) {
 
   const itens     = festa.itens || [];
   const todos     = itens.concat(_efItensExtras);
-  document.getElementById('ef-itens').innerHTML = todos.map((item, i) => {
+
+  const htmlItemRow = (item, i) => {
     const inputExistente = document.getElementById(`ef-qty-${i}`);
     const valorAtual = inputExistente ? inputExistente.value : item.qtdNecessaria;
     return `
@@ -3341,6 +3342,33 @@ function renderizarEditarFesta(festa) {
       </div>
     </div>
   `;
+  };
+
+  /* Agrupar por categoria (mesmo "Grupo" do Cadastro de Itens), na mesma
+     ordem configurada em Categorias — igual à listagem do Cadastro. */
+  const gruposOrdem = [];
+  const gruposMap   = {};
+  todos.forEach((item, i) => {
+    const cfg  = buscarConfigItem(normalizarNomeItem(item.nome));
+    const nome = cfg?.grupo || item.categoria || 'Sem Categoria';
+    if (!gruposMap[nome]) { gruposMap[nome] = []; gruposOrdem.push(nome); }
+    gruposMap[nome].push(i);
+  });
+  gruposOrdem.sort((a, b) => {
+    const oa = categoriasCache.find(c => c.nome === a)?.ordem ?? 999;
+    const ob = categoriasCache.find(c => c.nome === b)?.ordem ?? 999;
+    return oa - ob;
+  });
+
+  document.getElementById('ef-itens').innerHTML = gruposOrdem.map(nome => {
+    const idxs = gruposMap[nome];
+    return `
+      <div class="sep-grupo-header">
+        <span class="sep-grupo-nome">${_escHtml(nome)}</span>
+        <span class="sep-grupo-badge">${idxs.length} item${idxs.length !== 1 ? 'ns' : ''}</span>
+      </div>
+      ${idxs.map(i => htmlItemRow(todos[i], i)).join('')}
+    `;
   }).join('');
 
   popularSelectAddItemEdicao();
@@ -7101,6 +7129,7 @@ async function abrirFormItemConfig(id, nomePreenchido) {
     document.getElementById('ic-nome').value    = (cfg?.nome ? nomeBasDisplay(cfg.nome) : nomePreenchido) || '';
     document.getElementById('ic-grupo').value   = cfg?.grupo || '';
     document.getElementById('ic-ordem').value   = (cfg?.ordemSeparacao && cfg.ordemSeparacao !== 999) ? cfg.ordemSeparacao : '';
+    document.getElementById('ic-unidade').value = cfg?.unidade || 'un';
     document.getElementById('ic-un-embalagem').value = cfg?.unidadesPorEmbalagem != null ? cfg.unidadesPorEmbalagem : '';
     document.getElementById('ic-dias-antes').value = cfg?.diasAntesEvento ?? 1;
     document.getElementById('ic-refrigerado').checked    = !!cfg?.refrigerado;
@@ -7199,6 +7228,7 @@ async function salvarItemConfig() {
     nome,
     nomeKey:          normalizarNomeItem(nome),
     grupo:            grupo || '',
+    unidade:          document.getElementById('ic-unidade').value || 'un',
     ordemSeparacao:   ordemStr ? parseInt(ordemStr) : 999,
     prioridade,
     eProducao,
