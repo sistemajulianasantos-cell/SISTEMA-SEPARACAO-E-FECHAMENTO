@@ -4591,10 +4591,12 @@ function agregarItensFestas(festas) {
       mapa[key].total     += qtd;
       mapa[key].totalBase += qtdEmUnidadeBase(item.nome, qtd);
       mapa[key].festas.push({
-        festaId:     f.id,
-        festaNome:   f.nome,
-        festaStatus: f.status,
-        festaData:   f.data,
+        festaId:         f.id,
+        festaNome:       f.nome,
+        festaStatus:     f.status,
+        festaData:       f.data,
+        festaLocal:      f.local || '',
+        festaConvidados: f.convidados ?? null,
         itemIdx,
         qtd,
       });
@@ -5762,13 +5764,20 @@ function htmlEstoqueAnalitico(item, est) {
       const d = toDate(f.festaData);
       if (!isNaN(d)) dataTxt = ` — ${String(d.getDate()).padStart(2,'0')} ${MESES_ABR[d.getMonth()]}`;
     }
+    const infoParts = [];
+    if (f.festaLocal) infoParts.push(_escHtml(f.festaLocal));
+    if (f.festaConvidados != null) infoParts.push(`${f.festaConvidados} convidados`);
+    const infoTxt = infoParts.join(' · ');
     return `
       <div class="analitico-festa-row">
-        <div class="analitico-festa-nome">
-          ${_escHtml(f.festaNome)}${dataTxt}
-          <span class="badge badge-${f.festaStatus}" style="font-size:9px;margin-left:4px">
-            ${_escHtml(STATUS_LABELS[f.festaStatus] || f.festaStatus)}
-          </span>
+        <div class="analitico-festa-esquerda">
+          <div class="analitico-festa-nome">
+            ${_escHtml(f.festaNome)}${dataTxt}
+            <span class="badge badge-${f.festaStatus}" style="font-size:9px;margin-left:4px">
+              ${_escHtml(STATUS_LABELS[f.festaStatus] || f.festaStatus)}
+            </span>
+          </div>
+          ${infoTxt ? `<div class="analitico-festa-info">${infoTxt}</div>` : ''}
         </div>
         <div class="analitico-festa-qty">
           ${podeEditar ? `
