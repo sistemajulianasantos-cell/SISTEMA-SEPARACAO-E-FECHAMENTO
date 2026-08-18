@@ -602,6 +602,17 @@ function goBack() {
       if (anterior === 'tela-agenda-meses')         renderizarAgendaMeses();
       if (anterior === 'tela-agenda-datas')         renderizarAgendaDatas(_agendaMesSelecionado);
       if (anterior === 'tela-equipe')               carregarEquipe();
+      /* Voltar de Editar Festa (ou outra tela de festa única) pra Detalhe:
+         o listener da festa ficou "preso" na tela anterior (ex.: Editar
+         Festa), então o Detalhe fica mostrando dados antigos até isso
+         religar. Reabre o listener já apontando pro render certo. */
+      if (anterior === 'tela-detalhe' && festaAtual?.id) {
+        pararListeners();
+        unsubFesta = escutarFesta(festaAtual.id, festa => {
+          festaAtual = festa;
+          renderizarDetalhe(festa);
+        });
+      }
     }
   } else {
     irParaPrincipal();
@@ -1798,11 +1809,16 @@ async function adicionarItemSeparacao() {
   const cfg   = _resolverItemCatalogoPorNome(input?.value);
   if (!cfg) return toast('Selecione um item valido da lista do cadastro.', 'erro');
 
+  const itens = (festaAtual.itens || []).map(it => ({ ...it }));
+  const chaveNova = nomeBaseKey(normalizarNomeItem(cfg.nome));
+  if (itens.some(it => nomeBaseKey(normalizarNomeItem(it.nome)) === chaveNova)) {
+    return toast('Este item ja esta na lista da festa.', 'erro');
+  }
+
   const qtdInput = document.getElementById('sep-add-qtd');
   const qtd      = parseFloat(qtdInput?.value) || 0;
   if (qtd <= 0) return toast('Informe uma quantidade.', 'erro');
 
-  const itens = (festaAtual.itens || []).map(it => ({ ...it }));
   itens.push({
     id:            `item-novo-${Date.now()}`,
     nome:          cfg.nome,
@@ -1848,9 +1864,10 @@ function htmlItemPendente(item, i) {
           <div class="item-nome">
             ${_escHtml(nomeBasDisplay(item.nome))}
             <button class="btn-editar-nome" title="Substituir / editar nome" onclick="editarNomeItem(${i})">Editar</button>
+            <button class="btn-editar-nome" title="Remover item da festa" onclick="removerItemFesta(${i})">Remover</button>
           </div>
           ${badgeForn || ''}
-          <div class="item-sub">${_escHtml(item.unidade || 'un')} &mdash; total: <strong>${item.qtdNecessaria}</strong></div>
+          <div class="item-sub">${_escHtml(item.unidade || 'un')} &mdash; total: <strong>${item.qtdNecessaria}</strong>${htmlConversaoUnidades(item.nome, item.qtdNecessaria)}</div>
           ${locHtml}
         </div>
         <div class="item-pend-acoes">
@@ -1880,7 +1897,7 @@ function htmlItemSeparado(item, i) {
         <div class="item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
         ${badgeForn || ''}
         <div class="item-sub">
-          Separado: <strong>${item.qtdSeparada}</strong> de <strong>${item.qtdNecessaria}</strong> ${_escHtml(item.unidade || 'un')}
+          Separado: <strong>${item.qtdSeparada}</strong> de <strong>${item.qtdNecessaria}</strong> ${_escHtml(item.unidade || 'un')}${htmlConversaoUnidades(item.nome, item.qtdNecessaria)}
           ${parcial ? `<span class="badge-parcial">Parcial</span>` : ''}
         </div>
       </div>
@@ -2475,6 +2492,23 @@ async function editarNomeItem(idx) {
   } catch(e) {
     console.error(e);
     toast('Erro ao atualizar nome.', 'erro');
+  }
+}
+
+/* Remove um item ainda pendente da lista da festa (ex.: trocar um item —
+   remove o antigo aqui e adiciona o novo pelo "+ Item não listado"). */
+async function removerItemFesta(idx) {
+  if (!festaAtual) return;
+  const item = festaAtual.itens[idx];
+  if (!item) return;
+  if (!confirm(`Remover "${nomeBasDisplay(item.nome)}" da lista desta festa?`)) return;
+  const novosItens = festaAtual.itens.filter((it, i) => i !== idx);
+  try {
+    await atualizarFesta(festaAtual.id, { itens: novosItens });
+    toast('Item removido da festa.', 'sucesso');
+  } catch(e) {
+    console.error(e);
+    toast('Erro ao remover item.', 'erro');
   }
 }
 
@@ -3136,7 +3170,7 @@ function renderizarDetalhe(festa) {
       ${itens.map(it => `
         <div class="detalhe-linha">
           <span>${_escHtml(it.nome)}</span>
-          <span>Nec: ${it.qtdNecessaria} | Sep: ${it.qtdSeparada || 0} | Conf: ${it.qtdConferida || 0} | Ret: ${it.qtdRetorno !== undefined ? it.qtdRetorno : '—'} ${_escHtml(it.unidade || 'un')}</span>
+          <span>Nec: ${it.qtdNecessaria} | Sep: ${it.qtdSeparada || 0} | Conf: ${it.qtdConferida || 0} | Ret: ${it.qtdRetorno !== undefined ? it.qtdRetorno : '—'} ${_escHtml(it.unidade || 'un')}${htmlConversaoUnidades(it.nome, it.qtdNecessaria)}</span>
         </div>
       `).join('')}
     </div>
@@ -3280,6 +3314,9 @@ function renderizarEditarFesta(festa) {
      input em vez do valor salvo no Firestore — senão cada eco do listener
      (inclusive o "editandoAgora" que esta própria tela grava ao abrir) apaga
      silenciosamente o que a pessoa acabou de digitar. */
+  /* Preservar texto da busca em re-renders automáticos (listener, add/remove item) */
+  const buscaAtual = document.getElementById('ef-busca-itens')?.value || '';
+
   const itens     = festa.itens || [];
   const todos     = itens.concat(_efItensExtras);
   document.getElementById('ef-itens').innerHTML = todos.map((item, i) => {
@@ -3297,14 +3334,25 @@ function renderizarEditarFesta(festa) {
       <div class="item-entrada">
         <label>Quantidade necessaria:</label>
         <input type="number" class="qty-input" id="ef-qty-${i}"
-          value="${valorAtual}" min="0" />
+          value="${valorAtual}" min="0"
+          oninput="document.getElementById('ef-conv-${i}').innerHTML = htmlConversaoUnidades('${_esc(item.nome)}', this.value)" />
         <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
+        <span id="ef-conv-${i}">${htmlConversaoUnidades(item.nome, valorAtual)}</span>
       </div>
     </div>
   `;
   }).join('');
 
   popularSelectAddItemEdicao();
+  if (buscaAtual) filtrarItensEdicao(buscaAtual);
+}
+
+function filtrarItensEdicao(q) {
+  const termo = (q || '').trim().toLowerCase();
+  document.querySelectorAll('#ef-itens .item-row').forEach(card => {
+    const nome = card.querySelector('.item-nome')?.textContent.toLowerCase() || '';
+    card.style.display = (!termo || nome.includes(termo)) ? '' : 'none';
+  });
 }
 
 function popularSelectAddItemEdicao() {
@@ -3413,6 +3461,12 @@ function adicionarItemEdicaoFesta() {
   const cfg   = _resolverItemCatalogoPorNome(input?.value);
   if (!cfg) return toast('Selecione um item valido da lista do cadastro.', 'erro');
 
+  const jaNaFesta = (festaAtual?.itens || []).concat(_efItensExtras);
+  const chaveNova = nomeBaseKey(normalizarNomeItem(cfg.nome));
+  if (jaNaFesta.some(it => nomeBaseKey(normalizarNomeItem(it.nome)) === chaveNova)) {
+    return toast('Este item ja esta na lista da festa.', 'erro');
+  }
+
   const qtdInput = document.getElementById('ef-add-qtd');
   const qtd      = parseFloat(qtdInput?.value) || 0;
 
@@ -3498,6 +3552,19 @@ async function salvarEdicaoFesta() {
 
     _autoCriarConfigsDeItensPDF(itensAtuais);
     _efItensExtras = [];
+
+    /* Atualiza o cache de festas na hora (sem esperar o próximo carregarCEO)
+       pra Produção refletir as novas quantidades imediatamente, mesmo que o
+       listener de festas tenha ficado parado enquanto esta tela estava aberta. */
+    const idxCache = todasFestasCache.findIndex(f => f.id === festaEditandoId);
+    if (idxCache !== -1) {
+      todasFestasCache[idxCache] = {
+        ...todasFestasCache[idxCache],
+        data: novaData, hora: novaHora, tipoEvento: novoTipo,
+        convidados: novosConvidados, itens: itensAtuais,
+      };
+      renderizarProducaoCEO();
+    }
 
     const msg = alteracoes.length
       ? `Alteracoes salvas. ${alteracoes.length} campo(s) modificado(s).`
@@ -4403,6 +4470,19 @@ function extrairFornDoNome(nome) {
 /* Busca config do item por nomeKey; com fallback para nome base (variante) */
 function buscarConfigItem(nomeKey) {
   return itemConfigsCache[nomeKey] || itemConfigsCache[nomeBaseKey(nomeKey)] || null;
+}
+
+/* Se o item tem "unidades por embalagem" cadastrado (ex: 1 caixa de copo =
+   15 unidades), devolve o texto "(= 90 un)" pra mostrar ao lado da
+   quantidade em caixas/embalagens. Devolve '' se não se aplica. */
+function htmlConversaoUnidades(nomeItem, qtd) {
+  const cfg = buscarConfigItem(normalizarNomeItem(nomeItem));
+  const porEmbalagem = cfg?.unidadesPorEmbalagem;
+  const qtdNum = parseFloat(qtd);
+  if (!porEmbalagem || isNaN(qtdNum)) return '';
+  const total = qtdNum * porEmbalagem;
+  const totalFmt = Number.isInteger(total) ? total : total.toFixed(1);
+  return ` <span class="conversao-un">(= ${totalFmt} un)</span>`;
 }
 
 /* Verifica se um item de festa deve aparecer na tela de separação */
@@ -7021,6 +7101,7 @@ async function abrirFormItemConfig(id, nomePreenchido) {
     document.getElementById('ic-nome').value    = (cfg?.nome ? nomeBasDisplay(cfg.nome) : nomePreenchido) || '';
     document.getElementById('ic-grupo').value   = cfg?.grupo || '';
     document.getElementById('ic-ordem').value   = (cfg?.ordemSeparacao && cfg.ordemSeparacao !== 999) ? cfg.ordemSeparacao : '';
+    document.getElementById('ic-un-embalagem').value = cfg?.unidadesPorEmbalagem != null ? cfg.unidadesPorEmbalagem : '';
     document.getElementById('ic-dias-antes').value = cfg?.diasAntesEvento ?? 1;
     document.getElementById('ic-refrigerado').checked    = !!cfg?.refrigerado;
     document.getElementById('ic-producao').checked        = !!cfg?.eProducao;
@@ -7131,6 +7212,7 @@ async function salvarItemConfig() {
     diasAntesEvento: (refrigerado || eProducao) ? (diasStr !== '' && !isNaN(parseInt(diasStr)) ? parseInt(diasStr) : 1) : 1,
     estoqueMinimo: (() => { const v = parseFloat(document.getElementById('ic-estoque-min').value); return isNaN(v) ? null : v; })(),
     qtdSugerida:   (() => { const v = parseFloat(document.getElementById('ic-qtd-sugerida').value); return isNaN(v) ? null : v; })(),
+    unidadesPorEmbalagem: (() => { const v = parseFloat(document.getElementById('ic-un-embalagem').value); return isNaN(v) || v <= 0 ? null : v; })(),
   };
 
   if (_itemConfigEditId) dados.id = _itemConfigEditId;

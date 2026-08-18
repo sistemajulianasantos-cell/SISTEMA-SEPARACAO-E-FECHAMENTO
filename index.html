@@ -31,7 +31,7 @@
     form-action 'self';
   ">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=34">
+  <link rel="stylesheet" href="css/styles.css?v=35">
 </head>
 <body>
 
@@ -749,36 +749,45 @@
           </div>
         </div>
       </div>
+
+      <div class="ef-itens-toolbar">
+        <div class="importar-or-box">
+          <input type="file" id="input-importar-or-edicao" accept=".pdf" style="display:none"
+            onchange="processarArquivoOREdicao(this)">
+          <div>
+            <div class="importar-or-titulo">Importar itens (PDF)</div>
+            <div class="importar-or-desc">Selecione o PDF da Ordem de Separação para anexar os itens a esta festa. Não altera nome, cliente, data ou local.</div>
+          </div>
+          <button class="btn-primario btn-sm" onclick="document.getElementById('input-importar-or-edicao').click()">
+            Selecionar PDF
+          </button>
+        </div>
+
+        <h3 class="titulo-secao">Adicionar Item</h3>
+        <div class="form-secao" style="margin-bottom:0">
+          <div class="form-row">
+            <div class="form-group" style="flex:2">
+              <label>Item cadastrado</label>
+              <input type="text" id="ef-add-input" list="ef-add-datalist" placeholder="Buscar item..." autocomplete="off" />
+              <datalist id="ef-add-datalist"></datalist>
+            </div>
+            <div class="form-group">
+              <label>Quantidade</label>
+              <input type="number" id="ef-add-qtd" min="0" placeholder="0" />
+            </div>
+          </div>
+          <button class="btn-secundario btn-sm" onclick="adicionarItemEdicaoFesta()">&#43; Adicionar Item</button>
+        </div>
+
+        <div class="barra-busca-wrap" style="margin-bottom:0">
+          <input type="search" id="ef-busca-itens" class="barra-busca"
+            placeholder="Buscar item na lista..." oninput="filtrarItensEdicao(this.value)" />
+        </div>
+      </div>
+
       <h3 class="titulo-secao">Quantidades Necessarias</h3>
       <div id="ef-itens"></div>
 
-      <div class="importar-or-box">
-        <input type="file" id="input-importar-or-edicao" accept=".pdf" style="display:none"
-          onchange="processarArquivoOREdicao(this)">
-        <div>
-          <div class="importar-or-titulo">Importar itens (PDF)</div>
-          <div class="importar-or-desc">Selecione o PDF da Ordem de Separação para anexar os itens a esta festa. Não altera nome, cliente, data ou local.</div>
-        </div>
-        <button class="btn-primario btn-sm" onclick="document.getElementById('input-importar-or-edicao').click()">
-          Selecionar PDF
-        </button>
-      </div>
-
-      <h3 class="titulo-secao">Adicionar Item</h3>
-      <div class="form-secao">
-        <div class="form-row">
-          <div class="form-group" style="flex:2">
-            <label>Item cadastrado</label>
-            <input type="text" id="ef-add-input" list="ef-add-datalist" placeholder="Buscar item..." autocomplete="off" />
-            <datalist id="ef-add-datalist"></datalist>
-          </div>
-          <div class="form-group">
-            <label>Quantidade</label>
-            <input type="number" id="ef-add-qtd" min="0" placeholder="0" />
-          </div>
-        </div>
-        <button class="btn-secundario btn-sm" onclick="adicionarItemEdicaoFesta()">&#43; Adicionar Item</button>
-      </div>
       <div class="rodape-form">
         <button class="btn-secundario" onclick="goBack()">Cancelar</button>
         <button class="btn-primario"   onclick="salvarEdicaoFesta()">Salvar Alteracoes</button>
@@ -862,6 +871,11 @@
             <label>Ordem de Separação</label>
             <input type="number" id="ic-ordem" placeholder="1" min="1" />
           </div>
+        </div>
+        <div class="form-group">
+          <label>Unidades por Caixa/Embalagem</label>
+          <input type="number" id="ic-un-embalagem" placeholder="Ex: 15" min="0" step="1" style="max-width:160px" />
+          <p class="form-hint">Preencha só se este item é contado em caixa/fardo/pacote (ex: 1 caixa de copo = 15 unidades). O sistema mostra a conversão em unidades ao lado da quantidade. Deixe em branco se não se aplica.</p>
         </div>
         <div class="form-group">
           <div class="toggle-row">
@@ -1543,7 +1557,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=48"></script>
-  <script src="js/app.js?v=92"></script>
+  <script src="js/app.js?v=93"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

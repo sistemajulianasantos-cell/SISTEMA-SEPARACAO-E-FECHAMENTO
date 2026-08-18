@@ -589,6 +589,7 @@ body {
 }
 .item-entrada label { font-size: 12px; color: var(--cinza-500); white-space: nowrap; font-weight: 600; }
 .item-unidade { font-size: 12px; color: var(--cinza-500); }
+.conversao-un { font-size: 12px; color: var(--cinza-500); font-style: italic; white-space: nowrap; }
 
 .qty-input {
   width: 80px;
@@ -1067,6 +1068,21 @@ body {
 .card-iniciar-sep:active { transform: translateY(0);    box-shadow: 0 2px 10px rgba(196,98,45,.3);  }
 .card-iniciar-sep-icone  { font-size: 40px; line-height: 1; }
 .card-iniciar-sep-texto  { font-size: 18px; font-weight: 800; letter-spacing: .3px; }
+
+/* ══ EDITAR FESTA — barra de importar/adicionar/buscar fixa ══════════ */
+.ef-itens-toolbar {
+  position: sticky;
+  top: 60px;
+  z-index: 90;
+  background: var(--branco);
+  border: var(--borda);
+  border-radius: var(--raio);
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: var(--sombra-md);
+}
+.ef-itens-toolbar .importar-or-box { margin-bottom: 16px; }
+.ef-itens-toolbar .titulo-secao { margin-top: 0; }
 
 /* ══ IMPORTAR OR ═════════════════════════════════════ */
 .importar-or-box {
