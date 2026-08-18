@@ -5825,6 +5825,7 @@ async function salvarEstoqueQtd(nomeKey, nome, unidade, qtdStr) {
   try {
     await salvarItemEstoque(nomeKey, { nome, unidade, qtd });
     estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey };
+    renderizarEstoque(todasFestasCache, estoqueCache);
     toast('Estoque atualizado.', 'sucesso');
   } catch (e) {
     console.error(e);
@@ -5850,9 +5851,12 @@ async function editarQtdFestaEstoque(festaId, itemIdx, novaQtdStr) {
 
   try {
     await editarQtdFesta(festaId, itens);
-    /* Atualizar cache local para que a re-renderização seja imediata */
+    /* Atualizar cache local e redesenhar a tela na hora — senão o "Total"
+       do card (calculado a partir de todasFestasCache) fica com o valor
+       antigo até a próxima abertura da tela. */
     const idx = todasFestasCache.findIndex(f => f.id === festaId);
     if (idx >= 0) todasFestasCache[idx] = { ...todasFestasCache[idx], itens };
+    renderizarEstoque(todasFestasCache, estoqueCache);
     toast('Quantidade atualizada na festa.', 'sucesso');
   } catch (e) {
     console.error(e);
