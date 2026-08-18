@@ -7,6 +7,8 @@ let usuarioAtual      = null;
 let festaAtual        = null;
 let unsubFestas       = null;
 let unsubFesta        = null;
+let unsubEstoque      = null;   /* listener de estoque, vivo por toda a sessão (ver garantirListenerEstoque) */
+let _estoquePronto    = null;   /* Promise resolvida no 1º snapshot do estoque */
 let filtroAtualCEO    = 'todas';
 let filtroAtualCoord  = 'conferencia';
 let filtroData        = null;
@@ -107,11 +109,10 @@ function carregarTV() {
   _tvClockTimer = setInterval(_tvAtualizarRelogio, 1000);
 
   const carregarDadosTV = () => {
-    Promise.all([listarItemConfigs(), listarCategorias(), buscarEstoque(), listarCompras()]).then(([cfgs, cats, est, compras]) => {
+    Promise.all([listarItemConfigs(), listarCategorias(), garantirListenerEstoque(), listarCompras()]).then(([cfgs, cats, , compras]) => {
       itemConfigsCache = {};
       cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
       categoriasCache = cats;
-      estoqueCache    = est;
       comprasCache    = compras;
       if (todasFestasCache.length) renderizarPainelTV(todasFestasCache);
     }).catch(e => console.error('TV configs:', e));
@@ -590,7 +591,7 @@ function goBack() {
       if (!unsubFestas) carregarCEO(); else atualizarVisaoCEO();
     } else {
       mostrarTela(anterior);
-      if (anterior === 'tela-ceo')                  carregarCEO();
+      if (anterior === 'tela-ceo')                  { if (!unsubFestas) carregarCEO(); else atualizarVisaoCEO(); }
       if (anterior === 'tela-colaborador')          carregarColab();
       if (anterior === 'tela-coordenador')          carregarCoord(filtroAtualCoord);
       if (anterior === 'tela-usuarios')             carregarUsuarios();
@@ -789,7 +790,7 @@ function abrirPainelTV() {
 function irInicioProducao() {
   historico = ['tela-inicial'];
   navegar('tela-ceo');
-  carregarCEO();
+  if (!unsubFestas) carregarCEO(); else atualizarVisaoCEO();
 }
 
 function irInicioAgenda() {
@@ -924,6 +925,27 @@ function pararListeners() {
   if (unsubFestas) { unsubFestas(); unsubFestas = null; }
   if (unsubFesta)  { unsubFesta();  unsubFesta  = null; }
   _tvPararAutoScroll();
+  /* unsubEstoque NÃO para aqui de propósito — ao contrário de festas (que é
+     por tela), o listener de estoque fica vivo a sessão toda (ver
+     garantirListenerEstoque), porque quase toda tela precisa dele. Só é
+     desligado no logout(). */
+}
+
+/* Garante que o listener de estoque esteja ativo e devolve uma Promise que
+   resolve assim que o 1º snapshot chegar (na prática, só espera de verdade
+   na primeira chamada da sessão — nas seguintes já está pronto). Chamar em
+   toda tela que precisa do estoque em vez de buscarEstoque(), pra nunca
+   mais reler a coleção inteira a cada abertura de tela. */
+function garantirListenerEstoque() {
+  if (!_estoquePronto) {
+    _estoquePronto = new Promise(resolve => {
+      unsubEstoque = escutarEstoque(mapa => {
+        estoqueCache = mapa;
+        resolve();
+      });
+    });
+  }
+  return _estoquePronto;
 }
 
 /* ══════════════════════════════════════════════════
@@ -1021,6 +1043,8 @@ async function doLogin() {
 
 /* CEO sempre vai direto ao painel; outros com múltiplos papéis vêem o seletor */
 function roteamentoPosLogin(usuario) {
+  garantirListenerEstoque(); /* dispara em background — não trava o roteamento esperando */
+
   if (linkConferenciaPendente) {
     const { festaId } = linkConferenciaPendente;
     linkConferenciaPendente = null;
@@ -1128,6 +1152,8 @@ function escolherRole(role) {
 function logout() {
   pararListeners();
   pararTimers();
+  if (unsubEstoque)    { unsubEstoque();  unsubEstoque = null; }
+  _estoquePronto = null;
   if (_tvClockTimer)   { clearInterval(_tvClockTimer);   _tvClockTimer   = null; }
   if (_tvRefreshTimer) { clearInterval(_tvRefreshTimer); _tvRefreshTimer = null; }
   firebase.auth().signOut().catch(() => {});
@@ -1225,15 +1251,19 @@ async function confirmarTrocarSenha() {
 async function carregarCEO() {
   pararListeners();
 
-  try {
-    const [configs, est, cats] = await Promise.all([
-      listarItemConfigs(), buscarEstoque(), listarCategorias(),
-    ]);
-    itemConfigsCache = {};
-    configs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
-    estoqueCache    = est;
-    categoriasCache = cats;
-  } catch(e) { console.error('Erro ao carregar dados iniciais:', e); }
+  garantirListenerEstoque();
+  /* Só busca de novo se ainda não tem nada em cache nesta sessão — evita
+     reler item_config/categorias inteiros a cada navegação. */
+  if (!Object.keys(itemConfigsCache).length) {
+    try {
+      const [configs, cats] = await Promise.all([
+        listarItemConfigs(), listarCategorias(),
+      ]);
+      itemConfigsCache = {};
+      configs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+      categoriasCache = cats;
+    } catch(e) { console.error('Erro ao carregar dados iniciais:', e); }
+  }
 
   /* Cross-project (controle-gestao-main): cria festas a partir dos Contratos
      e carrega elenco/escalação pra mostrar resumo de equipe nos cards. Roda
@@ -3244,10 +3274,18 @@ function renderizarEditarFesta(festa) {
   document.getElementById('ef-tipo-evento').value = festa.tipoEvento || '';
   document.getElementById('ef-convidados').value  = festa.convidados != null ? festa.convidados : '';
 
-  /* Preencher quantidades por item (itens já na festa + itens adicionados nesta sessão) */
+  /* Preencher quantidades por item (itens já na festa + itens adicionados nesta sessão).
+     Se o campo já existe na tela (ex.: o listener recebeu uma atualização
+     enquanto o CEO estava digitando), reaproveita o valor que já está no
+     input em vez do valor salvo no Firestore — senão cada eco do listener
+     (inclusive o "editandoAgora" que esta própria tela grava ao abrir) apaga
+     silenciosamente o que a pessoa acabou de digitar. */
   const itens     = festa.itens || [];
   const todos     = itens.concat(_efItensExtras);
-  document.getElementById('ef-itens').innerHTML = todos.map((item, i) => `
+  document.getElementById('ef-itens').innerHTML = todos.map((item, i) => {
+    const inputExistente = document.getElementById(`ef-qty-${i}`);
+    const valorAtual = inputExistente ? inputExistente.value : item.qtdNecessaria;
+    return `
     <div class="item-row">
       <div class="item-topo">
         <div>
@@ -3259,11 +3297,12 @@ function renderizarEditarFesta(festa) {
       <div class="item-entrada">
         <label>Quantidade necessaria:</label>
         <input type="number" class="qty-input" id="ef-qty-${i}"
-          value="${item.qtdNecessaria}" min="0" />
+          value="${valorAtual}" min="0" />
         <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   popularSelectAddItemEdicao();
 }
@@ -4489,12 +4528,11 @@ async function recarregarInventario() {
   document.getElementById('inventario-conteudo').innerHTML =
     '<div class="estado-vazio"><p>Carregando...</p></div>';
   try {
-    const [configs, estoqueMap, cats] = await Promise.all([
-      listarItemConfigs(),
-      buscarEstoque(),
+    const [configs, , cats] = await Promise.all([
+      Object.keys(itemConfigsCache).length ? Promise.resolve(Object.values(itemConfigsCache)) : listarItemConfigs(),
+      garantirListenerEstoque(),
       categoriasCache.length ? Promise.resolve(categoriasCache) : listarCategorias(),
     ]);
-    estoqueCache       = estoqueMap;
     _inventarioConfigs = configs;
     if (!categoriasCache.length) categoriasCache = cats;
     const dl = document.getElementById('inv-add-datalist');
@@ -4693,12 +4731,11 @@ async function recarregarEntradaMercadoria() {
   document.getElementById('entrada-mercadoria-conteudo').innerHTML =
     '<div class="estado-vazio"><p>Carregando...</p></div>';
   try {
-    const [configs, estoqueMap, cats] = await Promise.all([
-      listarItemConfigs(),
-      buscarEstoque(),
+    const [configs, , cats] = await Promise.all([
+      Object.keys(itemConfigsCache).length ? Promise.resolve(Object.values(itemConfigsCache)) : listarItemConfigs(),
+      garantirListenerEstoque(),
       categoriasCache.length ? Promise.resolve(categoriasCache) : listarCategorias(),
     ]);
-    estoqueCache    = estoqueMap;
     _entradaConfigs = configs;
     if (!categoriasCache.length) categoriasCache = cats;
     const dl = document.getElementById('ent-add-datalist');
@@ -4870,10 +4907,11 @@ async function abrirRegistrarProducao() {
 
 async function recarregarRegistrarProducao() {
   try {
-    const [configs, estoqueMap, fichas] = await Promise.all([
-      listarItemConfigs(), buscarEstoque(), listarFichasTecnicas(),
+    const [configs, , fichas] = await Promise.all([
+      Object.keys(itemConfigsCache).length ? Promise.resolve(Object.values(itemConfigsCache)) : listarItemConfigs(),
+      garantirListenerEstoque(),
+      fichasTecnicasCache.length ? Promise.resolve(fichasTecnicasCache) : listarFichasTecnicas(),
     ]);
-    estoqueCache = estoqueMap;
     _prodConfigs = configs;
     fichasTecnicasCache = fichas;
     const dl1 = document.getElementById('prod-insumo-datalist');
@@ -5298,11 +5336,10 @@ async function recarregarEstoque() {
   document.getElementById('estoque-conteudo').innerHTML =
     '<div class="estado-vazio"><p>Carregando...</p></div>';
   try {
-    const [estoqueMap, festas] = await Promise.all([
-      buscarEstoque(),
-      buscarTodasFestas(),
+    const [, festas] = await Promise.all([
+      garantirListenerEstoque(),
+      todasFestasCache.length ? Promise.resolve(todasFestasCache) : buscarTodasFestas(),
     ]);
-    estoqueCache     = estoqueMap;
     todasFestasCache = festas;
     const cats = categoriasCache.length ? categoriasCache : await listarCategorias();
     if (!categoriasCache.length) categoriasCache = cats;
@@ -6260,14 +6297,19 @@ async function renderizarCadastroItens() {
   const busca = _buscaCadastro;
   const buscaWrap = document.getElementById('busca-cadastro-wrap');
   try {
-    /* Carregar configs, categorias e itens de todas as festas em paralelo */
+    /* Carregar configs, categorias e itens de todas as festas em paralelo.
+       Reaproveita o cache já em memória quando possível — esta função roda
+       a cada tecla digitada na busca/filtro, então não pode reler as
+       coleções inteiras do Firestore a cada letra. */
     const [configs, festas, cats] = await Promise.all([
-      listarItemConfigs(),
+      Object.keys(itemConfigsCache).length ? Promise.resolve(Object.values(itemConfigsCache)) : listarItemConfigs(),
       todasFestasCache.length ? Promise.resolve(todasFestasCache) : buscarTodasFestas(),
       categoriasCache.length ? Promise.resolve(categoriasCache) : listarCategorias(),
     ]);
-    itemConfigsCache = {};
-    configs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    if (!Object.keys(itemConfigsCache).length) {
+      itemConfigsCache = {};
+      configs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    }
     if (!categoriasCache.length) categoriasCache = cats;
 
     /* Popular o filtro por categoria preservando a seleção atual */
@@ -7324,7 +7366,7 @@ async function carregarAnalise() {
   document.getElementById('analise-conteudo').innerHTML =
     '<div class="estado-vazio"><p>Carregando...</p></div>';
   try {
-    _analiseCache = await buscarTodasFestas();
+    _analiseCache = todasFestasCache.length ? todasFestasCache : await buscarTodasFestas();
     renderizarAnalise();
   } catch(e) {
     console.error(e);
@@ -7605,17 +7647,18 @@ function lcSetFornecimento(forn, btn) {
 }
 
 async function _lcCarregarBase() {
-  const [estoqueMap, festas, cfgs, cats] = await Promise.all([
-    buscarEstoque(),
+  const [, festas, cfgs, cats] = await Promise.all([
+    garantirListenerEstoque(),
     todasFestasCache.length ? Promise.resolve(todasFestasCache) : buscarTodasFestas(),
-    listarItemConfigs(),
-    listarCategorias(),
+    Object.keys(itemConfigsCache).length ? Promise.resolve(Object.values(itemConfigsCache)) : listarItemConfigs(),
+    categoriasCache.length ? Promise.resolve(categoriasCache) : listarCategorias(),
   ]);
-  estoqueCache     = estoqueMap;
   todasFestasCache = festas;
-  itemConfigsCache = {};
-  cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
-  categoriasCache  = cats;
+  if (!Object.keys(itemConfigsCache).length) {
+    itemConfigsCache = {};
+    cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+  }
+  if (!categoriasCache.length) categoriasCache = cats;
 }
 
 async function lcRenderizar() {
@@ -8253,11 +8296,10 @@ async function renderizarRelatorio() {
   if (elC) elC.innerHTML = '<div class="estado-vazio"><p>Calculando...</p></div>';
 
   try {
-    const [estoqueMap, festas] = await Promise.all([
-      buscarEstoque(),
+    const [, festas] = await Promise.all([
+      garantirListenerEstoque(),
       todasFestasCache.length ? Promise.resolve(todasFestasCache) : buscarTodasFestas(),
     ]);
-    estoqueCache     = estoqueMap;
     todasFestasCache = festas;
 
     const inicio = new Date(relPeriodoAno, relPeriodoMes, 1);
@@ -8269,7 +8311,7 @@ async function renderizarRelatorio() {
 
     renderizarSumarioRelatorio(festasNoPeriodo);
     if (abaRelAtual === 'item') {
-      renderizarRelPorItem(festasNoPeriodo, festas, estoqueMap);
+      renderizarRelPorItem(festasNoPeriodo, festas, estoqueCache);
     } else {
       renderizarRelPorFesta(festasNoPeriodo);
     }
@@ -8642,7 +8684,7 @@ async function renderizarLocalizacoes() {
   if (!el) return;
   el.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
   try {
-    const configs = await listarItemConfigs();
+    const configs = Object.keys(itemConfigsCache).length ? Object.values(itemConfigsCache) : await listarItemConfigs();
     if (!configs.length) {
       el.innerHTML = '<div class="estado-vazio"><p>Nenhum item configurado. Cadastre itens primeiro.</p></div>';
       return;
@@ -9020,12 +9062,15 @@ async function abrirCompras() {
 
 async function recarregarCompras() {
   try {
-    const [cfgs, est, compras] = await Promise.all([
-      listarItemConfigs(), buscarEstoque(), listarCompras(),
+    const [cfgs, , compras] = await Promise.all([
+      Object.keys(itemConfigsCache).length ? Promise.resolve(Object.values(itemConfigsCache)) : listarItemConfigs(),
+      garantirListenerEstoque(),
+      listarCompras(),
     ]);
-    itemConfigsCache = {};
-    cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
-    estoqueCache = est;
+    if (!Object.keys(itemConfigsCache).length) {
+      itemConfigsCache = {};
+      cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    }
     comprasCache = compras;
     renderizarCompras();
     atualizarBadgeCompras();

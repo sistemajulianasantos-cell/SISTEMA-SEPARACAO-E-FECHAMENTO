@@ -482,6 +482,20 @@ async function buscarEstoque() {
   return result;
 }
 
+/* Listener em tempo real do estoque inteiro — mantido vivo pela sessão toda
+   (ver garantirListenerEstoque em app.js), pra não precisar de um .get() da
+   coleção inteira toda vez que uma tela de estoque abre. */
+function escutarEstoque(callback) {
+  return db.collection('estoque').onSnapshot(snap => {
+    const result = {};
+    snap.docs.forEach(d => {
+      const data = d.data();
+      result[data.nomeKey] = { id: d.id, ...data };
+    });
+    callback(result);
+  }, err => console.error('Firestore listener error (estoque):', err));
+}
+
 async function salvarItemEstoque(nomeKey, dados) {
   const snap = await db.collection('estoque')
     .where('nomeKey', '==', nomeKey).limit(1).get();
