@@ -530,6 +530,7 @@ body {
 .badge-retorno    { background: #FEE2E2; color: #7F1D1D; }
 .badge-galpao     { background: #F5F5F4; color: #44403C; }
 .badge-concluida  { background: #DCFCE7; color: #14532D; }
+.badge-cancelada  { background: #F3F4F6; color: #6B7280; }
 
 /* ══ TÍTULOS ═════════════════════════════════════════ */
 .titulo-tela  { font-size: 20px; font-weight: 800; margin-bottom: 20px; color: var(--cinza-900); }

@@ -751,7 +751,7 @@ function abrirHomeCoordenador() {
     return;
   }
   unsubFesta = escutarFestaOuNula(festaId, festa => {
-    if (!festa || festa.status === 'concluida') {
+    if (!festa || !festaAtiva(festa)) {
       _limparAcessoCoordenador();
       renderizarHomeCoordenador(null);
       return;
@@ -829,7 +829,7 @@ function renderizarAgendaMeses() {
   if (!el) return;
 
   const porMes = {};
-  todasFestasCache.forEach(f => {
+  todasFestasCache.filter(f => f.status !== 'cancelada').forEach(f => {
     const key = normalizarData(f.data);
     if (!key) return;
     const mesKey = key.slice(0, 7);
@@ -872,7 +872,7 @@ function renderizarAgendaDatas(mesKey) {
   if (!el || !mesKey) return;
 
   const porDia = {};
-  todasFestasCache.forEach(f => {
+  todasFestasCache.filter(f => f.status !== 'cancelada').forEach(f => {
     const key = normalizarData(f.data);
     if (!key || !key.startsWith(mesKey)) return;
     porDia[key] = (porDia[key] || 0) + 1;
@@ -1397,7 +1397,7 @@ function renderizarAgendaStripCEO(festas) {
   const el = document.getElementById('producao-agenda-strip');
   if (!el) return;
 
-  const ativas = festas.filter(f => f.status !== 'concluida');
+  const ativas = festas.filter(festaAtiva);
 
   /* Agrupar por dia */
   const porDia = {};
@@ -1485,7 +1485,7 @@ function renderizarTiraData(festas) {
   if (!el) return;
 
   const contagemPorDia = {};
-  festas.forEach(f => {
+  festas.filter(f => f.status !== 'cancelada').forEach(f => {
     const key = normalizarData(f.data);
     if (key) contagemPorDia[key] = (contagemPorDia[key] || 0) + 1;
   });
@@ -2162,6 +2162,10 @@ async function mudarStatusFesta(id, novoStatus) {
       toast('Erro ao resetar festa.', 'erro');
     }
     return;
+  }
+
+  if (novoStatus === 'cancelada') {
+    if (!confirm('Marcar esta festa como Cancelada? Ela sai da Agenda, Produção, Separação, Estoque e Compras — mas continua no histórico (aba "Canceladas").')) return;
   }
 
   try {
@@ -4029,8 +4033,16 @@ function removerFoto(tipo, idx, btn) {
 const STATUS_LABELS = {
   agendada: 'Agendada', separando: 'Separando', conferencia: 'Em Conferência',
   festa: 'Em Festa', retorno: 'Retorno',
-  galpao: 'Conf. Galpão', concluida: 'Concluída',
+  galpao: 'Conf. Galpão', concluida: 'Concluída', cancelada: 'Cancelada',
 };
+
+/* Festa cancelada some das telas de planejamento (Agenda, Produção,
+   Separação, Compras, Estoque, Relatório) igual uma festa concluída — só
+   continua aparecendo no histórico (aba "Todas" da lista de festas e no
+   Detalhe dela mesma). */
+function festaAtiva(f) {
+  return f.status !== 'concluida' && f.status !== 'cancelada';
+}
 
 function htmlCardFesta(f, contexto) {
   let onclick = '';
@@ -4199,7 +4211,7 @@ function renderizarProducaoCEO() {
 
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const ativas = todasFestasCache.filter(f => {
-    if (f.status === 'concluida') return false;
+    if (!festaAtiva(f)) return false;
     const d = toDate(f.data);
     return !isNaN(d) && d >= hoje;
   });
@@ -4330,10 +4342,10 @@ function htmlProducaoSintetico(itens) {
         </div>
         <div class="producao-item-nums">
           ${diff < 0
-            ? `<span class="producao-diff-falta" style="font-size:18px;font-weight:900">A PRODUZIR: ${Math.abs(diff)} un</span>
-               <span style="font-size:11px;color:var(--cinza-500)">Pedido: ${item.totalBase} un &nbsp;|&nbsp; Estoque: ${qtdEst} un</span>`
+            ? `<span class="producao-diff-falta" style="font-size:18px;font-weight:900">A PRODUZIR: ${Math.abs(diff)} un${htmlConversaoCaixas(item.nome, Math.abs(diff))}</span>
+               <span style="font-size:11px;color:var(--cinza-500)">Pedido: ${item.totalBase} un &nbsp;|&nbsp; Estoque: ${qtdEst} un${htmlConversaoCaixas(item.nome, qtdEst)}</span>`
             : `<span class="producao-diff-ok">OK — +${diff} em estoque</span>
-               <span style="font-size:11px;color:var(--cinza-500)">Pedido: ${item.totalBase} un &nbsp;|&nbsp; Estoque: ${qtdEst} un</span>`
+               <span style="font-size:11px;color:var(--cinza-500)">Pedido: ${item.totalBase} un &nbsp;|&nbsp; Estoque: ${qtdEst} un${htmlConversaoCaixas(item.nome, qtdEst)}</span>`
           }
           <div class="producao-mini-bar">
             <div class="producao-mini-fill ${diff < 0 ? 'deficit' : 'ok'}" style="width:${pct}%"></div>
@@ -4529,6 +4541,21 @@ function qtdEmUnidadeBase(nomeItem, qtd) {
   return fator ? (qtd || 0) * fator : (qtd || 0);
 }
 
+/* Caminho inverso do htmlConversaoUnidades: dada uma quantidade em unidade
+   solta (ex: estoque contado em un), devolve "(= X cx e Y un)" — X caixas
+   fechadas mais Y unidades soltas que não completam uma caixa. Devolve ''
+   se o item não tem "Unidades por Caixa/Embalagem" cadastrado. */
+function htmlConversaoCaixas(nomeItem, qtdUn) {
+  const cfg   = buscarConfigItem(normalizarNomeItem(nomeItem));
+  const fator = cfg?.unidadesPorEmbalagem;
+  const qtd   = parseFloat(qtdUn);
+  if (!fator || fator <= 0 || isNaN(qtd)) return '';
+  const caixas = Math.floor(qtd / fator);
+  const soltas = Math.round((qtd - caixas * fator) * 10) / 10;
+  const txt = soltas === 0 ? `${caixas} cx` : `${caixas} cx e ${soltas} un`;
+  return ` <span class="conversao-un">(= ${txt})</span>`;
+}
+
 /* Verifica se um item de festa deve aparecer na tela de separação */
 function deveExibirNaSeparacao(item) {
   const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
@@ -4546,7 +4573,7 @@ function deveExibirNaSeparacao(item) {
 
 function agregarItensFestas(festas) {
   const mapa = {};
-  festas.filter(f => f.status !== 'concluida').forEach(f => {
+  festas.filter(festaAtiva).forEach(f => {
     (f.itens || []).forEach((item, itemIdx) => {
       /* Usa a chave BASE (sem sufixo de fornecimento) para agregar variantes */
       const key = nomeBaseKey(normalizarNomeItem(item.nome));
@@ -5691,16 +5718,18 @@ function htmlEstoqueSintetico(item, est) {
           <input type="number" class="estoque-qty-input"
             id="estoque-qty-${item.nomeKey}"
             value="${qtdEst}" min="0"
+            oninput="document.getElementById('eq-conv-${item.nomeKey}').innerHTML = htmlConversaoCaixas('${_esc(item.nome)}', this.value)"
             onchange="salvarEstoqueQtd('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(unEst)}',this.value)"
           />
           <span class="estoque-qty-un">${_escHtml(unEst)}</span>
+          <span id="eq-conv-${item.nomeKey}">${htmlConversaoCaixas(item.nome, qtdEst)}</span>
         </div>
         <button class="btn-comprar"
           onclick="comprarItemEstoque('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(unEst)}')">
           + Comprar
         </button>` : `
         <div class="estoque-qty-wrap">
-          <strong>${qtdEst}</strong>&nbsp;<span class="estoque-qty-un">${_escHtml(unEst)}</span>
+          <strong>${qtdEst}</strong>&nbsp;<span class="estoque-qty-un">${_escHtml(unEst)}</span>${htmlConversaoCaixas(item.nome, qtdEst)}
         </div>`}
       </div>
       ${semDemanda ? '' : `
@@ -5709,8 +5738,8 @@ function htmlEstoqueSintetico(item, est) {
       </div>
       <div class="estoque-diff ${diff < 0 ? 'deficit-text' : 'ok-text'}">
         ${diff < 0
-          ? `Falta <strong>${Math.abs(diff)}</strong> ${_escHtml(unEst)} (${pct}% coberto)`
-          : `Estoque suficiente — sobra <strong>${diff}</strong> ${_escHtml(unEst)}`}
+          ? `Falta <strong>${Math.abs(diff)}</strong> ${_escHtml(unEst)}${htmlConversaoCaixas(item.nome, Math.abs(diff))} (${pct}% coberto)`
+          : `Estoque suficiente — sobra <strong>${diff}</strong> ${_escHtml(unEst)}${htmlConversaoCaixas(item.nome, diff)}`}
       </div>`}
     </div>
   `;
@@ -5762,11 +5791,11 @@ function htmlEstoqueAnalitico(item, est) {
         <div class="estoque-item-nome">${_escHtml(item.nome)}</div>
         <div class="estoque-item-total">
           ${semDemanda
-            ? `<span style="color:var(--cinza-500)">Sem festa ativa</span> &nbsp;|&nbsp; Estoque: <strong>${qtdEst}</strong> ${_escHtml(unEst)}`
+            ? `<span style="color:var(--cinza-500)">Sem festa ativa</span> &nbsp;|&nbsp; Estoque: <strong>${qtdEst}</strong> ${_escHtml(unEst)}${htmlConversaoCaixas(item.nome, qtdEst)}`
             : `Total: <strong>${item.total}</strong> ${_escHtml(item.unidade)}${htmlConversaoUnidades(item.nome, item.total)} &nbsp;|&nbsp;
-               Estoque: <strong>${qtdEst}</strong> ${_escHtml(unEst)}
+               Estoque: <strong>${qtdEst}</strong> ${_escHtml(unEst)}${htmlConversaoCaixas(item.nome, qtdEst)}
                <span class="${diff < 0 ? 'deficit-text' : 'ok-text'}" style="font-weight:700">
-                 &nbsp;(${diff < 0 ? 'falta ' + Math.abs(diff) : 'sobra ' + diff} ${_escHtml(unEst)})
+                 &nbsp;(${diff < 0 ? 'falta ' + Math.abs(diff) : 'sobra ' + diff} ${_escHtml(unEst)}${htmlConversaoCaixas(item.nome, diff < 0 ? Math.abs(diff) : diff)})
                </span>`}
         </div>
       </div>
@@ -6073,7 +6102,7 @@ async function carregarEquipe() {
   ]);
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   _equipeFestasCache = festas.filter(f => {
-    if (f.status === 'concluida') return false;
+    if (!festaAtiva(f)) return false;
     const fd = toDate(f.data); fd.setHours(0, 0, 0, 0);
     return fd >= hoje;
   });
@@ -6795,7 +6824,7 @@ async function abrirModalPadronizarNomes() {
   configs.forEach(c => { porNomeAtualCfg[(c.nome || '').trim().toUpperCase()] = c; });
 
   const festasTodas = await buscarTodasFestas();
-  _padronizacaoFestasSnapshot = festasTodas.filter(f => f.status !== 'concluida');
+  _padronizacaoFestasSnapshot = festasTodas.filter(festaAtiva);
 
   const porNomeAtualFesta = {};
   _padronizacaoFestasSnapshot.forEach(f => (f.itens || []).forEach((it, idx) => {
@@ -7043,7 +7072,7 @@ async function abrirModalResolverDuplicados() {
 
   const [festasTodas, estoqueAtual] = await Promise.all([buscarTodasFestas(), buscarEstoque()]);
   const chavesUsadasEmFestas = new Set();
-  festasTodas.filter(f => f.status !== 'concluida').forEach(f => (f.itens || []).forEach(it => {
+  festasTodas.filter(festaAtiva).forEach(f => (f.itens || []).forEach(it => {
     const k = normalizarNomeItem(it.nome);
     chavesUsadasEmFestas.add(k);
     chavesUsadasEmFestas.add(nomeBaseKey(k));
@@ -7158,7 +7187,7 @@ let _corrigirUnidadesFestasSnapshot = []; /* festas no momento do preview, reusa
 
 async function abrirModalCorrigirUnidades() {
   const festas = todasFestasCache.length ? todasFestasCache : await buscarTodasFestas();
-  _corrigirUnidadesFestasSnapshot = festas.filter(f => f.status !== 'concluida');
+  _corrigirUnidadesFestasSnapshot = festas.filter(festaAtiva);
 
   const porItem = {};
   _corrigirUnidadesFestasSnapshot.forEach(f => {
@@ -7412,7 +7441,7 @@ async function salvarItemConfig() {
 async function _festasUsandoItemCadastro(nomeKey) {
   const festas = await buscarTodasFestas();
   return festas.filter(f => {
-    if (f.status === 'concluida') return false;
+    if (!festaAtiva(f)) return false;
     return (f.itens || []).some(it => {
       const cfg = buscarConfigItem(normalizarNomeItem(it.nome));
       return cfg && cfg.nomeKey === nomeKey;
@@ -7537,7 +7566,7 @@ async function excluirSelecionadosCadastro() {
     if (btnDel) { btnDel.disabled = false; btnDel.textContent = 'Excluir'; }
     return;
   }
-  const festasAtivas = festas.filter(f => f.status !== 'concluida');
+  const festasAtivas = festas.filter(festaAtiva);
   const bloqueados = ids
     .map(id => Object.values(itemConfigsCache).find(c => c.id === id))
     .filter(cfg => cfg && festasAtivas.some(f => (f.itens || []).some(it => {
@@ -7920,7 +7949,7 @@ async function lcRenderizar() {
 }
 
 function _lcFiltrarFestas() {
-  const ativas = todasFestasCache.filter(f => f.status !== 'concluida');
+  const ativas = todasFestasCache.filter(festaAtiva);
 
   if (_lcPeriodo === 'tudo') return ativas;
 
@@ -8147,7 +8176,7 @@ function lcRenderizarSimulacao() {
 
   /* Todas as festas ativas (não concluídas) — a simulação olha para toda a
      necessidade futura, não só o recorte de período usado em "Por Evento". */
-  const festas    = todasFestasCache.filter(f => f.status !== 'concluida');
+  const festas    = todasFestasCache.filter(festaAtiva);
   const busca     = (document.getElementById('lc-sim-busca')?.value || '').toLowerCase().trim();
   const catFiltro = document.getElementById('lc-sim-filtro-cat')?.value || '';
 
@@ -8199,7 +8228,7 @@ function lcHtmlGrupoSimulacao(g) {
       return `
         <div class="lc-row lc-sim-row">
           <div class="lc-row-nome">${_escHtml(nomeBasDisplay(it.nome))} ${badgeR}</div>
-          <div class="lc-row-num">${it.estoque} <span class="lc-row-un">un</span></div>
+          <div class="lc-row-num">${it.estoque} <span class="lc-row-un">un</span>${htmlConversaoCaixas(it.nome, it.estoque)}</div>
           <div class="lc-row-num">${it.qtdComprar} <span class="lc-row-un">${it.unidade}</span>${htmlConversaoUnidades(it.nome, it.qtdComprar)}</div>
           <div class="lc-row-comprar">
             <input type="number" class="lc-sim-input" min="0" step="0.1" placeholder="0"
@@ -8207,7 +8236,7 @@ function lcHtmlGrupoSimulacao(g) {
               oninput="lcSimAtualizarQtd('${_esc(it.nomeKey)}', this.value, ${it.estoque}, ${it.qtdComprarBase}, '${_esc(it.nome)}')" />
           </div>
           <div class="lc-row-num lc-sim-ficaria ${ficaria >= it.qtdComprarBase ? 'ok-text' : 'deficit-text'}" id="lc-sim-ficaria-${it.nomeKey}">
-            ${ficaria} <span class="lc-row-un">un</span>
+            ${ficaria} <span class="lc-row-un">un</span>${htmlConversaoCaixas(it.nome, ficaria)}
           </div>
         </div>
       `;
@@ -8243,7 +8272,7 @@ function lcSimAtualizarQtd(nomeKey, valor, estoqueAtual, necessarioBase, nomeIte
   const el = document.getElementById(`lc-sim-ficaria-${nomeKey}`);
   if (el) {
     el.className   = `lc-row-num lc-sim-ficaria ${ficaria >= necessarioBase ? 'ok-text' : 'deficit-text'}`;
-    el.innerHTML   = `${ficaria} <span class="lc-row-un">un</span>`;
+    el.innerHTML   = `${ficaria} <span class="lc-row-un">un</span>${htmlConversaoCaixas(nomeItem, ficaria)}`;
   }
 }
 
@@ -8291,7 +8320,7 @@ function lcHtmlGrupoSintetico(g) {
       const mostraCompra = _lcFornecimento === 'todos' || _lcFornecimento === 'romero';
       const compraHtml = mostraCompra
         ? `<div class="lc-row-comprar ${it.aComprar > 0 ? 'lc-falta' : 'lc-ok'}">
-             ${it.aComprar > 0 ? `<strong>${it.aComprar} un</strong>` : `OK`}
+             ${it.aComprar > 0 ? `<strong>${it.aComprar} un</strong>${htmlConversaoCaixas(it.nome, it.aComprar)}` : `OK`}
            </div>`
         : `<div class="lc-row-comprar" style="color:var(--cinza-400);font-size:12px">—</div>`;
 
@@ -8299,7 +8328,7 @@ function lcHtmlGrupoSintetico(g) {
         <div class="lc-row">
           <div class="lc-row-nome">${_escHtml(nomeBasDisplay(it.nome))} ${badgeR}${badgeP}${fornHtml}</div>
           <div class="lc-row-num">${qtdVis} <span class="lc-row-un">${it.unidade}</span>${htmlConversaoUnidades(it.nome, qtdVis)}</div>
-          <div class="lc-row-num">${it.estoque} <span class="lc-row-un">un</span></div>
+          <div class="lc-row-num">${it.estoque} <span class="lc-row-un">un</span>${htmlConversaoCaixas(it.nome, it.estoque)}</div>
           <div class="lc-row-num ${diffCls}">${diffTxt}</div>
           ${compraHtml}
         </div>
@@ -8396,11 +8425,11 @@ function lcHtmlGrupoAnalitico(g) {
             <div class="lc-row-nome">${_escHtml(nomeBasDisplay(it.nome))} ${badgeR}</div>
             <div class="lc-analitico-nums">
               <span>Necessário: <strong>${qtdVis}</strong> ${it.unidade}${htmlConversaoUnidades(it.nome, qtdVis)}</span>
-              <span>Estoque: <strong>${it.estoque}</strong> un</span>
-              <span class="${diffCls}">Dif: ${diff < 0 ? '−'+Math.abs(diff) : '+'+diff} un</span>
+              <span>Estoque: <strong>${it.estoque}</strong> un${htmlConversaoCaixas(it.nome, it.estoque)}</span>
+              <span class="${diffCls}">Dif: ${diff < 0 ? '−'+Math.abs(diff) : '+'+diff} un${htmlConversaoCaixas(it.nome, Math.abs(diff))}</span>
               ${mostraCompra
                 ? `<span class="lc-analitico-comprar ${it.aComprar > 0 ? 'lc-falta' : 'lc-ok'}">
-                     ${it.aComprar > 0 ? `Comprar: <strong>${it.aComprar} un</strong>` : `Estoque OK`}
+                     ${it.aComprar > 0 ? `Comprar: <strong>${it.aComprar} un</strong>${htmlConversaoCaixas(it.nome, it.aComprar)}` : `Estoque OK`}
                    </span>`
                 : ''}
             </div>
@@ -8671,7 +8700,7 @@ function renderizarRelPorItem(festasNoPeriodo, todasFestas, estoqueMap) {
   /* Solicitado pendente para cálculo "Após Pendentes" — sempre em unidade
      solta, porque é comparado com o estoque (contado em unidade solta). */
   const solPend = {};
-  todasFestas.filter(f => f.status !== 'concluida').forEach(f => {
+  todasFestas.filter(festaAtiva).forEach(f => {
     (f.itens||[]).forEach(it => {
       const k = normalizarNomeItem(it.nome);
       solPend[k] = (solPend[k]||0) + qtdEmUnidadeBase(it.nome, it.qtdNecessaria||0);
@@ -9428,16 +9457,16 @@ function _renderAlertas() {
   const renderCard = (a) => {
     const cor   = a.falta > 0 ? '' : ' ok';
     const label = a.falta > 0
-      ? `<span class="compra-falta-destaque">${a.falta} ${a.unidade} abaixo do mínimo</span>`
+      ? `<span class="compra-falta-destaque">${a.falta} ${a.unidade}${htmlConversaoCaixas(a.nome, a.falta)} abaixo do mínimo</span>`
       : `<span style="color:#15803d;font-weight:700">Estoque ok</span>`;
     const jaTemPedido = comprasCache.some(c => c.nomeKey === a.nomeKey && (c.status === 'pendente' || c.status === 'pedido'));
     return `
       <div class="compra-alerta-card${cor}">
         <div class="compra-alerta-nome">${_escHtml(a.nome)}</div>
         <div class="compra-alerta-nums">
-          <span>Atual: <strong>${a.qtdAtual} ${a.unidade}</strong></span>
-          <span>Mínimo: <strong>${a.estoqueMinimo} ${a.unidade}</strong></span>
-          ${a.qtdSugerida ? `<span>Sugerido: <strong>${a.qtdSugerida} ${a.unidade}</strong></span>` : ''}
+          <span>Atual: <strong>${a.qtdAtual} ${a.unidade}</strong>${htmlConversaoCaixas(a.nome, a.qtdAtual)}</span>
+          <span>Mínimo: <strong>${a.estoqueMinimo} ${a.unidade}</strong>${htmlConversaoCaixas(a.nome, a.estoqueMinimo)}</span>
+          ${a.qtdSugerida ? `<span>Sugerido: <strong>${a.qtdSugerida} ${a.unidade}</strong>${htmlConversaoCaixas(a.nome, a.qtdSugerida)}</span>` : ''}
         </div>
         ${label}
         <div class="compra-alerta-barra-wrap">
