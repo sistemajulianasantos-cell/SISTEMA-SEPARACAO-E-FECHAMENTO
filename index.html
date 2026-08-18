@@ -289,6 +289,21 @@
     </div>
   </div>
 
+  <!-- ══════════ MODAL: CORRIGIR UNIDADES (Cadastro) ══════════ -->
+  <div id="modal-corrigir-unidades" class="modal-overlay hidden" onclick="fecharModalCorrigirUnidades()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:640px;width:95%">
+      <div class="modal-titulo">Corrigir unidades</div>
+      <div style="font-size:13px;color:#6B7280;margin:8px 0 4px">
+        Compara a unidade de cada item nas festas ativas com a "Unidade de Medida" cadastrada em Cadastro de Itens. Troca só o rótulo da unidade (ex: "un" → "cx") — a quantidade digitada não muda.
+      </div>
+      <div id="corrigir-unidades-lista" style="max-height:50vh;overflow-y:auto;margin-top:10px"></div>
+      <div class="modal-acoes">
+        <button class="btn-secundario" onclick="fecharModalCorrigirUnidades()">Cancelar</button>
+        <button class="btn-primario" id="btn-aplicar-corrigir-unidades" onclick="confirmarCorrigirUnidades()">Aplicar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════ TELA: AGENDA — MESES ══════════ -->
   <div id="tela-agenda-meses" class="tela hidden">
     <div class="container">
@@ -811,6 +826,7 @@
           <button class="btn-secundario btn-sm" id="btn-selecionar-itens" onclick="toggleModoSelecaoCadastro()">Selecionar</button>
           <button class="btn-secundario btn-sm hidden" id="btn-padronizar-nomes" onclick="abrirModalPadronizarNomes()">Padronizar nomes</button>
           <button class="btn-secundario btn-sm hidden" id="btn-resolver-duplicados" onclick="abrirModalResolverDuplicados()">Resolver duplicados</button>
+          <button class="btn-secundario btn-sm hidden" id="btn-corrigir-unidades" onclick="abrirModalCorrigirUnidades()">Corrigir unidades</button>
           <button class="btn-primario" id="btn-novo-item-config" onclick="abrirFormItemConfig()">&#43; Novo Item</button>
           <button class="btn-primario hidden" id="btn-nova-categoria" onclick="abrirFormCategoria()">&#43; Nova Categoria</button>
         </div>
@@ -1571,7 +1587,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=48"></script>
-  <script src="js/app.js?v=95"></script>
+  <script src="js/app.js?v=96"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

@@ -6384,6 +6384,7 @@ function trocarAbaItens(aba, btn) {
   const btnAplicar = document.getElementById('btn-aplicar-class');
   const btnPadr    = document.getElementById('btn-padronizar-nomes');
   const btnDup     = document.getElementById('btn-resolver-duplicados');
+  const btnUn      = document.getElementById('btn-corrigir-unidades');
   const busca      = document.getElementById('busca-cadastro-wrap');
 
   /* Reset todos */
@@ -6398,6 +6399,7 @@ function trocarAbaItens(aba, btn) {
   if (btnAplicar)   btnAplicar.classList.add('hidden');
   if (btnPadr)      btnPadr.classList.add('hidden');
   if (btnDup)       btnDup.classList.add('hidden');
+  if (btnUn)        btnUn.classList.add('hidden');
   if (busca)        busca.classList.add('hidden');
 
   if (aba === 'categorias') {
@@ -6419,6 +6421,7 @@ function trocarAbaItens(aba, btn) {
     if (btnAplicar) btnAplicar.classList.remove('hidden');
     if (btnPadr)    btnPadr.classList.remove('hidden');
     if (btnDup)     btnDup.classList.remove('hidden');
+    if (btnUn)      btnUn.classList.remove('hidden');
     if (busca)      busca.classList.remove('hidden');
     renderizarCadastroItens();
   }
@@ -7138,6 +7141,109 @@ async function confirmarResolverDuplicados() {
   } catch (e) {
     console.error(e);
     toast('Erro ao resolver duplicados. Tente novamente.', 'erro');
+  } finally {
+    if (btnAplicar) { btnAplicar.disabled = false; btnAplicar.textContent = 'Aplicar'; }
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   CORRIGIR UNIDADES — itens em festas ativas cuja unidade (ex: "un")
+   diverge da "Unidade de Medida" cadastrada no item (ex: "cx"). Troca só
+   o rótulo — a quantidade digitada nunca é alterada (confirmado com a
+   Juliana: o número já reflete o que ela quis dizer, só o rótulo estava
+   errado). Mesmo padrão de preview + confirmar do Padronizar Nomes.
+════════════════════════════════════════ */
+let _corrigirUnidadesPendente  = []; /* [{nomeKey, nome, unidadeCerta, ocorrencias:[{festaId,itemIdx,unidadeAtual,qtd}]}] */
+let _corrigirUnidadesFestasSnapshot = []; /* festas no momento do preview, reusadas na confirmação p/ os itemIdx baterem */
+
+async function abrirModalCorrigirUnidades() {
+  const festas = todasFestasCache.length ? todasFestasCache : await buscarTodasFestas();
+  _corrigirUnidadesFestasSnapshot = festas.filter(f => f.status !== 'concluida');
+
+  const porItem = {};
+  _corrigirUnidadesFestasSnapshot.forEach(f => {
+    (f.itens || []).forEach((item, itemIdx) => {
+      const key = normalizarNomeItem(item.nome);
+      const cfg = itemConfigsCache[key] || itemConfigsCache[nomeBaseKey(key)];
+      if (!cfg || !cfg.unidade) return;
+      const unAtual = item.unidade || 'un';
+      if (unAtual === cfg.unidade) return; /* já bate, nada a fazer */
+      if (!porItem[cfg.nomeKey]) {
+        porItem[cfg.nomeKey] = { nomeKey: cfg.nomeKey, nome: cfg.nome, unidadeCerta: cfg.unidade, ocorrencias: [] };
+      }
+      porItem[cfg.nomeKey].ocorrencias.push({
+        festaId: f.id, festaNome: f.nome, itemIdx, unidadeAtual: unAtual, qtd: item.qtdNecessaria,
+      });
+    });
+  });
+
+  _corrigirUnidadesPendente = Object.values(porItem);
+
+  const listaEl    = document.getElementById('corrigir-unidades-lista');
+  const btnAplicar = document.getElementById('btn-aplicar-corrigir-unidades');
+
+  if (!_corrigirUnidadesPendente.length) {
+    listaEl.innerHTML = '<p style="font-size:13px;color:#6B7280;padding:12px 0">Nenhuma divergência de unidade encontrada nas festas ativas.</p>';
+    if (btnAplicar) btnAplicar.classList.add('hidden');
+    document.getElementById('modal-corrigir-unidades').classList.remove('hidden');
+    return;
+  }
+  if (btnAplicar) btnAplicar.classList.remove('hidden');
+
+  listaEl.innerHTML = _corrigirUnidadesPendente.map(it => `
+    <div style="padding:10px 0;border-bottom:1px solid #F3F4F6">
+      <div style="font-weight:700;font-size:13px">${_escHtml(it.nome)}</div>
+      <div style="font-size:12px;color:#6B7280;margin-top:2px">
+        ${it.ocorrencias.length} item(ns) em festa(s) ativa(s)
+        <ul style="margin:4px 0 0 16px">
+          ${it.ocorrencias.map(o => `<li>${_escHtml(o.festaNome)}: ${o.qtd} <s>${_escHtml(o.unidadeAtual)}</s> → <strong>${_escHtml(it.unidadeCerta)}</strong></li>`).join('')}
+        </ul>
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('modal-corrigir-unidades').classList.remove('hidden');
+}
+
+function fecharModalCorrigirUnidades() {
+  document.getElementById('modal-corrigir-unidades').classList.add('hidden');
+}
+
+async function confirmarCorrigirUnidades() {
+  if (!_corrigirUnidadesPendente.length) return;
+  const btnAplicar = document.getElementById('btn-aplicar-corrigir-unidades');
+  if (btnAplicar) { btnAplicar.disabled = true; btnAplicar.textContent = 'Aplicando...'; }
+
+  try {
+    /* Agrupar por festa pra fazer 1 gravação por festa, não 1 por item */
+    const porFesta = {};
+    _corrigirUnidadesPendente.forEach(it => {
+      it.ocorrencias.forEach(o => {
+        if (!porFesta[o.festaId]) porFesta[o.festaId] = [];
+        porFesta[o.festaId].push({ itemIdx: o.itemIdx, unidadeCerta: it.unidadeCerta });
+      });
+    });
+
+    let totalItens = 0;
+    for (const [festaId, correcoes] of Object.entries(porFesta)) {
+      const festa = _corrigirUnidadesFestasSnapshot.find(f => f.id === festaId);
+      if (!festa) continue;
+      const itens = (festa.itens || []).map((item, idx) => {
+        const c = correcoes.find(c => c.itemIdx === idx);
+        if (!c) return item;
+        totalItens++;
+        return { ...item, unidade: c.unidadeCerta };
+      });
+      await atualizarFesta(festaId, { itens });
+    }
+
+    toast(`${totalItens} item(ns) corrigido(s) em ${Object.keys(porFesta).length} festa(s).`, 'sucesso');
+    _corrigirUnidadesPendente = [];
+    _corrigirUnidadesFestasSnapshot = [];
+    fecharModalCorrigirUnidades();
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao corrigir unidades. Tente novamente.', 'erro');
   } finally {
     if (btnAplicar) { btnAplicar.disabled = false; btnAplicar.textContent = 'Aplicar'; }
   }
