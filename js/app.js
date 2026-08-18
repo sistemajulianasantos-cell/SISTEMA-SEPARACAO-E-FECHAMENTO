@@ -4310,8 +4310,11 @@ function htmlProducaoSintetico(itens) {
   return itens.map(item => {
     const est    = estoqueCache[item.nomeKey];
     const qtdEst = est?.qtd || 0;
-    const diff   = qtdEst - item.total;
-    const pct    = item.total > 0 ? Math.min(100, Math.round((qtdEst / item.total) * 100)) : 100;
+    /* Compara sempre em unidade solta (totalBase) — o estoque é contado em
+       unidade solta, comparar direto com item.total (que pode estar em CX)
+       dava um "sobrando" ou "faltando" sem sentido. */
+    const diff   = qtdEst - item.totalBase;
+    const pct    = item.totalBase > 0 ? Math.min(100, Math.round((qtdEst / item.totalBase) * 100)) : 100;
     const cfg    = item.cfg;
     const badgeRefrig = cfg?.refrigerado
       ? `<span class="badge-refrigerado">Refrig.</span>` : '';
@@ -4323,14 +4326,14 @@ function htmlProducaoSintetico(itens) {
         <div class="producao-item-info">
           <div class="producao-item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
           ${badgeRefrig || badgePrior ? `<div class="producao-item-badges">${badgeRefrig}${badgePrior}</div>` : ''}
-          <div class="producao-item-total">Necessário: <strong>${item.total}</strong> ${item.unidade}</div>
+          <div class="producao-item-total">Necessário: <strong>${item.total}</strong> ${item.unidade}${htmlConversaoUnidades(item.nome, item.total)}</div>
         </div>
         <div class="producao-item-nums">
           ${diff < 0
-            ? `<span class="producao-diff-falta" style="font-size:18px;font-weight:900">A PRODUZIR: ${Math.abs(diff)} ${item.unidade}</span>
-               <span style="font-size:11px;color:var(--cinza-500)">Pedido: ${item.total} &nbsp;|&nbsp; Estoque: ${qtdEst}</span>`
+            ? `<span class="producao-diff-falta" style="font-size:18px;font-weight:900">A PRODUZIR: ${Math.abs(diff)} un</span>
+               <span style="font-size:11px;color:var(--cinza-500)">Pedido: ${item.totalBase} un &nbsp;|&nbsp; Estoque: ${qtdEst} un</span>`
             : `<span class="producao-diff-ok">OK — +${diff} em estoque</span>
-               <span style="font-size:11px;color:var(--cinza-500)">Pedido: ${item.total} &nbsp;|&nbsp; Estoque: ${qtdEst}</span>`
+               <span style="font-size:11px;color:var(--cinza-500)">Pedido: ${item.totalBase} un &nbsp;|&nbsp; Estoque: ${qtdEst} un</span>`
           }
           <div class="producao-mini-bar">
             <div class="producao-mini-fill ${diff < 0 ? 'deficit' : 'ok'}" style="width:${pct}%"></div>
@@ -4346,7 +4349,7 @@ function htmlProducaoAnalitico(itens) {
   return itens.map(item => {
     const est    = estoqueCache[item.nomeKey];
     const qtdEst = est?.qtd || 0;
-    const diff   = qtdEst - item.total;
+    const diff   = qtdEst - item.totalBase;
     const cfg    = item.cfg;
     const badgeRefrig = cfg?.refrigerado
       ? `<span class="badge-refrigerado">Refrig.</span>` : '';
@@ -4371,9 +4374,9 @@ function htmlProducaoAnalitico(itens) {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             <div class="producao-item-nome">${_escHtml(nomeBasDisplay(item.nome))} ${badgeRefrig}</div>
             <div class="producao-item-nums" style="flex-direction:row;gap:10px;align-items:center">
-              <span class="producao-item-total">Total: <strong>${item.total}</strong> ${item.unidade}</span>
+              <span class="producao-item-total">Total: <strong>${item.total}</strong> ${item.unidade}${htmlConversaoUnidades(item.nome, item.total)}</span>
               <span class="${diff < 0 ? 'producao-diff-falta' : 'producao-diff-ok'}">
-                ${diff < 0 ? 'Falta ' + Math.abs(diff) : '+' + diff + ' ok'}
+                ${diff < 0 ? 'Falta ' + Math.abs(diff) + ' un' : '+' + diff + ' un ok'}
               </span>
             </div>
           </div>
@@ -4513,6 +4516,19 @@ function htmlConversaoUnidades(nomeItem, qtd) {
   return ` <span class="conversao-un">(= ${totalFmt} un)</span>`;
 }
 
+/* Converte uma quantidade cadastrada na festa (que pode estar em
+   caixa/embalagem, ex: "6 CX") pra unidade solta (un), usando "Unidades
+   por Caixa/Embalagem" do Cadastro. O estoque físico é sempre contado em
+   unidade solta — comparar "necessário em CX" direto com "estoque em un"
+   dava número sem sentido (ex: precisa de 10, tem 265 → "sobrando" quando
+   na real são só ~17 caixas). Sem o fator cadastrado, devolve a
+   quantidade como está (já é a unidade base). */
+function qtdEmUnidadeBase(nomeItem, qtd) {
+  const cfg   = buscarConfigItem(normalizarNomeItem(nomeItem));
+  const fator = cfg?.unidadesPorEmbalagem;
+  return fator ? (qtd || 0) * fator : (qtd || 0);
+}
+
 /* Verifica se um item de festa deve aparecer na tela de separação */
 function deveExibirNaSeparacao(item) {
   const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
@@ -4539,18 +4555,21 @@ function agregarItensFestas(festas) {
           nomeKey: key,
           nome:    nomeBasDisplay(item.nome),
           unidade: item.unidade || 'un',
-          total:   0,
+          total:     0,   /* na unidade da festa (ex: CX) — só para exibição */
+          totalBase: 0,   /* convertido pra unidade solta — para comparar com o estoque */
           festas:  [],
         };
       }
-      mapa[key].total += (item.qtdNecessaria || 0);
+      const qtd = item.qtdNecessaria || 0;
+      mapa[key].total     += qtd;
+      mapa[key].totalBase += qtdEmUnidadeBase(item.nome, qtd);
       mapa[key].festas.push({
         festaId:     f.id,
         festaNome:   f.nome,
         festaStatus: f.status,
         festaData:   f.data,
         itemIdx,
-        qtd: item.qtdNecessaria || 0,
+        qtd,
       });
     });
   });
@@ -5647,10 +5666,14 @@ function _resolverItemCatalogoPorNome(nomeDigitado) {
 }
 
 function htmlEstoqueSintetico(item, est) {
+  /* O estoque físico é sempre contado na unidade dele mesmo (est.unidade,
+     normalmente "un") — pode ser diferente da unidade da festa (item.unidade,
+     ex: "CX"). Comparar precisa ser sempre em unidade solta (totalBase). */
+  const unEst      = est?.unidade || 'un';
   const qtdEst     = est?.qtd || 0;
   const semDemanda = !item.festas.length;
-  const diff       = qtdEst - item.total;
-  const pct        = item.total > 0 ? Math.min(100, Math.round((qtdEst / item.total) * 100)) : 100;
+  const diff       = qtdEst - item.totalBase;
+  const pct        = item.totalBase > 0 ? Math.min(100, Math.round((qtdEst / item.totalBase) * 100)) : 100;
   const podeEditar = souCeo(); /* separador só visualiza — não edita quantidade nem pede compra */
 
   return `
@@ -5659,7 +5682,7 @@ function htmlEstoqueSintetico(item, est) {
         <div class="estoque-item-nome">${_escHtml(item.nome)}</div>
         <div class="estoque-item-total">${semDemanda
           ? '<span style="color:var(--cinza-500)">Sem festa ativa</span>'
-          : `Necessário: <strong>${item.total}</strong> ${_escHtml(item.unidade)}`}</div>
+          : `Necessário: <strong>${item.total}</strong> ${_escHtml(item.unidade)}${htmlConversaoUnidades(item.nome, item.total)}`}</div>
       </div>
       <div class="estoque-body-row">
         <span class="estoque-body-label">Em estoque:</span>
@@ -5668,16 +5691,16 @@ function htmlEstoqueSintetico(item, est) {
           <input type="number" class="estoque-qty-input"
             id="estoque-qty-${item.nomeKey}"
             value="${qtdEst}" min="0"
-            onchange="salvarEstoqueQtd('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(item.unidade)}',this.value)"
+            onchange="salvarEstoqueQtd('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(unEst)}',this.value)"
           />
-          <span class="estoque-qty-un">${_escHtml(item.unidade)}</span>
+          <span class="estoque-qty-un">${_escHtml(unEst)}</span>
         </div>
         <button class="btn-comprar"
-          onclick="comprarItemEstoque('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(item.unidade)}')">
+          onclick="comprarItemEstoque('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(unEst)}')">
           + Comprar
         </button>` : `
         <div class="estoque-qty-wrap">
-          <strong>${qtdEst}</strong>&nbsp;<span class="estoque-qty-un">${_escHtml(item.unidade)}</span>
+          <strong>${qtdEst}</strong>&nbsp;<span class="estoque-qty-un">${_escHtml(unEst)}</span>
         </div>`}
       </div>
       ${semDemanda ? '' : `
@@ -5686,17 +5709,18 @@ function htmlEstoqueSintetico(item, est) {
       </div>
       <div class="estoque-diff ${diff < 0 ? 'deficit-text' : 'ok-text'}">
         ${diff < 0
-          ? `Falta <strong>${Math.abs(diff)}</strong> ${_escHtml(item.unidade)} (${pct}% coberto)`
-          : `Estoque suficiente — sobra <strong>${diff}</strong> ${_escHtml(item.unidade)}`}
+          ? `Falta <strong>${Math.abs(diff)}</strong> ${_escHtml(unEst)} (${pct}% coberto)`
+          : `Estoque suficiente — sobra <strong>${diff}</strong> ${_escHtml(unEst)}`}
       </div>`}
     </div>
   `;
 }
 
 function htmlEstoqueAnalitico(item, est) {
+  const unEst      = est?.unidade || 'un';
   const qtdEst     = est?.qtd || 0;
   const semDemanda = !item.festas.length;
-  const diff       = qtdEst - item.total;
+  const diff       = qtdEst - item.totalBase;
   const podeEditar = souCeo(); /* separador só visualiza — não edita quantidade nem pede compra */
 
   const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -5719,12 +5743,14 @@ function htmlEstoqueAnalitico(item, est) {
         </div>
         <div class="analitico-festa-qty">
           ${podeEditar ? `
-          <input type="number" class="estoque-qty-input-sm"
+          <input type="number" class="estoque-qty-input-sm" id="ea-qty-${item.nomeKey}-${f.festaId}-${f.itemIdx}"
             value="${f.qtd}" min="0"
+            oninput="document.getElementById('ea-conv-${item.nomeKey}-${f.festaId}-${f.itemIdx}').innerHTML = htmlConversaoUnidades('${_esc(item.nome)}', this.value)"
             onchange="editarQtdFestaEstoque('${_esc(f.festaId)}',${f.itemIdx},this.value)"
           />
-          <span class="estoque-qty-un">${_escHtml(item.unidade)}</span>` : `
-          <strong>${f.qtd}</strong>&nbsp;<span class="estoque-qty-un">${_escHtml(item.unidade)}</span>`}
+          <span class="estoque-qty-un">${_escHtml(item.unidade)}</span>
+          <span id="ea-conv-${item.nomeKey}-${f.festaId}-${f.itemIdx}">${htmlConversaoUnidades(item.nome, f.qtd)}</span>` : `
+          <strong>${f.qtd}</strong>&nbsp;<span class="estoque-qty-un">${_escHtml(item.unidade)}</span>${htmlConversaoUnidades(item.nome, f.qtd)}`}
         </div>
       </div>
     `;
@@ -5736,11 +5762,11 @@ function htmlEstoqueAnalitico(item, est) {
         <div class="estoque-item-nome">${_escHtml(item.nome)}</div>
         <div class="estoque-item-total">
           ${semDemanda
-            ? `<span style="color:var(--cinza-500)">Sem festa ativa</span> &nbsp;|&nbsp; Estoque: <strong>${qtdEst}</strong> ${_escHtml(item.unidade)}`
-            : `Total: <strong>${item.total}</strong> ${_escHtml(item.unidade)} &nbsp;|&nbsp;
-               Estoque: <strong>${qtdEst}</strong> ${_escHtml(item.unidade)}
+            ? `<span style="color:var(--cinza-500)">Sem festa ativa</span> &nbsp;|&nbsp; Estoque: <strong>${qtdEst}</strong> ${_escHtml(unEst)}`
+            : `Total: <strong>${item.total}</strong> ${_escHtml(item.unidade)}${htmlConversaoUnidades(item.nome, item.total)} &nbsp;|&nbsp;
+               Estoque: <strong>${qtdEst}</strong> ${_escHtml(unEst)}
                <span class="${diff < 0 ? 'deficit-text' : 'ok-text'}" style="font-weight:700">
-                 &nbsp;(${diff < 0 ? 'falta ' + Math.abs(diff) : 'sobra ' + diff})
+                 &nbsp;(${diff < 0 ? 'falta ' + Math.abs(diff) : 'sobra ' + diff} ${_escHtml(unEst)})
                </span>`}
         </div>
       </div>
@@ -7855,20 +7881,35 @@ function _lcConstruirItens(festas) {
           nomeKey: key,
           nome:    nomeBasDisplay(item.nome),
           unidade: item.unidade || 'un',
-          necessario: 0,
+          necessario: 0, necessarioBase: 0,
           qtdRomero: 0, qtdConsignado: 0, qtdCliente: 0, qtdOutro: 0,
+          qtdRomeroBase: 0, qtdConsignadoBase: 0, qtdClienteBase: 0, qtdOutroBase: 0,
           festas:  [],
           cfg,
         };
       }
-      const qtd  = item.qtdNecessaria || 0;
+      const qtd     = item.qtdNecessaria || 0;
+      /* O estoque é sempre contado em unidade solta — converte pra poder
+         comparar (ver qtdEmUnidadeBase). Sem "Unidades por Caixa/Embalagem"
+         cadastrado, qtdBase é igual a qtd. */
+      const qtdBase = qtdEmUnidadeBase(item.nome, qtd);
       /* Detecta fornecimento: campo explícito → sufixo no nome → padrão romero */
       const forn = item.fornecimento || extrairFornDoNome(item.nome) || 'romero';
-      mapa[key].necessario += qtd;
-      if      (forn === 'consignado') mapa[key].qtdConsignado += qtd;
-      else if (forn === 'cliente')    mapa[key].qtdCliente    += qtd;
-      else if (forn === 'romero')     mapa[key].qtdRomero     += qtd;
-      else                            mapa[key].qtdOutro       += qtd;
+      mapa[key].necessario     += qtd;
+      mapa[key].necessarioBase += qtdBase;
+      if (forn === 'consignado') {
+        mapa[key].qtdConsignado     += qtd;
+        mapa[key].qtdConsignadoBase += qtdBase;
+      } else if (forn === 'cliente') {
+        mapa[key].qtdCliente     += qtd;
+        mapa[key].qtdClienteBase += qtdBase;
+      } else if (forn === 'romero') {
+        mapa[key].qtdRomero     += qtd;
+        mapa[key].qtdRomeroBase += qtdBase;
+      } else {
+        mapa[key].qtdOutro     += qtd;
+        mapa[key].qtdOutroBase += qtdBase;
+      }
       mapa[key].festas.push({
         festaId:         festa.id,
         festaNome:       festa.nome,
@@ -7876,16 +7917,16 @@ function _lcConstruirItens(festas) {
         festaStatus:     festa.status,
         festaTipoEvento: festa.tipoEvento || '',
         festaConvidados: festa.convidados ?? null,
-        qtd, forn,
+        qtd, qtdBase, forn,
       });
     });
   });
 
   return Object.values(mapa).map(it => {
     const estoque  = estBaseIdx[it.nomeKey] ?? 0;
-    const qtdComprar = it.qtdRomero + it.qtdOutro; /* só o que precisamos comprar */
-    const aComprar = Math.max(0, qtdComprar - estoque);
-    return { ...it, estoque, qtdComprar, aComprar };
+    const qtdComprarBase = it.qtdRomeroBase + it.qtdOutroBase; /* só o que precisamos comprar, em unidade solta */
+    const aComprar = Math.max(0, qtdComprarBase - estoque);
+    return { ...it, estoque, qtdComprar: it.qtdRomero + it.qtdOutro, qtdComprarBase, aComprar };
   });
 }
 
@@ -8042,22 +8083,25 @@ function lcHtmlGrupoSimulacao(g) {
       return oA - oB || a.nome.localeCompare(b.nome, 'pt-BR');
     })
     .map(it => {
+      /* "Compra" é digitada na unidade da festa (ex: CX, do jeito que se
+         compra do fornecedor) — convertida pra unidade solta antes de somar
+         com o estoque, que é sempre contado em unidade solta. */
       const compraAtual = _lcSimQtds[it.nomeKey] || 0;
-      const ficaria      = it.estoque + compraAtual;
+      const ficaria      = it.estoque + qtdEmUnidadeBase(it.nome, compraAtual);
       const badgeR = it.cfg?.refrigerado ? `<span class="badge-refrigerado">Refrig.</span>` : '';
 
       return `
         <div class="lc-row lc-sim-row">
           <div class="lc-row-nome">${_escHtml(nomeBasDisplay(it.nome))} ${badgeR}</div>
-          <div class="lc-row-num">${it.estoque} <span class="lc-row-un">${it.unidade}</span></div>
-          <div class="lc-row-num">${it.qtdComprar} <span class="lc-row-un">${it.unidade}</span></div>
+          <div class="lc-row-num">${it.estoque} <span class="lc-row-un">un</span></div>
+          <div class="lc-row-num">${it.qtdComprar} <span class="lc-row-un">${it.unidade}</span>${htmlConversaoUnidades(it.nome, it.qtdComprar)}</div>
           <div class="lc-row-comprar">
             <input type="number" class="lc-sim-input" min="0" step="0.1" placeholder="0"
               value="${compraAtual || ''}"
-              oninput="lcSimAtualizarQtd('${_esc(it.nomeKey)}', this.value, ${it.estoque}, ${it.qtdComprar}, '${_esc(it.unidade)}')" />
+              oninput="lcSimAtualizarQtd('${_esc(it.nomeKey)}', this.value, ${it.estoque}, ${it.qtdComprarBase}, '${_esc(it.nome)}')" />
           </div>
-          <div class="lc-row-num lc-sim-ficaria ${ficaria >= it.qtdComprar ? 'ok-text' : 'deficit-text'}" id="lc-sim-ficaria-${it.nomeKey}">
-            ${ficaria} <span class="lc-row-un">${it.unidade}</span>
+          <div class="lc-row-num lc-sim-ficaria ${ficaria >= it.qtdComprarBase ? 'ok-text' : 'deficit-text'}" id="lc-sim-ficaria-${it.nomeKey}">
+            ${ficaria} <span class="lc-row-un">un</span>
           </div>
         </div>
       `;
@@ -8083,17 +8127,17 @@ function lcHtmlGrupoSimulacao(g) {
   `;
 }
 
-function lcSimAtualizarQtd(nomeKey, valor, estoqueAtual, necessario, unidade) {
+function lcSimAtualizarQtd(nomeKey, valor, estoqueAtual, necessarioBase, nomeItem) {
   const n = parseFloat(valor);
   if (isNaN(n) || n <= 0) delete _lcSimQtds[nomeKey];
   else _lcSimQtds[nomeKey] = n;
 
   const compra  = _lcSimQtds[nomeKey] || 0;
-  const ficaria = estoqueAtual + compra;
+  const ficaria = estoqueAtual + qtdEmUnidadeBase(nomeItem, compra);
   const el = document.getElementById(`lc-sim-ficaria-${nomeKey}`);
   if (el) {
-    el.className   = `lc-row-num lc-sim-ficaria ${ficaria >= necessario ? 'ok-text' : 'deficit-text'}`;
-    el.innerHTML   = `${ficaria} <span class="lc-row-un">${unidade}</span>`;
+    el.className   = `lc-row-num lc-sim-ficaria ${ficaria >= necessarioBase ? 'ok-text' : 'deficit-text'}`;
+    el.innerHTML   = `${ficaria} <span class="lc-row-un">un</span>`;
   }
 }
 
@@ -8112,14 +8156,18 @@ function lcHtmlGrupoSintetico(g) {
       return oA - oB || a.nome.localeCompare(b.nome, 'pt-BR');
     })
     .map(it => {
-      /* Quantidade visível depende do filtro de fornecimento */
-      let qtdVis = it.necessario;
-      if (_lcFornecimento === 'romero')     qtdVis = it.qtdRomero + it.qtdOutro;
-      if (_lcFornecimento === 'consignado') qtdVis = it.qtdConsignado;
-      if (_lcFornecimento === 'cliente')    qtdVis = it.qtdCliente;
+      /* Quantidade visível (na unidade da festa, ex: CX) depende do filtro
+         de fornecimento — só para exibição. A versão "Base" (sempre em
+         unidade solta) é usada pra comparar com o estoque, que é contado em
+         unidade solta. */
+      let qtdVis     = it.necessario;
+      let qtdVisBase = it.necessarioBase;
+      if (_lcFornecimento === 'romero')     { qtdVis = it.qtdRomero + it.qtdOutro; qtdVisBase = it.qtdRomeroBase + it.qtdOutroBase; }
+      if (_lcFornecimento === 'consignado') { qtdVis = it.qtdConsignado; qtdVisBase = it.qtdConsignadoBase; }
+      if (_lcFornecimento === 'cliente')    { qtdVis = it.qtdCliente;    qtdVisBase = it.qtdClienteBase; }
 
-      const diff    = it.estoque - qtdVis;
-      const pct     = qtdVis > 0 ? Math.min(100, Math.round((it.estoque / qtdVis) * 100)) : 100;
+      const diff    = it.estoque - qtdVisBase;
+      const pct     = qtdVisBase > 0 ? Math.min(100, Math.round((it.estoque / qtdVisBase) * 100)) : 100;
       const diffCls = diff < 0 ? 'deficit-text' : 'ok-text';
       const diffTxt = diff < 0 ? `− ${Math.abs(diff)}` : `+${diff}`;
       const badgeR  = it.cfg?.refrigerado ? `<span class="badge-refrigerado">Refrig.</span>` : '';
@@ -8137,15 +8185,15 @@ function lcHtmlGrupoSintetico(g) {
       const mostraCompra = _lcFornecimento === 'todos' || _lcFornecimento === 'romero';
       const compraHtml = mostraCompra
         ? `<div class="lc-row-comprar ${it.aComprar > 0 ? 'lc-falta' : 'lc-ok'}">
-             ${it.aComprar > 0 ? `<strong>${it.aComprar} ${it.unidade}</strong>` : `OK`}
+             ${it.aComprar > 0 ? `<strong>${it.aComprar} un</strong>` : `OK`}
            </div>`
         : `<div class="lc-row-comprar" style="color:var(--cinza-400);font-size:12px">—</div>`;
 
       return `
         <div class="lc-row">
           <div class="lc-row-nome">${_escHtml(nomeBasDisplay(it.nome))} ${badgeR}${badgeP}${fornHtml}</div>
-          <div class="lc-row-num">${qtdVis} <span class="lc-row-un">${it.unidade}</span></div>
-          <div class="lc-row-num">${it.estoque} <span class="lc-row-un">${it.unidade}</span></div>
+          <div class="lc-row-num">${qtdVis} <span class="lc-row-un">${it.unidade}</span>${htmlConversaoUnidades(it.nome, qtdVis)}</div>
+          <div class="lc-row-num">${it.estoque} <span class="lc-row-un">un</span></div>
           <div class="lc-row-num ${diffCls}">${diffTxt}</div>
           ${compraHtml}
         </div>
@@ -8193,13 +8241,16 @@ function lcHtmlGrupoAnalitico(g) {
     .sort((a,b) => a.nome.localeCompare(b.nome, 'pt-BR'))
     .map(it => {
       /* Mesma lógica do Sintético: o filtro de Fornecimento recalcula a
-         quantidade visível e restringe as linhas de festa exibidas. */
-      let qtdVis = it.necessario;
-      if (_lcFornecimento === 'romero')     qtdVis = it.qtdRomero + it.qtdOutro;
-      if (_lcFornecimento === 'consignado') qtdVis = it.qtdConsignado;
-      if (_lcFornecimento === 'cliente')    qtdVis = it.qtdCliente;
+         quantidade visível e restringe as linhas de festa exibidas. A
+         versão "Base" (sempre em unidade solta) é usada pra comparar com o
+         estoque, que é contado em unidade solta — ver qtdEmUnidadeBase. */
+      let qtdVis     = it.necessario;
+      let qtdVisBase = it.necessarioBase;
+      if (_lcFornecimento === 'romero')     { qtdVis = it.qtdRomero + it.qtdOutro; qtdVisBase = it.qtdRomeroBase + it.qtdOutroBase; }
+      if (_lcFornecimento === 'consignado') { qtdVis = it.qtdConsignado; qtdVisBase = it.qtdConsignadoBase; }
+      if (_lcFornecimento === 'cliente')    { qtdVis = it.qtdCliente;    qtdVisBase = it.qtdClienteBase; }
 
-      const diff    = it.estoque - qtdVis;
+      const diff    = it.estoque - qtdVisBase;
       const diffCls = diff < 0 ? 'deficit-text' : 'ok-text';
       const badgeR  = it.cfg?.refrigerado ? `<span class="badge-refrigerado">Refrig.</span>` : '';
       const mostraCompra = _lcFornecimento === 'todos' || _lcFornecimento === 'romero';
@@ -8238,12 +8289,12 @@ function lcHtmlGrupoAnalitico(g) {
           <div class="lc-analitico-resumo">
             <div class="lc-row-nome">${_escHtml(nomeBasDisplay(it.nome))} ${badgeR}</div>
             <div class="lc-analitico-nums">
-              <span>Necessário: <strong>${qtdVis}</strong> ${it.unidade}</span>
-              <span>Estoque: <strong>${it.estoque}</strong> ${it.unidade}</span>
-              <span class="${diffCls}">Dif: ${diff < 0 ? '−'+Math.abs(diff) : '+'+diff}</span>
+              <span>Necessário: <strong>${qtdVis}</strong> ${it.unidade}${htmlConversaoUnidades(it.nome, qtdVis)}</span>
+              <span>Estoque: <strong>${it.estoque}</strong> un</span>
+              <span class="${diffCls}">Dif: ${diff < 0 ? '−'+Math.abs(diff) : '+'+diff} un</span>
               ${mostraCompra
                 ? `<span class="lc-analitico-comprar ${it.aComprar > 0 ? 'lc-falta' : 'lc-ok'}">
-                     ${it.aComprar > 0 ? `Comprar: <strong>${it.aComprar} ${it.unidade}</strong>` : `Estoque OK`}
+                     ${it.aComprar > 0 ? `Comprar: <strong>${it.aComprar} un</strong>` : `Estoque OK`}
                    </span>`
                 : ''}
             </div>
@@ -8324,7 +8375,10 @@ function lcExportarCSV() {
   let header, rows;
 
   if (_lcAba === 'sintetico') {
-    header = ['Categoria','Item','Unidade','Necessário','Estoque','A Comprar'];
+    /* Estoque e A Comprar são sempre em unidade solta (un) — a coleta física
+       do estoque é feita assim, mesmo quando o item é pedido em caixa na
+       festa (ver "Unidades por Caixa/Embalagem" no Cadastro). */
+    header = ['Categoria','Item','Necessário','Unidade Necessário','Estoque (un)','A Comprar (un)'];
     rows   = itens.map(it => {
       let qtdVis = it.necessario;
       if (_lcFornecimento === 'romero')     qtdVis = it.qtdRomero + it.qtdOutro;
@@ -8333,8 +8387,8 @@ function lcExportarCSV() {
       return [
         it.cfg?.grupo || 'Sem Categoria',
         nomeBasDisplay(it.nome),
-        it.unidade,
         qtdVis,
+        it.unidade,
         it.estoque,
         mostraCompra ? it.aComprar : '—',
       ];
@@ -8508,12 +8562,13 @@ function renderizarRelPorItem(festasNoPeriodo, todasFestas, estoqueMap) {
     });
   });
 
-  /* Solicitado pendente para cálculo "Após Pendentes" */
+  /* Solicitado pendente para cálculo "Após Pendentes" — sempre em unidade
+     solta, porque é comparado com o estoque (contado em unidade solta). */
   const solPend = {};
   todasFestas.filter(f => f.status !== 'concluida').forEach(f => {
     (f.itens||[]).forEach(it => {
       const k = normalizarNomeItem(it.nome);
-      solPend[k] = (solPend[k]||0) + (it.qtdNecessaria||0);
+      solPend[k] = (solPend[k]||0) + qtdEmUnidadeBase(it.nome, it.qtdNecessaria||0);
     });
   });
 
@@ -9217,7 +9272,9 @@ function _alertasCompras() {
       const qtdAtual = estoqueCache[cfg.nomeKey]?.qtd || 0;
       const falta    = cfg.estoqueMinimo - qtdAtual;
       const pct      = cfg.estoqueMinimo > 0 ? Math.min(100, Math.round((qtdAtual / cfg.estoqueMinimo) * 100)) : 100;
-      return { nomeKey: cfg.nomeKey, nome: cfg.nome, unidade: cfg.unidade || 'un',
+      /* estoqueMinimo é digitado pensando no estoque físico (sempre em
+         unidade solta) — não na unidade de compra/separação do item. */
+      return { nomeKey: cfg.nomeKey, nome: cfg.nome, unidade: estoqueCache[cfg.nomeKey]?.unidade || 'un',
                qtdAtual, estoqueMinimo: cfg.estoqueMinimo, qtdSugerida: cfg.qtdSugerida || 0,
                falta, pct };
     })
