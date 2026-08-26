@@ -3843,14 +3843,19 @@ async function extrairLinhasPDF(file) {
 }
 
 function parsearOR(linhas) {
-  const resultado = { evento: '', cliente: '', data: '', hora: '', or: '', itens: [] };
+  const resultado = { evento: '', cliente: '', data: '', hora: '', local: '', convidados: null, or: '', itens: [] };
 
-  const RE_ITEM    = /^(\d+(?:[.,]\d+)?)\s*(UN|PCT|CX|KG|L|LT|GF|FR|PC|ML|FD|BND|SC|GR|MT|PAR)\b\s*(.+)/i;
-  const RE_COLUNA  = /^(Sa[íi]da|Extras|Volta)$/i;
-  const RE_DATA    = /(\d{2})\/(\d{2})\/(\d{4})/;
+  // Formato antigo: "12 UN Nome do item" (qtd + unidade primeiro)
+  const RE_ITEM       = /^(\d+(?:[.,]\d+)?)\s*(UN|PCT|CX|KG|L|LT|GF|FR|PC|ML|FD|BND|SC|GR|MT|PAR)\b\s*(.+)/i;
+  // Formato novo: "Nome do item 12 UN" (qtd + unidade no final da linha)
+  const RE_ITEM_NOVO  = /^(.+?)\s+(\d+(?:[.,]\d+)?)\s*(UN|PCT|CX|KG|L|LT|GF|FR|PC|ML|FD|BND|SC|GR|MT|PAR)\s*$/i;
+  const RE_COLUNA     = /^(Sa[íi]da|Extras|Volta)$/i;
+  const RE_DATA       = /(\d{2})\/(\d{2})\/(\d{4})/;
+  // Formato novo: "FOLHA DE SEPARAÇÃO — Nome do Evento/Cliente"
+  const RE_TITULO     = /^FOLHA\s+DE\s+SEPARA[ÇC][ÃA]O\s*[—–-]\s*(.+)/i;
 
   const IGNORAR = [
-    'Saída','Extras','Volta','Data de Impressão','SAIDA','EXTRAS','VOLTA',
+    'Saída','Extras','Volta','SAÍDA','ITEM QTD SAÍDA VOLTA','Data de Impressão','SAIDA','EXTRAS','VOLTA',
     '1/3','2/3','3/3','1/2','2/2','1/1',
   ];
 
@@ -3869,6 +3874,17 @@ function parsearOR(linhas) {
       resultado.or = matchOR[1];
     }
 
+    // Formato novo: "FOLHA DE SEPARAÇÃO — Nome do Evento/Cliente"
+    const matchTitulo = linha.match(RE_TITULO);
+    if (matchTitulo) {
+      const nome = matchTitulo[1].trim();
+      if (nome) {
+        resultado.evento  = resultado.evento  || nome;
+        resultado.cliente = resultado.cliente || nome;
+      }
+      continue;
+    }
+
     // Cabecalho: CLIENTE
     if (/^CLIENTE\s*:/i.test(linha)) {
       resultado.cliente = linha.replace(/^CLIENTE\s*:\s*/i, '').trim();
@@ -3884,26 +3900,42 @@ function parsearOR(linhas) {
       continue;
     }
 
-    // Cabecalho: Data
-    if (/^Data\s*:/i.test(linha)) {
-      const m = linha.match(RE_DATA);
-      if (m) resultado.data = `${m[3]}-${m[2]}-${m[1]}`;
+    // Cabecalho: Data / Local / Horario — formato antigo (linhas separadas)
+    // ou formato novo, combinados numa linha só:
+    // "Data: 28/08/2026 | Local: Espaço By Bia: R. ... | Horário: 17:00 às 22:00"
+    if (/\bData\s*:/i.test(linha) || /\bLocal\s*:/i.test(linha) || /\bHor[aá]rio\s*:/i.test(linha)) {
+      if (!resultado.data) {
+        const mData = linha.match(RE_DATA);
+        if (mData) resultado.data = `${mData[3]}-${mData[2]}-${mData[1]}`;
+      }
+
+      if (!resultado.local) {
+        const mLocal = linha.match(/Local\s*:\s*(.+?)(?:\s*\|\s*Hor[aá]rio\s*:|\s*$)/i);
+        if (mLocal) resultado.local = mLocal[1].trim();
+      }
+
+      if (!resultado.hora) {
+        const mHora = linha.match(/Hor[aá]rio\s*:\s*(\d{1,2}):(\d{2})/i);
+        if (mHora) resultado.hora = `${mHora[1].padStart(2,'0')}:${mHora[2]}`;
+      }
       continue;
     }
 
-    // Cabecalho: Horario
-    if (/^Hor[aá]rio\s*:/i.test(linha)) {
-      const horaPart = linha.replace(/^Hor[aá]rio\s*:\s*/i, '').trim();
-      // Pegar apenas HH:MM
-      const mHora = horaPart.match(/(\d{1,2}):(\d{2})/);
-      if (mHora) resultado.hora = `${mHora[1].padStart(2,'0')}:${mHora[2]}`;
+    // Formato novo: "Convidados: 110 | Equipe: 4 | Bartenders: 3"
+    if (/\bConvidados\s*:/i.test(linha)) {
+      const mConv = linha.match(/Convidados\s*:\s*(\d+)/i);
+      if (mConv) resultado.convidados = parseInt(mConv[1], 10);
       continue;
     }
 
     // Tentativa de extrair item com quantidade e unidade
-    const matchItem = linha.match(RE_ITEM);
-    if (matchItem) {
-      const [, qtdStr, unidade, nomeRaw] = matchItem;
+    // (tenta formato antigo "12 UN Nome" primeiro, depois novo "Nome 12 UN")
+    const matchItemAntigo = linha.match(RE_ITEM);
+    const matchItemNovo   = matchItemAntigo ? null : linha.match(RE_ITEM_NOVO);
+    if (matchItemAntigo || matchItemNovo) {
+      const [, qtdStr, unidade, nomeRaw] = matchItemAntigo
+        ? matchItemAntigo
+        : [null, matchItemNovo[2], matchItemNovo[3], matchItemNovo[1]];
 
       // Limpar nome: remover marcadores, cabeçalhos de coluna e números soltos no final
       // (números soltos são valores das colunas Saída/Extras/Volta mesclados na linha)
@@ -3988,10 +4020,12 @@ function parsearOR(linhas) {
 
 function preencherFormularioImport(dados) {
   // Preencher campos do formulario
-  if (dados.evento)  document.getElementById('cf-nome').value    = dados.evento;
-  if (dados.cliente) document.getElementById('cf-cliente').value = dados.cliente;
-  if (dados.data)    document.getElementById('cf-data').value    = dados.data;
-  if (dados.hora)    document.getElementById('cf-hora').value    = dados.hora;
+  if (dados.evento)     document.getElementById('cf-nome').value       = dados.evento;
+  if (dados.cliente)    document.getElementById('cf-cliente').value    = dados.cliente;
+  if (dados.data)       document.getElementById('cf-data').value       = dados.data;
+  if (dados.hora)       document.getElementById('cf-hora').value       = dados.hora;
+  if (dados.local)      document.getElementById('cf-local').value      = dados.local;
+  if (dados.convidados) document.getElementById('cf-convidados').value = dados.convidados;
 
   // Limpar lista e popular com itens importados, agrupados por categoria
   const lista = document.getElementById('itens-criar-lista');
