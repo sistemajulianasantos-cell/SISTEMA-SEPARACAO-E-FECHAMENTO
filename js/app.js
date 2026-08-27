@@ -3330,7 +3330,12 @@ function renderizarEditarFesta(festa) {
     }
 
     const inputExistente = document.getElementById(`ef-qty-${i}`);
-    const valorAtual = inputExistente ? inputExistente.value : item.qtdNecessaria;
+    /* Só reaproveita o valor do input se a pessoa REALMENTE mexeu nele nesta
+       sessão (data-dirty). Sem isso, um eco do listener (ou uma alteração
+       feita em paralelo em outra tela/por outra pessoa) era ignorada e depois
+       revertida ao Salvar — que era o bug de "editei 2 e ele mexeu em 13". */
+    const sujo = !!(inputExistente && inputExistente.dataset.dirty);
+    const valorAtual = sujo ? inputExistente.value : (item.qtdNecessaria ?? 0);
     return `
     <div class="item-row">
       <div class="item-topo">
@@ -3345,8 +3350,8 @@ function renderizarEditarFesta(festa) {
       <div class="item-entrada">
         <label>Quantidade necessaria:</label>
         <input type="number" class="qty-input" id="ef-qty-${i}"
-          value="${valorAtual}" min="0"
-          oninput="document.getElementById('ef-conv-${i}').innerHTML = htmlConversaoUnidades('${_esc(item.nome)}', this.value)" />
+          value="${valorAtual}" min="0"${sujo ? ' data-dirty="1"' : ''}
+          oninput="this.dataset.dirty='1';document.getElementById('ef-conv-${i}').innerHTML = htmlConversaoUnidades('${_esc(item.nome)}', this.value)" />
         <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
         <span id="ef-conv-${i}">${htmlConversaoUnidades(item.nome, valorAtual)}</span>
       </div>
@@ -3559,25 +3564,52 @@ async function salvarEdicaoFesta() {
 
   const novaData = new Date(novaDataStr + 'T12:00:00');
 
-  /* Montar itens com novas quantidades e registrar o que mudou */
-  const itens        = festaAtual.itens || [];
-  const alteracoes   = [];
-  const itensAtuais  = itens.concat(_efItensExtras).map((item, i) => {
-    if (!item._novo && _efItensRemovidos.has(i)) {
+  /* Quantidades que a pessoa REALMENTE editou nesta tela (input marcado
+     data-dirty no oninput). Só essas são aplicadas — o resto dos itens fica
+     com o valor fresco do servidor, pra não reverter alteração feita em
+     paralelo (outra tela, outra pessoa, separador). */
+  const editadasPorNome = {};
+  document.querySelectorAll('#ef-itens .item-row').forEach(row => {
+    const inp  = row.querySelector('.qty-input');
+    const nome = row.querySelector('.item-nome')?.textContent || '';
+    if (inp && inp.dataset.dirty && nome) {
+      editadasPorNome[nome] = parseFloat(String(inp.value).replace(',', '.')) || 0;
+    }
+  });
+
+  /* Base = festa fresca do servidor (nunca só festaAtual, que pode estar
+     defasado). Preserva separado/qtdSeparada/etc. de cada item. */
+  const festaFresca = await buscarFestaPorId(festaEditandoId);
+  const baseItens   = festaFresca?.itens || festaAtual.itens || [];
+  const nomesRemover = new Set(
+    [..._efItensRemovidos].map(i => (festaAtual.itens || [])[i]?.nome).filter(Boolean)
+  );
+
+  const alteracoes  = [];
+  const itensAtuais = [];
+  baseItens.forEach(item => {
+    if (nomesRemover.has(item.nome)) {
       alteracoes.push({ campo: item.nome, de: item.qtdNecessaria, para: 'Item removido' });
-      return null;
+      return;
     }
-    const novaQtd = parseFloat(document.getElementById(`ef-qty-${i}`)?.value) || 0;
-    if (item._novo) {
-      alteracoes.push({ campo: item.nome, de: 'Item adicionado', para: novaQtd });
-      const { _novo, ...itemLimpo } = item;
-      return { ...itemLimpo, qtdNecessaria: novaQtd };
+    if (Object.prototype.hasOwnProperty.call(editadasPorNome, item.nome)) {
+      const novaQtd = editadasPorNome[item.nome];
+      if (novaQtd !== item.qtdNecessaria) {
+        alteracoes.push({ campo: item.nome, de: item.qtdNecessaria, para: novaQtd });
+      }
+      itensAtuais.push({ ...item, qtdNecessaria: novaQtd });
+    } else {
+      itensAtuais.push({ ...item });
     }
-    if (novaQtd !== item.qtdNecessaria) {
-      alteracoes.push({ campo: item.nome, de: item.qtdNecessaria, para: novaQtd });
-    }
-    return { ...item, qtdNecessaria: novaQtd };
-  }).filter(item => item !== null);
+  });
+  _efItensExtras.forEach(item => {
+    const { _novo, ...itemLimpo } = item;
+    const novaQtd = Object.prototype.hasOwnProperty.call(editadasPorNome, item.nome)
+      ? editadasPorNome[item.nome]
+      : (parseFloat(item.qtdNecessaria) || 0);
+    alteracoes.push({ campo: item.nome, de: 'Item adicionado', para: novaQtd });
+    itensAtuais.push({ ...itemLimpo, qtdNecessaria: novaQtd });
+  });
 
   /* Verificar mudança de data */
   const dataAtual = normalizarData(festaAtual.data);
@@ -3593,6 +3625,15 @@ async function salvarEdicaoFesta() {
   }
   if ((festaAtual.convidados ?? null) !== novosConvidados) {
     alteracoes.push({ campo: 'Convidados', de: festaAtual.convidados ?? '—', para: novosConvidados ?? '—' });
+  }
+
+  if (!alteracoes.length) {
+    try { await atualizarFesta(festaEditandoId, { editandoAgora: null }); } catch(_) {}
+    toast('Nenhuma alteracao detectada.', 'sucesso');
+    _efItensExtras = [];
+    _efItensRemovidos = new Set();
+    setTimeout(() => goBack(), 800);
+    return;
   }
 
   try {
