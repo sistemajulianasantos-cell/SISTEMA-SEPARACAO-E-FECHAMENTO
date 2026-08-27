@@ -6828,19 +6828,20 @@ const LISTA2_PARA_PADRAO = {
   "CRAMBERRY": "XAROPE 1883 CRAMBERRY - 1000ML",
   "BLUE CURACAO": "XAROPE 1883 CURAÇAU BLUE - 1000ML",
   "XAROPE 1883 DE FRAMBOESA": "XAROPE 1883 FRAMBOESA - 1000ML",
-  "GENGIBRE": "XAROPE 1883 GENGIBRE - 1000ML",
   "GRENADINE": "XAROPE 1883 GRENADINE - 1000ML",
   "XAROPE LARANJA VERMELHA 1L": "XAROPE 1883 LARANJA VERMELHA - 1000ML",
   "XAROPE 1883 DE LICHIA": "XAROPE 1883 LICHIA - 1000ML",
-  "LIMAO SICILIANO": "XAROPE 1883 LIMAO SICILIANO - 1000ML",
   "XAROPE DE MAÇA VERDE": "XAROPE 1883 MAÇA VERDE - 1000ML",
   "MAPLE": "XAROPE 1883 MAPLE - 1000ML",
   "MARACUJA VERMELHO": "XAROPE 1883 MARACUJÁ VERMELHO - 1000ML",
   "MELANCIA": "XAROPE 1883 MELANCIA - 1000ML",
-  "MENTA": "XAROPE 1883 MENTA - 1000ML",
-  "PEPINO": "XAROPE 1883 PEPINO - 1000ML",
-  "PIMENTA": "XAROPE 1883 PIMENTA - 1000ML",
   "POMEGRANATE ROMA": "XAROPE 1883 ROMA/POMEGRANATE - 1000ML",
+  /* Apelidos removidos de propósito: "PEPINO", "LIMAO SICILIANO", "GENGIBRE",
+     "MENTA", "PIMENTA" também são o nome do insumo hortifruti (limão, pepino,
+     gengibre, hortelã, pimenta frescos), usado direto no drink — não são o
+     xarope 1883. A padronização casava por nome exato e renomeava o
+     hortifruti pra xarope em dezenas de festas. Se algum xarope estiver
+     cadastrado com o nome curto, renomeie ele individualmente. */
   "XAROPE 1883 DE TANGERINA": "XAROPE 1883 TANGERINE - 1000ML",
   "TONIC XP": "XAROPE 1883 TONIC - 1000ML",
   "XAROPE DE ACUCAR": "XAROPE DE AÇUCAR",
@@ -6895,7 +6896,7 @@ const LISTA3_PARA_PADRAO = {
   "XAROPE 1883 CRAMBERRY - 1000ML": "XAROPE 1883 CRAMBERRY - 1000ML",
   "XAROPE 1883 GENGIBRE - 1000ML": "XAROPE 1883 GENGIBRE - 1000ML",
   "XAROPE 1883 LICHIA - 1000ML": "XAROPE 1883 LICHIA - 1000ML",
-  "LIMAO SICILIANO": "XAROPE 1883 LIMAO SICILIANO - 1000ML",
+  /* "LIMAO SICILIANO" removido — é o hortifruti, não o xarope (ver LISTA2) */
   "XAROPE 1883 MARACUJÁ VERMELHO- 1000ML": "XAROPE 1883 MARACUJÁ VERMELHO - 1000ML",
   "XAROPE 1883 TANGERINE - 1000ML": "XAROPE 1883 TANGERINE - 1000ML",
   "XAROPE DE AÇUCAR": "XAROPE DE AÇUCAR",
@@ -6999,22 +7000,35 @@ async function abrirModalPadronizarNomes() {
     listaEl.innerHTML = htmlAviso + '<p style="font-size:13px;color:#6B7280;padding:12px 0">Nenhuma mudança pendente — tudo já está com o nome padrão.</p>';
     if (btnAplicar) btnAplicar.classList.add('hidden');
   } else {
-    const linhaTroca = p => `
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px solid #F3F4F6;font-size:13px">
-        <span style="color:#9CA3AF;text-decoration:line-through">${_escHtml(p.nomeAtual)}</span>
+    /* Cada linha tem um checkbox marcado (data-marca="<prefixo>-<indice>").
+       Só as marcadas são aplicadas em confirmarPadronizarNomes() — assim ela
+       pode desmarcar uma troca errada (ex.: "PEPINO" que é o hortifruti, não
+       o xarope) sem abrir mão do resto da lista. */
+    const linhaTroca = (p, marca) => `
+      <label style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:6px 0;border-bottom:1px solid #F3F4F6;font-size:13px;cursor:pointer">
+        <span style="display:flex;align-items:baseline;gap:8px;min-width:0">
+          <input type="checkbox" class="padr-chk" data-marca="${marca}" checked style="flex:none">
+          <span style="color:#9CA3AF;text-decoration:line-through">${_escHtml(p.nomeAtual)}</span>
+        </span>
         <span style="color:#111827;font-weight:600;text-align:right">&#8594; ${_escHtml(p.nomeNovo)}${p.festaNome ? `<br><span style="font-weight:400;color:#9CA3AF;font-size:11px">${_escHtml(p.festaNome)}</span>` : ''}</span>
-      </div>`;
-    const secao = (titulo, itens, render) => !itens.length ? '' : `
+      </label>`;
+    const linhaNovo = (p, marca) => `
+      <label style="display:flex;align-items:baseline;gap:8px;padding:6px 0;border-bottom:1px solid #F3F4F6;font-size:13px;color:#111827;font-weight:600;cursor:pointer">
+        <input type="checkbox" class="padr-chk" data-marca="${marca}" checked style="flex:none">
+        <span>+ ${_escHtml(p.nomeNovo)}</span>
+      </label>`;
+    const secao = (titulo, itens, render, prefixo) => !itens.length ? '' : `
       <div style="margin-bottom:14px">
         <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:6px">${_escHtml(titulo)} (${itens.length}):</div>
-        ${itens.map(render).join('')}
+        ${itens.map((it, i) => render(it, `${prefixo}-${i}`)).join('')}
       </div>`;
 
     listaEl.innerHTML = htmlAviso +
-      secao('Cadastro de Itens', _padronizacaoPendente, linhaTroca) +
-      secao('Controle de Estoque (festas ativas)', _padronizacaoPendenteFesta, linhaTroca) +
-      secao('Novos produtos a cadastrar (sem categoria)', _padronizacaoPendenteNovos, p => `
-        <div style="padding:6px 0;border-bottom:1px solid #F3F4F6;font-size:13px;color:#111827;font-weight:600">+ ${_escHtml(p.nomeNovo)}</div>`);
+      '<p style="font-size:12px;color:#6B7280;margin:0 0 6px">Desmarque as linhas que <strong>não</strong> devem ser alteradas — só as marcadas serão aplicadas.</p>' +
+      '<div style="margin:0 0 10px;font-size:12px"><a href="#" onclick="_padronizarMarcarTodos(true);return false" style="color:#2563EB">Marcar todos</a> · <a href="#" onclick="_padronizarMarcarTodos(false);return false" style="color:#2563EB">Desmarcar todos</a></div>' +
+      secao('Cadastro de Itens', _padronizacaoPendente, linhaTroca, 'cad') +
+      secao('Controle de Estoque (festas ativas)', _padronizacaoPendenteFesta, linhaTroca, 'festa') +
+      secao('Novos produtos a cadastrar (sem categoria)', _padronizacaoPendenteNovos, linhaNovo, 'novo');
     if (btnAplicar) btnAplicar.classList.remove('hidden');
   }
 
@@ -7025,9 +7039,23 @@ function fecharModalPadronizarNomes() {
   document.getElementById('modal-padronizar-nomes').classList.add('hidden');
 }
 
+function _padronizarMarcarTodos(marcar) {
+  document.querySelectorAll('#padronizar-nomes-lista .padr-chk').forEach(chk => { chk.checked = marcar; });
+}
+
 async function confirmarPadronizarNomes() {
-  const total = _padronizacaoPendente.length + _padronizacaoPendenteFesta.length + _padronizacaoPendenteNovos.length;
-  if (!total) return;
+  /* Só aplica as linhas que continuam marcadas no preview */
+  const marcados = new Set(
+    [...document.querySelectorAll('#padronizar-nomes-lista .padr-chk')]
+      .filter(chk => chk.checked)
+      .map(chk => chk.dataset.marca)
+  );
+  const pendenteCad   = _padronizacaoPendente.filter((_, i) => marcados.has(`cad-${i}`));
+  const pendenteFesta = _padronizacaoPendenteFesta.filter((_, i) => marcados.has(`festa-${i}`));
+  const pendenteNovos = _padronizacaoPendenteNovos.filter((_, i) => marcados.has(`novo-${i}`));
+
+  const total = pendenteCad.length + pendenteFesta.length + pendenteNovos.length;
+  if (!total) return toast('Marque ao menos uma linha para aplicar.', 'aviso');
   const btnAplicar = document.getElementById('btn-aplicar-padronizacao');
   if (btnAplicar) { btnAplicar.disabled = true; btnAplicar.textContent = 'Aplicando...'; }
   try {
@@ -7035,7 +7063,7 @@ async function confirmarPadronizarNomes() {
     const conflitosEstoque = [];
 
     /* 1) Cadastro — só troca o nome de exibição, nomeKey preservado */
-    for (const p of _padronizacaoPendente) {
+    for (const p of pendenteCad) {
       await salvarItemConfigDB({ id: p.id, nome: p.nomeNovo });
       if (estoqueAtual[p.nomeKey]) {
         await salvarItemEstoque(p.nomeKey, { nome: p.nomeNovo });
@@ -7043,7 +7071,7 @@ async function confirmarPadronizarNomes() {
     }
 
     /* 2) Produtos novos — cadastro do zero, sem categoria (revisão manual depois) */
-    for (const p of _padronizacaoPendenteNovos) {
+    for (const p of pendenteNovos) {
       await salvarItemConfigDB({
         nome: p.nomeNovo,
         nomeKey: normalizarNomeItem(p.nomeNovo),
@@ -7065,7 +7093,7 @@ async function confirmarPadronizarNomes() {
 
     /* 3) Itens dentro das festas ativas — reescreve o array itens de cada festa afetada */
     const mudancasPorFesta = {};
-    _padronizacaoPendenteFesta.forEach(p => {
+    pendenteFesta.forEach(p => {
       if (!mudancasPorFesta[p.festaId]) mudancasPorFesta[p.festaId] = [];
       mudancasPorFesta[p.festaId].push(p);
     });
@@ -7084,7 +7112,7 @@ async function confirmarPadronizarNomes() {
     /* 4) Migra a chave de estoque + compras pendentes/em andamento da chave antiga
        pra chave nova (uma vez por par oldKey→newKey, mesmo que várias festas usem o mesmo item) */
     const paresJaMigrados = new Set();
-    for (const m of _padronizacaoPendenteFesta) {
+    for (const m of pendenteFesta) {
       if (m.oldKey === m.newKey) continue;
       const par = `${m.oldKey}→${m.newKey}`;
       if (paresJaMigrados.has(par)) continue;
@@ -7130,32 +7158,87 @@ async function confirmarPadronizarNomes() {
 }
 
 /* ════════════════════════════════════════
-   RESOLVER DUPLICADOS — itens do Cadastro com o MESMO nome de exibição mas
-   nomeKey diferente (o caso mais comum é sobra de uma "Padronizar nomes"
-   onde dois apelidos diferentes da lista apontavam pro mesmo nome final, e
-   os dois já existiam como itens separados). Mostra qual nomeKey está de
-   fato vinculado a uma festa ativa — normalmente o "certo" pra manter — e
-   remove os outros, migrando estoque e compras pendentes quando possível.
+   RESOLVER DUPLICADOS — itens do Cadastro que são o MESMO produto cadastrado
+   mais de uma vez. Pega três casos:
+     • nome de exibição idêntico, nomeKey diferente (sobra de "Padronizar nomes");
+     • mesmas palavras em ordem trocada
+       ("... (MORANGO E TANGERINA)" x "... (TANGERINA E MORANGO)");
+     • erro de digitação de 1 letra ("MIX PINICILLIN" x "MIX PENICILLIN").
+   Mostra qual entrada está de fato vinculada a uma festa ativa / tem estoque
+   (a "certa" pra manter). Ao aplicar: copia pro vencedor qualquer config que
+   só o duplicado tinha (Produção, categoria, prioridade), renomeia o item nas
+   festas ativas que usavam o nome antigo, migra estoque e compras pendentes, e
+   remove os extras. Grupos de "nome parecido" começam em "não mexer" — só age
+   se ela escolher explicitamente qual manter.
 ════════════════════════════════════════ */
-let _duplicadosPendente = []; /* [{nome, itens:[{id,nomeKey,temEstoque,qtdEstoque,usadoEmFesta}]}] */
+let _duplicadosPendente = []; /* [{tipo, titulo, itens:[{id,nome,nomeKey,eProducao,grupo,prioridade,temEstoque,qtdEstoque,usadoEmFesta}]}] */
+
+/* true se a e b diferem por no máximo 1 inserção/remoção/troca de caractere */
+function _distNivel1(a, b) {
+  if (a === b) return true;
+  const la = a.length, lb = b.length;
+  if (Math.abs(la - lb) > 1) return false;
+  let i = 0, j = 0, difs = 0;
+  while (i < la && j < lb) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++difs > 1) return false;
+    if (la > lb) i++;
+    else if (lb > la) j++;
+    else { i++; j++; }
+  }
+  if (i < la || j < lb) difs++;
+  return difs <= 1;
+}
+
+const _assinaturaPalavras = nomeKey => (nomeKey || '').split('_').filter(Boolean).sort().join(' ');
 
 async function abrirModalResolverDuplicados() {
   const configs = Object.values(itemConfigsCache);
+
+  /* União (find/union) de configs que são "o mesmo produto" por qualquer critério */
+  const pai = {};
+  configs.forEach(c => { pai[c.id] = c.id; });
+  const raiz = x => { while (pai[x] !== x) x = pai[x] = pai[pai[x]]; return x; };
+  const unir = (a, b) => { const ra = raiz(a), rb = raiz(b); if (ra !== rb) pai[ra] = rb; };
+
+  /* 1) nome de exibição idêntico */
   const porNome = {};
   configs.forEach(c => {
-    const chave = (c.nome || '').trim().toUpperCase();
-    if (!chave) return;
-    if (!porNome[chave]) porNome[chave] = [];
-    porNome[chave].push(c);
+    const k = (c.nome || '').trim().toUpperCase();
+    if (k) (porNome[k] = porNome[k] || []).push(c);
   });
-  const gruposDuplicados = Object.entries(porNome).filter(([, arr]) => arr.length > 1);
+  Object.values(porNome).forEach(arr => arr.slice(1).forEach(c => unir(c.id, arr[0].id)));
+
+  /* 2) mesmas palavras, ordem trocada */
+  const porPalavras = {};
+  configs.forEach(c => {
+    const k = _assinaturaPalavras(c.nomeKey);
+    if (k) (porPalavras[k] = porPalavras[k] || []).push(c);
+  });
+  Object.values(porPalavras).forEach(arr => arr.slice(1).forEach(c => unir(c.id, arr[0].id)));
+
+  /* 3) erro de digitação de 1 letra (nomeKey longo, pra não colidir à toa) */
+  for (let i = 0; i < configs.length; i++) {
+    for (let j = i + 1; j < configs.length; j++) {
+      const a = configs[i].nomeKey || '', b = configs[j].nomeKey || '';
+      if (a.length < 8 || b.length < 8) continue;
+      if (raiz(configs[i].id) === raiz(configs[j].id)) continue;
+      if (_distNivel1(a, b)) unir(configs[i].id, configs[j].id);
+    }
+  }
+
+  /* Grupos: >= 2 itens e >= 2 nomeKeys distintos */
+  const porRaiz = {};
+  configs.forEach(c => { (porRaiz[raiz(c.id)] = porRaiz[raiz(c.id)] || []).push(c); });
+  const gruposBrutos = Object.values(porRaiz)
+    .filter(arr => arr.length > 1 && new Set(arr.map(c => c.nomeKey)).size > 1);
 
   const listaEl    = document.getElementById('resolver-duplicados-lista');
   const btnAplicar = document.getElementById('btn-aplicar-resolver-duplicados');
 
-  if (!gruposDuplicados.length) {
+  if (!gruposBrutos.length) {
     _duplicadosPendente = [];
-    listaEl.innerHTML = '<p style="font-size:13px;color:#6B7280;padding:12px 0">Nenhum nome duplicado encontrado no Cadastro.</p>';
+    listaEl.innerHTML = '<p style="font-size:13px;color:#6B7280;padding:12px 0">Nenhum duplicado encontrado no Cadastro.</p>';
     if (btnAplicar) btnAplicar.classList.add('hidden');
     document.getElementById('modal-resolver-duplicados').classList.remove('hidden');
     return;
@@ -7169,36 +7252,52 @@ async function abrirModalResolverDuplicados() {
     chavesUsadasEmFestas.add(nomeBaseKey(k));
   }));
 
-  _duplicadosPendente = gruposDuplicados.map(([nome, itens]) => ({
-    nome,
-    itens: itens.map(c => ({
-      id: c.id,
-      nomeKey: c.nomeKey,
-      temEstoque: !!estoqueAtual[c.nomeKey],
-      qtdEstoque: estoqueAtual[c.nomeKey]?.qtd,
-      usadoEmFesta: chavesUsadasEmFestas.has(c.nomeKey),
-    })),
-  }));
+  _duplicadosPendente = gruposBrutos.map(arr => {
+    const nomesDistintos = new Set(arr.map(c => (c.nome || '').trim().toUpperCase()));
+    const tipo = nomesDistintos.size === 1 ? 'exato' : 'similar';
+    return {
+      tipo,
+      titulo: tipo === 'exato' ? (arr[0].nome || '') : 'Nomes parecidos',
+      itens: arr.map(c => ({
+        id: c.id,
+        nome: c.nome || '',
+        nomeKey: c.nomeKey,
+        eProducao: c.eProducao === true,
+        grupo: c.grupo || '',
+        prioridade: c.prioridade || '',
+        temEstoque: !!estoqueAtual[c.nomeKey],
+        qtdEstoque: estoqueAtual[c.nomeKey]?.qtd,
+        usadoEmFesta: chavesUsadasEmFestas.has(c.nomeKey),
+      })),
+    };
+  });
 
   listaEl.innerHTML = _duplicadosPendente.map((grupo, gi) => {
-    /* Sugestão de qual manter: vinculado a festa ativa primeiro, depois com estoque, senão o primeiro */
+    /* Sugestão de qual manter: vinculado a festa ativa, depois com estoque, senão o primeiro */
     let sugeridoIdx = grupo.itens.findIndex(it => it.usadoEmFesta);
     if (sugeridoIdx === -1) sugeridoIdx = grupo.itens.findIndex(it => it.temEstoque);
     if (sugeridoIdx === -1) sugeridoIdx = 0;
+    const ignorarPadrao = grupo.tipo === 'similar'; /* nome parecido não age sozinho */
 
     return `
       <div style="border:1px solid #E5E7EB;border-radius:8px;padding:10px 12px;margin-bottom:10px">
-        <div style="font-weight:700;font-size:14px;margin-bottom:6px">${_escHtml(grupo.nome)}</div>
+        <div style="font-weight:700;font-size:14px;margin-bottom:2px">${_escHtml(grupo.titulo)}</div>
+        ${grupo.tipo === 'similar' ? '<div style="font-size:11px;color:#B45309;margin-bottom:6px">Confira se são o mesmo produto antes de aplicar.</div>' : ''}
         ${grupo.itens.map((it, ii) => `
           <label style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;font-size:13px;cursor:pointer">
-            <input type="radio" name="dup-group-${gi}" value="${ii}" ${ii === sugeridoIdx ? 'checked' : ''} style="margin-top:3px">
+            <input type="radio" name="dup-group-${gi}" value="${ii}" ${!ignorarPadrao && ii === sugeridoIdx ? 'checked' : ''} style="margin-top:3px">
             <span>
-              <span style="color:#374151">nomeKey: <code>${_escHtml(it.nomeKey)}</code></span><br>
+              <span style="color:#111827;font-weight:600">${_escHtml(it.nome)}</span>${it.eProducao ? ' <span style="background:#DCFCE7;color:#15803d;font-size:10px;padding:1px 5px;border-radius:4px;font-weight:700">Produção</span>' : ''}<br>
+              <span style="color:#6B7280;font-size:11px">nomeKey: <code>${_escHtml(it.nomeKey)}</code></span><br>
               ${it.usadoEmFesta ? '<span style="background:#DCFCE7;color:#15803d;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;margin-right:4px">VINCULADO A FESTA ATIVA</span>' : ''}
               ${it.temEstoque ? `<span style="background:#DBEAFE;color:#1D4ED8;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700">ESTOQUE: ${it.qtdEstoque ?? 0}</span>` : '<span style="color:#9CA3AF;font-size:11px">sem estoque registrado</span>'}
             </span>
           </label>
         `).join('')}
+        <label style="display:flex;align-items:center;gap:8px;padding:5px 0 0;font-size:12px;color:#6B7280;cursor:pointer;border-top:1px solid #F3F4F6;margin-top:4px">
+          <input type="radio" name="dup-group-${gi}" value="-1" ${ignorarPadrao ? 'checked' : ''}>
+          Não são o mesmo produto — não mexer
+        </label>
       </div>`;
   }).join('');
 
@@ -7215,32 +7314,60 @@ async function confirmarResolverDuplicados() {
   const btnAplicar = document.getElementById('btn-aplicar-resolver-duplicados');
   if (btnAplicar) { btnAplicar.disabled = true; btnAplicar.textContent = 'Aplicando...'; }
   try {
-    const [estoqueAtual, comprasAtuais] = await Promise.all([buscarEstoque(), listarCompras()]);
+    const [estoqueAtual, comprasAtuais, festasTodas] = await Promise.all([
+      buscarEstoque(), listarCompras(), buscarTodasFestas(),
+    ]);
+    const festasAtivasSnap = festasTodas.filter(festaAtiva);
     const conflitosEstoque = [];
+    const renomeiosFesta = {}; /* festaId -> array itens já modificado */
     let totalRemovidos = 0;
 
     for (let gi = 0; gi < _duplicadosPendente.length; gi++) {
       const grupo = _duplicadosPendente[gi];
       const radioMarcado = document.querySelector(`input[name="dup-group-${gi}"]:checked`);
-      const winnerIdx = radioMarcado ? parseInt(radioMarcado.value) : 0;
+      if (!radioMarcado) continue;
+      const winnerIdx = parseInt(radioMarcado.value);
+      if (isNaN(winnerIdx) || winnerIdx < 0) continue; /* "não mexer" */
       const winner = grupo.itens[winnerIdx];
       const losers = grupo.itens.filter((_, i) => i !== winnerIdx);
 
+      /* Completa no vencedor o que só o duplicado tinha configurado (nunca sobrescreve) */
+      const patchWinner = {};
+      losers.forEach(l => {
+        if (l.eProducao && !winner.eProducao && patchWinner.eProducao === undefined) patchWinner.eProducao = true;
+        if (l.grupo && !winner.grupo && !patchWinner.grupo) patchWinner.grupo = l.grupo;
+        if (l.prioridade && !winner.prioridade && !patchWinner.prioridade) patchWinner.prioridade = l.prioridade;
+      });
+      if (Object.keys(patchWinner).length) await salvarItemConfigDB({ id: winner.id, ...patchWinner });
+
       for (const loser of losers) {
+        if (loser.nomeKey !== winner.nomeKey) {
+          /* Renomeia o item nas festas ativas que usam o nome/chave do duplicado */
+          festasAtivasSnap.forEach(f => {
+            const itens = renomeiosFesta[f.id] || (f.itens || []).map(it => ({ ...it }));
+            let mexeu = false;
+            itens.forEach(it => {
+              const k = normalizarNomeItem(it.nome);
+              if (k === loser.nomeKey || nomeBaseKey(k) === loser.nomeKey) { it.nome = winner.nome; mexeu = true; }
+            });
+            if (mexeu) renomeiosFesta[f.id] = itens;
+          });
+        }
+
         /* Migra o estoque do perdedor pro vencedor, se o vencedor ainda não tiver doc */
         const docPerdedor = estoqueAtual[loser.nomeKey];
         const docVencedor = estoqueAtual[winner.nomeKey];
         if (docPerdedor && docVencedor) {
-          conflitosEstoque.push(`${grupo.nome} (${loser.nomeKey})`);
+          conflitosEstoque.push(`${winner.nome} (${loser.nomeKey})`);
         } else if (docPerdedor && !docVencedor) {
-          await renomearChaveEstoque(docPerdedor.id, winner.nomeKey, grupo.nome);
+          await renomearChaveEstoque(docPerdedor.id, winner.nomeKey, winner.nome);
           estoqueAtual[winner.nomeKey] = { ...docPerdedor, nomeKey: winner.nomeKey };
         }
 
         /* Migra compras pendentes/em andamento do perdedor pro vencedor */
         const comprasParaMigrar = comprasAtuais.filter(c => c.nomeKey === loser.nomeKey && (c.status === 'pendente' || c.status === 'pedido'));
         for (const c of comprasParaMigrar) {
-          await atualizarCompraDB(c.id, { nomeKey: winner.nomeKey, nome: grupo.nome });
+          await atualizarCompraDB(c.id, { nomeKey: winner.nomeKey, nome: winner.nome });
         }
 
         await deletarItemConfigDB(loser.id);
@@ -7248,15 +7375,24 @@ async function confirmarResolverDuplicados() {
       }
     }
 
-    toast(`${totalRemovidos} duplicado(s) removido(s).${conflitosEstoque.length ? ` ${conflitosEstoque.length} com estoque nas duas chaves — revise manualmente: ${conflitosEstoque.join(', ')}` : ''}`, 'sucesso');
+    for (const [festaId, itens] of Object.entries(renomeiosFesta)) {
+      await editarQtdFesta(festaId, itens);
+    }
+
+    if (!totalRemovidos) {
+      toast('Nada aplicado — todos os grupos ficaram em "não mexer".', 'aviso');
+    } else {
+      toast(`${totalRemovidos} duplicado(s) removido(s).${conflitosEstoque.length ? ` ${conflitosEstoque.length} com estoque nas duas chaves — revise manualmente: ${conflitosEstoque.join(', ')}` : ''}`, 'sucesso');
+    }
     if (conflitosEstoque.length) console.warn('Resolver duplicados — conflitos de estoque (revisar manualmente):', conflitosEstoque);
 
     _duplicadosPendente = [];
     fecharModalResolverDuplicados();
 
-    const cfgsFrescos = await listarItemConfigs();
+    const [cfgsFrescos, festasFrescas] = await Promise.all([listarItemConfigs(), buscarTodasFestas()]);
     itemConfigsCache = {};
     cfgsFrescos.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    todasFestasCache = festasFrescas;
     renderizarCadastroItens();
   } catch (e) {
     console.error(e);
