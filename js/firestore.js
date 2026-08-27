@@ -280,6 +280,14 @@ async function atualizarFesta(id, dados) {
   return db.collection('festas').doc(id).update(dados);
 }
 
+/* Lê uma festa específica fresca do servidor (não do cache/listener) — usado
+   onde escrever a partir de um cache possivelmente defasado corromperia o
+   array itens (ex.: editar quantidade de uma festa pela tela de Estoque). */
+async function buscarFestaPorId(id) {
+  const doc = await db.collection('festas').doc(id).get();
+  return doc.exists ? { id: doc.id, ...doc.data() } : null;
+}
+
 function _slugFesta(nome) {
   return (nome || '')
     .normalize('NFD').replace(/[̀-ͯ]/g, '')

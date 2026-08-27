@@ -1653,24 +1653,10 @@ function renderizarSeparacao(festa) {
     return;
   }
 
-  const alteracoes = festa.alteracoes || [];
-  let avisoHTML = '';
-  if (alteracoes.length > 0) {
-    const ultima = alteracoes[alteracoes.length - 1];
-    const detalhes = (ultima.campos || [])
-      .filter(c => c.campo !== 'Data' && c.campo !== 'Horario')
-      .map(c => `${_escHtml(c.campo)}: ${_escHtml(c.de)} → ${_escHtml(c.para)}`)
-      .join(', ');
-    const quando = ultima.alteradoEm
-      ? new Date(ultima.alteradoEm).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })
-      : '';
-    avisoHTML = `
-      <div class="aviso-alteracao">
-        <strong>Quantidades alteradas pelo administrador</strong>
-        <p>${_escHtml(ultima.alteradoPor)}${quando ? ' em ' + quando : ''}${detalhes ? ': ' + detalhes : ''}. Verifique os itens antes de continuar.</p>
-      </div>
-    `;
-  }
+  /* Aviso "Quantidades alteradas pelo administrador" removido a pedido da
+     Juliana (2026-08-27) — poluía a tela do separador. O histórico de
+     alterações continua salvo em festa.alteracoes, só não é mais exibido aqui. */
+  const avisoHTML = '';
 
   const itens = festa.itens || [];
   if (!itens.length) {
@@ -4671,6 +4657,7 @@ function agregarItensFestas(festas) {
         festaLocal:      f.local || '',
         festaConvidados: f.convidados ?? null,
         itemIdx,
+        nomeItem:        item.nome,   /* nome cru do item na festa — p/ casar na hora de editar, sem depender do índice */
         qtd,
       });
     });
@@ -5862,7 +5849,7 @@ function htmlEstoqueAnalitico(item, est) {
           <input type="number" class="estoque-qty-input-sm" id="ea-qty-${item.nomeKey}-${f.festaId}-${f.itemIdx}"
             value="${f.qtd}" min="0"
             oninput="document.getElementById('ea-conv-${item.nomeKey}-${f.festaId}-${f.itemIdx}').innerHTML = htmlConversaoUnidades('${_esc(item.nome)}', this.value)"
-            onchange="editarQtdFestaEstoque('${_esc(f.festaId)}',${f.itemIdx},this.value)"
+            onchange="editarQtdFestaEstoque('${_esc(f.festaId)}',${f.itemIdx},'${_esc(f.nomeItem)}',this.value)"
           />
           <span class="estoque-qty-un">${_escHtml(item.unidade)}</span>
           <span id="ea-conv-${item.nomeKey}-${f.festaId}-${f.itemIdx}">${htmlConversaoUnidades(item.nome, f.qtd)}</span>` : `
@@ -5918,22 +5905,41 @@ async function salvarEstoqueQtd(nomeKey, nome, unidade, qtdStr) {
   }
 }
 
-async function editarQtdFestaEstoque(festaId, itemIdx, novaQtdStr) {
-  const novaQtd = parseFloat(novaQtdStr) || 0;
-  const festa   = todasFestasCache.find(f => f.id === festaId);
-  if (!festa) return toast('Festa não encontrada.', 'erro');
-
-  const itens = (festa.itens || []).map((it, i) =>
-    i === itemIdx ? { ...it, qtdNecessaria: novaQtd } : { ...it }
-  );
-
+async function editarQtdFestaEstoque(festaId, itemIdx, nomeItem, novaQtdStr) {
+  const novaQtd = parseFloat(String(novaQtdStr).replace(',', '.')) || 0;
   try {
+    /* Lê a festa fresca do servidor — NÃO usa todasFestasCache. O cache pode
+       estar defasado (outra edição, re-import de PDF, "Resolver duplicados"
+       reescreveu o array itens) e, como aqui a gente regrava o array inteiro,
+       escrever a partir dele sobrescrevia a quantidade de outros itens. */
+    const festa = await buscarFestaPorId(festaId);
+    if (!festa) return toast('Festa não encontrada.', 'erro');
+
+    const itens = (festa.itens || []).map(it => ({ ...it }));
+
+    /* Casa o item pelo NOME (não confia no índice, que pode ter mudado):
+       índice só vale se o nome nele bater; senão procura por nome exato e,
+       por último, pela chave base (variante de fornecimento). */
+    let alvo = -1;
+    if (itens[itemIdx] && (itens[itemIdx].nome || '') === nomeItem) {
+      alvo = itemIdx;
+    } else {
+      alvo = itens.findIndex(it => (it.nome || '') === nomeItem);
+      if (alvo === -1 && nomeItem) {
+        const alvoKey = nomeBaseKey(normalizarNomeItem(nomeItem));
+        alvo = itens.findIndex(it => nomeBaseKey(normalizarNomeItem(it.nome)) === alvoKey);
+      }
+    }
+    if (alvo === -1) return toast('Item não encontrado na festa.', 'erro');
+
+    itens[alvo] = { ...itens[alvo], qtdNecessaria: novaQtd };
     await editarQtdFesta(festaId, itens);
-    /* Atualizar cache local e redesenhar a tela na hora — senão o "Total"
-       do card (calculado a partir de todasFestasCache) fica com o valor
-       antigo até a próxima abertura da tela. */
+
+    /* Atualiza o cache local com a festa fresca + a mudança, e redesenha —
+       senão o "Total" do card fica com o valor antigo até reabrir a tela. */
     const idx = todasFestasCache.findIndex(f => f.id === festaId);
-    if (idx >= 0) todasFestasCache[idx] = { ...todasFestasCache[idx], itens };
+    if (idx >= 0) todasFestasCache[idx] = { ...festa, itens };
+    else todasFestasCache.push({ ...festa, itens });
     renderizarEstoque(todasFestasCache, estoqueCache);
     toast('Quantidade atualizada na festa.', 'sucesso');
   } catch (e) {
