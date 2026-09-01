@@ -31,7 +31,7 @@
     form-action 'self';
   ">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=37">
+  <link rel="stylesheet" href="css/styles.css?v=38">
 </head>
 <body>
 
@@ -170,11 +170,6 @@
     <!-- Alerta de festas hoje com itens pendentes -->
     <div id="alerta-hoje-ceo"></div>
 
-    <!-- Cards de agenda para navegar para as festas do dia -->
-    <div class="producao-agenda-wrap">
-      <div id="producao-agenda-strip" class="producao-agenda-strip"></div>
-    </div>
-
     <div class="container">
       <div class="producao-header">
         <div>
@@ -193,6 +188,20 @@
         <div class="filtros-tabs" id="producao-ordem-tabs">
           <button class="tab ativo" data-ordem="categoria" onclick="trocarOrdemProducao('categoria',this)" title="Agrupar por categoria/setor">Categoria</button>
           <button class="tab"       data-ordem="prioridade" onclick="trocarOrdemProducao('prioridade',this)" title="Agrupar por nível de prioridade">Prioridade</button>
+        </div>
+      </div>
+
+      <!-- Filtro de período -->
+      <div class="producao-periodo">
+        <span class="producao-periodo-label">Período:</span>
+        <input type="date" id="prod-periodo-de"  onchange="setProducaoPeriodo()" aria-label="De">
+        <span class="producao-periodo-ate">até</span>
+        <input type="date" id="prod-periodo-ate" onchange="setProducaoPeriodo()" aria-label="Até">
+        <div class="filtros-tabs" id="producao-periodo-presets">
+          <button class="tab" data-preset="7d"   onclick="presetProducaoPeriodo('7d',this)">7 dias</button>
+          <button class="tab" data-preset="mes"  onclick="presetProducaoPeriodo('mes',this)">Este mês</button>
+          <button class="tab" data-preset="prox" onclick="presetProducaoPeriodo('prox',this)">Próximo mês</button>
+          <button class="tab ativo" data-preset="tudo" onclick="presetProducaoPeriodo('tudo',this)">Tudo</button>
         </div>
       </div>
 
@@ -1645,7 +1654,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=50"></script>
-  <script src="js/app.js?v=111"></script>
+  <script src="js/app.js?v=112"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

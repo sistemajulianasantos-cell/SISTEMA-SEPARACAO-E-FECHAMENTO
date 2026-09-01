@@ -1353,6 +1353,20 @@ input, select, textarea { font-size: 16px !important; }
 }
 .producao-controles .filtros-tabs { flex: 1; min-width: 160px; }
 
+.producao-periodo {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.producao-periodo-label {
+  font-size: 13px; font-weight: 600; color: var(--cinza-600);
+}
+.producao-periodo-ate { font-size: 12px; color: var(--cinza-500); }
+.producao-periodo input[type="date"] {
+  padding: 6px 8px; border: var(--borda); border-radius: var(--raio-sm, 8px);
+  font-size: 13px; background: var(--branco); color: var(--cinza-900);
+}
+.producao-periodo .filtros-tabs { flex-wrap: wrap; }
+
 .producao-header {
   display: flex; align-items: center;
   justify-content: space-between; gap: 12px;

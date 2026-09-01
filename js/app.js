@@ -1286,7 +1286,6 @@ async function carregarCEO() {
   unsubFestas = escutarFestas({}, festas => {
     todasFestasCache = festas;
     renderizarStatsCEO(festas);
-    renderizarAgendaStripCEO(festas);
     renderizarProducaoCEO();
     atualizarBadgeCompras();
     if (!document.getElementById('tela-agenda-meses').classList.contains('hidden')) renderizarAgendaMeses();
@@ -1392,49 +1391,51 @@ function atualizarMenuBadge(total) {
   }
 }
 
-/* Cards de agenda compactos no topo da tela-ceo */
-function renderizarAgendaStripCEO(festas) {
-  const el = document.getElementById('producao-agenda-strip');
-  if (!el) return;
+/* ── Filtro de período da Lista de Produção ──
+   _prodPeriodoDe / _prodPeriodoAte são 'YYYY-MM-DD' ou null. Null/null =
+   "Tudo" = todas as festas ativas a partir de hoje (comportamento antigo). */
+let _prodPeriodoDe  = null;
+let _prodPeriodoAte = null;
 
-  const ativas = festas.filter(festaAtiva);
+function setProducaoPeriodo() {
+  _prodPeriodoDe  = document.getElementById('prod-periodo-de')?.value  || null;
+  _prodPeriodoAte = document.getElementById('prod-periodo-ate')?.value || null;
+  /* mexeu nas datas à mão → nenhum preset fica marcado (a não ser que bata) */
+  document.querySelectorAll('#producao-periodo-presets .tab').forEach(b => b.classList.remove('ativo'));
+  if (!_prodPeriodoDe && !_prodPeriodoAte) {
+    const t = document.querySelector('#producao-periodo-presets .tab[data-preset="tudo"]');
+    if (t) t.classList.add('ativo');
+  }
+  renderizarProducaoCEO();
+}
 
-  /* Agrupar por dia */
-  const porDia = {};
-  ativas.forEach(f => {
-    const key = normalizarData(f.data);
-    if (!key) return;
-    if (!porDia[key]) porDia[key] = { key, festas: [] };
-    porDia[key].festas.push(f);
-  });
+function presetProducaoPeriodo(preset, btn) {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const fmt  = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-  const dias = Object.keys(porDia).sort();
-  if (!dias.length) { el.innerHTML = ''; return; }
+  if (preset === 'tudo') {
+    _prodPeriodoDe = null; _prodPeriodoAte = null;
+  } else if (preset === '7d') {
+    const ate = new Date(hoje); ate.setDate(ate.getDate() + 6);
+    _prodPeriodoDe = fmt(hoje); _prodPeriodoAte = fmt(ate);
+  } else if (preset === 'mes') {
+    const ate = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+    _prodPeriodoDe = fmt(hoje); _prodPeriodoAte = fmt(ate);
+  } else if (preset === 'prox') {
+    const de  = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
+    const ate = new Date(hoje.getFullYear(), hoje.getMonth() + 2, 0);
+    _prodPeriodoDe = fmt(de); _prodPeriodoAte = fmt(ate);
+  }
 
-  const hojeKey   = normalizarData(new Date());
-  const MESES     = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-  const DIAS_SEM  = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const elDe = document.getElementById('prod-periodo-de');
+  const elAte = document.getElementById('prod-periodo-ate');
+  if (elDe)  elDe.value  = _prodPeriodoDe  || '';
+  if (elAte) elAte.value = _prodPeriodoAte || '';
 
-  el.innerHTML = dias.map(d => {
-    const dt    = new Date(d + 'T12:00:00');
-    const num   = String(dt.getDate()).padStart(2,'0');
-    const mes   = MESES[dt.getMonth()];
-    const sem   = DIAS_SEM[dt.getDay()];
-    const qtd   = porDia[d].festas.length;
-    const isHj  = d === hojeKey;
-    const status= [...new Set(porDia[d].festas.map(f => f.status))];
+  document.querySelectorAll('#producao-periodo-presets .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
 
-    return `
-      <button class="agenda-card${isHj ? ' agenda-card-hoje' : ''}"
-        onclick="filtrarPorData('${d}', null)">
-        <div class="agenda-card-dia">${num}</div>
-        <div class="agenda-card-mes">${mes}</div>
-        <div class="agenda-card-sem">${sem}</div>
-        <div class="agenda-card-qtd">${qtd} festa${qtd !== 1 ? 's' : ''}</div>
-        ${isHj ? '<div class="agenda-card-hoje-label">Hoje</div>' : ''}
-      </button>
-    `;
-  }).join('');
+  renderizarProducaoCEO();
 }
 
 /* Aplica filtro de status + filtro de data + busca e re-renderiza a lista */
@@ -4921,15 +4922,40 @@ function renderizarProducaoCEO() {
   if (!el) return;
 
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  /* Período: sem "De" definido cai no padrão (a partir de hoje). */
+  const de  = _prodPeriodoDe  ? new Date(_prodPeriodoDe  + 'T00:00:00') : hoje;
+  const ate = _prodPeriodoAte ? new Date(_prodPeriodoAte + 'T23:59:59') : null;
+
   const ativas = todasFestasCache.filter(f => {
     if (!festaAtiva(f)) return false;
     const d = toDate(f.data);
-    return !isNaN(d) && d >= hoje;
+    if (isNaN(d)) return false;
+    if (d < de) return false;
+    if (ate && d > ate) return false;
+    return true;
   });
+
+  /* Subtítulo reflete o período escolhido */
+  const sub = document.getElementById('producao-subtitulo');
+  if (sub) {
+    if (!_prodPeriodoDe && !_prodPeriodoAte) {
+      sub.textContent = 'Totais de todas as festas ativas';
+    } else if (_prodPeriodoDe && _prodPeriodoAte) {
+      sub.textContent = `Festas de ${formatarData(de)} a ${formatarData(ate)} — ${ativas.length} festa${ativas.length !== 1 ? 's' : ''}`;
+    } else if (_prodPeriodoDe) {
+      sub.textContent = `Festas a partir de ${formatarData(de)} — ${ativas.length} festa${ativas.length !== 1 ? 's' : ''}`;
+    } else {
+      sub.textContent = `Festas de hoje até ${formatarData(ate)} — ${ativas.length} festa${ativas.length !== 1 ? 's' : ''}`;
+    }
+  }
+
   const todosItens = agregarItensFestas(ativas);
 
   if (!todosItens.length) {
-    el.innerHTML = estadoVazio('Nenhum item encontrado nas festas ativas.');
+    el.innerHTML = estadoVazio(
+      (_prodPeriodoDe || _prodPeriodoAte)
+        ? 'Nenhuma festa ativa nesse período.'
+        : 'Nenhum item encontrado nas festas ativas.');
     return;
   }
 
