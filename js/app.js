@@ -3190,6 +3190,35 @@ async function _renderFolhasGestao() {
   }).join('');
 }
 
+/* Aplica os itens de uma folha da Gestão numa festa já existente: adiciona os
+   que faltam, atualiza qtdNecessaria/fornecimento dos que já existem, nunca
+   mexe em qtdSeparada/qtdConferida/etc. Devolve { itens, novos, atualizados }. */
+function _mesclarItensSepNaFesta(festa, itens) {
+  const atuais   = (festa.itens || []).slice();
+  const idxPorCh = {};
+  atuais.forEach((it, i) => { idxPorCh[nomeBaseKey(normalizarNomeItem(it.nome))] = i; });
+
+  let novos = 0, atualizados = 0;
+  itens.forEach(it => {
+    const ch = nomeBaseKey(normalizarNomeItem(it.nome));
+    if (ch in idxPorCh) {
+      const cur   = atuais[idxPorCh[ch]];
+      const mudou = (cur.qtdNecessaria !== it.qtdNecessaria) || ((cur.fornecimento || '') !== it.fornecimento);
+      atuais[idxPorCh[ch]] = {
+        ...cur,
+        qtdNecessaria: it.qtdNecessaria,
+        unidade:       cur.unidade || it.unidade,
+        fornecimento:  it.fornecimento || cur.fornecimento || '',
+      };
+      if (mudou) atualizados++;
+    } else {
+      atuais.push(it);
+      novos++;
+    }
+  });
+  return { itens: atuais, novos, atualizados };
+}
+
 async function importarFolhaGestao(idx) {
   const sep = (_folhasGestaoCache || [])[idx];
   if (!sep) return;
@@ -3206,32 +3235,8 @@ async function importarFolhaGestao(idx) {
     const festa    = festas.find(f => _chaveMatchEvento(f.nome, f.data) === chaveSep);
 
     if (festa) {
-      /* Atualiza SÓ os itens: adiciona os que faltam, atualiza qtd/fornecimento
-         dos que já existem, nunca mexe em qtdSeparada/qtdConferida/etc. */
-      const atuais   = (festa.itens || []).slice();
-      const idxPorCh = {};
-      atuais.forEach((it, i) => { idxPorCh[nomeBaseKey(normalizarNomeItem(it.nome))] = i; });
-
-      let novos = 0, atualizados = 0;
-      itens.forEach(it => {
-        const ch = nomeBaseKey(normalizarNomeItem(it.nome));
-        if (ch in idxPorCh) {
-          const cur = atuais[idxPorCh[ch]];
-          const mudou = (cur.qtdNecessaria !== it.qtdNecessaria) || ((cur.fornecimento || '') !== it.fornecimento);
-          atuais[idxPorCh[ch]] = {
-            ...cur,
-            qtdNecessaria: it.qtdNecessaria,
-            unidade:       cur.unidade || it.unidade,
-            fornecimento:  it.fornecimento || cur.fornecimento || '',
-          };
-          if (mudou) atualizados++;
-        } else {
-          atuais.push(it);
-          novos++;
-        }
-      });
-
-      await atualizarFesta(festa.id, { itens: atuais });
+      const { itens: merged, novos, atualizados } = _mesclarItensSepNaFesta(festa, itens);
+      await atualizarFesta(festa.id, { itens: merged });
       _autoCriarConfigsDeItensPDF(itens);
       toast(`Folha vinculada a "${festa.nome}". ${novos} novo(s), ${atualizados} atualizado(s).`, 'sucesso');
     } else {
@@ -3258,6 +3263,46 @@ async function importarFolhaGestao(idx) {
     const msg = e?.code === 'permission-denied' ? 'Sem permissão no banco.' : (e?.message || 'tente de novo');
     toast('Erro ao importar: ' + msg, 'erro');
     if (btn) { btn.disabled = false; btn.textContent = 'Importar'; }
+  }
+}
+
+/* Botão "Puxar da Gestão" dentro da tela Detalhe da Festa: acha a folha da
+   Gestão que bate com esta festa (nome + data) e traz os itens dela. */
+async function puxarFolhaGestaoDetalhe(festaId) {
+  const btn = document.getElementById('btn-puxar-gestao-detalhe');
+  if (btn) { btn.disabled = true; btn.textContent = 'Buscando…'; }
+  try {
+    const festa = await buscarFestaPorId(festaId);
+    if (!festa) { toast('Festa não encontrada.', 'erro'); return; }
+
+    if (!Object.keys(itemConfigsCache).length) {
+      try { (await listarItemConfigs()).forEach(c => { itemConfigsCache[c.nomeKey] = c; }); } catch (_) {}
+    }
+
+    const seps = await buscarSeparacoesGestao();
+    if (seps === null) { toast('Não foi possível ler as folhas da Gestão agora. Tente de novo.', 'erro'); return; }
+    await _garantirInsumosGestaoIndex();
+
+    const chaveFesta = _chaveMatchEvento(festa.nome, festa.data);
+    const sep = (seps || []).find(s => _chaveMatchEvento(s.evento || s.cliente, s.data) === chaveFesta);
+    if (!sep) {
+      toast('Nenhuma folha da Gestão bate com esta festa (confira se o nome e a data são iguais aos do sistema de gestão).', 'aviso');
+      return;
+    }
+
+    const itens = _sepGestaoParaItens(sep);
+    if (!itens.length) { toast('A folha da Gestão para esta festa não tem itens.', 'aviso'); return; }
+
+    const { itens: merged, novos, atualizados } = _mesclarItensSepNaFesta(festa, itens);
+    await atualizarFesta(festaId, { itens: merged });
+    _autoCriarConfigsDeItensPDF(itens);
+    toast(`Itens da Gestão trazidos: ${novos} novo(s), ${atualizados} atualizado(s).`, 'sucesso');
+    /* a tela Detalhe tem listener próprio (escutarFesta) — re-renderiza sozinha */
+  } catch (e) {
+    console.error('Puxar folha da Gestão (Detalhe):', e);
+    toast('Erro ao puxar da Gestão. Tente de novo.', 'erro');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Puxar da Gestão'; }
   }
 }
 
@@ -3425,17 +3470,29 @@ function renderizarDetalhe(festa) {
     : '';
 
   const importarItensHTML = (festa.status === 'agendada' || festa.status === 'separando')
-    ? `<div class="importar-or-box" style="margin-bottom:16px">
-        <input type="file" id="input-importar-or-detalhe" accept=".pdf" style="display:none"
-          onchange="processarArquivoORDetalhe(this, '${festa.id}')">
+    ? `<div class="importar-or-box" style="margin-bottom:12px">
         <div>
-          <div class="importar-or-titulo">Importar Ordem de Separacao</div>
-          <div class="importar-or-desc">Selecione o PDF gerado pelo sistema para preencher a lista de itens desta festa. Não altera nome, cliente, data ou local.</div>
+          <div class="importar-or-titulo">Puxar itens da Gestão</div>
+          <div class="importar-or-desc">Busca a Folha de Separação já gerada no sistema de gestão para esta festa (pelo nome e data) e traz os itens — nome completo, fornecimento e categoria certos. Não altera nome, cliente, data ou local, nem o que já foi separado.</div>
         </div>
-        <button class="btn-primario btn-sm" onclick="document.getElementById('input-importar-or-detalhe').click()">
-          Selecionar PDF
+        <button class="btn-primario btn-sm" id="btn-puxar-gestao-detalhe" onclick="puxarFolhaGestaoDetalhe('${festa.id}')">
+          Puxar da Gestão
         </button>
-       </div>`
+       </div>
+       <details style="margin-bottom:16px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--cinza-600)">Importar por PDF (reserva)</summary>
+        <div class="importar-or-box" style="margin-top:8px">
+          <input type="file" id="input-importar-or-detalhe" accept=".pdf" style="display:none"
+            onchange="processarArquivoORDetalhe(this, '${festa.id}')">
+          <div>
+            <div class="importar-or-titulo">Importar Ordem de Separacao</div>
+            <div class="importar-or-desc">Selecione o PDF gerado pelo sistema para preencher a lista de itens desta festa. Não altera nome, cliente, data ou local.</div>
+          </div>
+          <button class="btn-primario btn-sm" onclick="document.getElementById('input-importar-or-detalhe').click()">
+            Selecionar PDF
+          </button>
+        </div>
+       </details>`
     : '';
 
   const excluirHTML = _podeExcluirFesta(festa.nome, festa.status)
