@@ -5057,7 +5057,7 @@ function htmlGrupoProducao(g) {
 
 function htmlProducaoSintetico(itens) {
   return itens.map(item => {
-    const est    = estoqueCache[item.nomeKey];
+    const est    = estoqueDoItem(item.nomeKey);
     const qtdEst = est?.qtd || 0;
     /* Compara sempre em unidade solta (totalBase) — o estoque é contado em
        unidade solta, comparar direto com item.total (que pode estar em CX)
@@ -5096,7 +5096,7 @@ function htmlProducaoSintetico(itens) {
 function htmlProducaoAnalitico(itens) {
   const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   return itens.map(item => {
-    const est    = estoqueCache[item.nomeKey];
+    const est    = estoqueDoItem(item.nomeKey);
     const qtdEst = est?.qtd || 0;
     const diff   = qtdEst - item.totalBase;
     const cfg    = item.cfg;
@@ -5306,6 +5306,26 @@ function deveExibirNaSeparacao(item) {
     if (cat && cat.exibirSeparacao === false) return false;
   }
   return true;
+}
+
+/* Doc de estoque de um item tolerando divergência de chave: tenta a chave
+   exata, depois a chave base (sem sufixo de fornecimento), depois qualquer
+   variante que caia na mesma chave base (ex.: a contagem foi salva sob
+   "X CONSIGNADO" e a tela está procurando por "X") — pega a mais recente.
+   Mesma tolerância que a tela de Produção e o cálculo de carga já usavam. */
+function estoqueDoItem(nomeKey) {
+  if (!nomeKey) return null;
+  if (estoqueCache[nomeKey]) return estoqueCache[nomeKey];
+  const base = nomeBaseKey(nomeKey);
+  if (estoqueCache[base]) return estoqueCache[base];
+  let best = null, bestTs = -1;
+  for (const e of Object.values(estoqueCache)) {
+    if (!e || !e.nomeKey || nomeBaseKey(e.nomeKey) !== base) continue;
+    const ts = e.updatedAt?.toMillis ? e.updatedAt.toMillis()
+             : (e.ultimaContagemEm && toDate(e.ultimaContagemEm)?.getTime()) || 0;
+    if (ts >= bestTs) { best = e; bestTs = ts; }
+  }
+  return best;
 }
 
 function agregarItensFestas(festas) {
@@ -6106,8 +6126,14 @@ function renderizarHistoricoContagem(registros, containerId) {
      registrada naquele dia. Se houver mais de um registro do mesmo produto
      no mesmo dia (ex: contou de manhã e de novo à tarde), fica o mais
      recente. Colunas mais recentes primeiro. */
-  const porProdutoDia = {}; /* chave (nomeKey||nome) -> { nome, unidade, porDia: { diaKey -> registro } } */
+  const porProdutoDia = {}; /* chave base -> { nome, unidade, porDia: { diaKey -> registro } } */
   const diasTs = {};        /* diaKey -> timestamp do dia, só p/ ordenar as colunas */
+
+  /* Agrupa pela chave BASE (sem sufixo de fornecimento) — assim "X" e
+     "X CONSIGNADO" não viram 2 linhas com números diferentes pro mesmo
+     produto físico, batendo com o que o Sintético/Por Festa mostra. */
+  const chaveBaseRegistro = r =>
+    nomeBaseKey(r.nomeKey || normalizarNomeItem(r.nome || '')) || (r.nome || '');
 
   registros.forEach(r => {
     const d = r.contadoEm?.toDate ? r.contadoEm.toDate() : new Date(r.contadoEm);
@@ -6115,7 +6141,7 @@ function renderizarHistoricoContagem(registros, containerId) {
     const diaKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     diasTs[diaKey] = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 
-    const chave = r.nomeKey || r.nome;
+    const chave = chaveBaseRegistro(r);
     if (!chave) return;
     if (!porProdutoDia[chave]) porProdutoDia[chave] = { nome: r.nome || r.nomeKey, unidade: r.unidade, porDia: {} };
 
@@ -6133,10 +6159,11 @@ function renderizarHistoricoContagem(registros, containerId) {
      contado nem movimentado simplesmente sumia da lista. Completa com todo
      item do Cadastro que ainda não apareceu, mesmo que fique só com "—". */
   Object.values(itemConfigsCache).forEach(cfg => {
-    if (!cfg.nomeKey || porProdutoDia[cfg.nomeKey]) return;
-    porProdutoDia[cfg.nomeKey] = {
+    const chave = nomeBaseKey(cfg.nomeKey || '');
+    if (!chave || porProdutoDia[chave]) return;
+    porProdutoDia[chave] = {
       nome:    cfg.nome,
-      unidade: cfg.unidade || estoqueCache[cfg.nomeKey]?.unidade || 'un',
+      unidade: cfg.unidade || estoqueDoItem(cfg.nomeKey)?.unidade || 'un',
       porDia:  {},
     };
   });
@@ -6318,7 +6345,7 @@ function renderizarEstoque(festas, estoqueMap) {
     todos.push({
       nomeKey: cfg.nomeKey,
       nome:    cfg.nome,
-      unidade: estoqueMap[cfg.nomeKey]?.unidade || 'un',
+      unidade: estoqueDoItem(cfg.nomeKey)?.unidade || 'un',
       total:   0,
       festas:  [],
     });
@@ -6360,9 +6387,10 @@ function renderizarEstoque(festas, estoqueMap) {
   });
 
   const renderCard = it => {
-    if (abaEstoqueAtual === 'analitico') return htmlEstoqueAnalitico(it, estoqueMap[it.nomeKey]);
-    if (abaEstoqueAtual === 'valor')     return htmlEstoqueValor(it, estoqueMap[it.nomeKey]);
-    return htmlEstoqueSintetico(it, estoqueMap[it.nomeKey]);
+    const est = estoqueDoItem(it.nomeKey);
+    if (abaEstoqueAtual === 'analitico') return htmlEstoqueAnalitico(it, est);
+    if (abaEstoqueAtual === 'valor')     return htmlEstoqueValor(it, est);
+    return htmlEstoqueSintetico(it, est);
   };
 
   let resumoValorHTML = '';
@@ -6371,7 +6399,7 @@ function renderizarEstoque(festas, estoqueMap) {
     itens.forEach(it => {
       const preco = precoInsumoPorNomeKey(it.nomeKey);
       if (preco == null) { semPreco++; return; }
-      totalGeral += preco * (estoqueMap[it.nomeKey]?.qtd || 0);
+      totalGeral += preco * (estoqueDoItem(it.nomeKey)?.qtd || 0);
     });
     resumoValorHTML = `
       <div class="estoque-item-card" style="background:#F9FAFB">
@@ -6443,6 +6471,9 @@ function htmlEstoqueSintetico(item, est) {
      ex: "CX"). Comparar precisa ser sempre em unidade solta (totalBase). */
   const unEst      = est?.unidade || 'un';
   const qtdEst     = est?.qtd || 0;
+  /* Grava/pede compra sob a chave onde o doc de estoque REALMENTE está, se já
+     existe — evita criar um doc duplicado numa chave irmã. */
+  const saveKey    = est?.nomeKey || item.nomeKey;
   const semDemanda = !item.festas.length;
   const diff       = qtdEst - item.totalBase;
   const pct        = item.totalBase > 0 ? Math.min(100, Math.round((qtdEst / item.totalBase) * 100)) : 100;
@@ -6464,13 +6495,13 @@ function htmlEstoqueSintetico(item, est) {
             id="estoque-qty-${item.nomeKey}"
             value="${qtdEst}" min="0"
             oninput="document.getElementById('eq-conv-${item.nomeKey}').innerHTML = htmlConversaoCaixas('${_esc(item.nome)}', this.value)"
-            onchange="salvarEstoqueQtd('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(unEst)}',this.value)"
+            onchange="salvarEstoqueQtd('${_esc(saveKey)}','${_esc(item.nome)}','${_esc(unEst)}',this.value)"
           />
           <span class="estoque-qty-un">${_escHtml(unEst)}</span>
           <span id="eq-conv-${item.nomeKey}">${htmlConversaoCaixas(item.nome, qtdEst)}</span>
         </div>
         <button class="btn-comprar"
-          onclick="comprarItemEstoque('${_esc(item.nomeKey)}','${_esc(item.nome)}','${_esc(unEst)}')">
+          onclick="comprarItemEstoque('${_esc(saveKey)}','${_esc(item.nome)}','${_esc(unEst)}')">
           + Comprar
         </button>` : `
         <div class="estoque-qty-wrap">
