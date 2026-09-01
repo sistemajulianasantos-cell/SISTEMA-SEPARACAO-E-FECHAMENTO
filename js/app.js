@@ -2987,6 +2987,7 @@ function _autoCriarConfigsDeItensPDF(itens) {
         exigeFoto:       false,
         refrigerado:     false,
         diasAntesEvento: 1,
+        origemAuto:      true,   /* criado pelo import de PDF, não pela CEO — some junto com a festa se ninguém mais usar */
       };
       salvarItemConfigDB(dados)
         .then(() => { itemConfigsCache[key] = dados; })
@@ -3225,8 +3226,20 @@ async function confirmarExcluirFesta(id, nome, status) {
   }
   if (!confirm(`Excluir a festa "${nome}"?\n\nEsta ação não pode ser desfeita.`)) return;
   try {
+    let itensDaFesta = [];
+    try {
+      const f = await buscarFestaPorId(id);
+      itensDaFesta = (f && f.itens) || [];
+    } catch (_) { /* segue mesmo sem os itens — só não faz a limpeza do Cadastro */ }
+
     await deletarFesta(id);
-    toast('Festa excluída.', 'sucesso');
+
+    let removidos = 0;
+    try { removidos = await _removerConfigsAutoSemUso(itensDaFesta, id); } catch (e) { console.error(e); }
+
+    toast(removidos > 0
+      ? `Festa excluída. ${removidos} item(ns) do Cadastro (criados no import) também foram removidos.`
+      : 'Festa excluída.', 'sucesso');
     setTimeout(() => irParaPrincipal(), 800);
   } catch(e) {
     console.error('Excluir festa:', e);
@@ -3235,6 +3248,53 @@ async function confirmarExcluirFesta(id, nome, status) {
       : (e?.message || 'Erro desconhecido');
     toast('Erro ao excluir: ' + msg, 'erro');
   }
+}
+
+/* Ao excluir uma festa, remove do Cadastro os itens que:
+   (1) foram criados automaticamente pelo import de PDF (origemAuto === true),
+   (2) estavam nessa festa, e
+   (3) nenhuma outra festa usa.
+   Itens que a CEO cadastrou/editou à mão (origemAuto !== true) nunca são
+   tocados. */
+async function _removerConfigsAutoSemUso(itensDaFesta, festaIdExcluida) {
+  if (!Array.isArray(itensDaFesta) || !itensDaFesta.length) return 0;
+
+  let festas, configs;
+  try {
+    [festas, configs] = await Promise.all([buscarTodasFestas(), listarItemConfigs()]);
+  } catch (e) { console.error('Limpeza de Cadastro pós-exclusão:', e); return 0; }
+
+  const chavesDe = (nome) => {
+    const k = normalizarNomeItem(nomeBasDisplay(nome || ''));
+    return [k, nomeBaseKey(k)];
+  };
+
+  const usadoPorOutra = new Set();
+  festas.forEach(f => {
+    if (f.id === festaIdExcluida) return;
+    (f.itens || []).forEach(it => chavesDe(it.nome).forEach(k => usadoPorOutra.add(k)));
+  });
+
+  const candidatos = new Set();
+  itensDaFesta.forEach(it => chavesDe(it.nome).forEach(k => candidatos.add(k)));
+
+  const aRemover = configs.filter(c => {
+    if (c.origemAuto !== true) return false;
+    const ck = c.nomeKey, cb = nomeBaseKey(c.nomeKey || '');
+    if (!candidatos.has(ck) && !candidatos.has(cb)) return false;
+    return !usadoPorOutra.has(ck) && !usadoPorOutra.has(cb);
+  });
+
+  let n = 0;
+  for (const c of aRemover) {
+    try {
+      await deletarItemConfigDB(c.id);
+      const cacheKey = Object.keys(itemConfigsCache).find(kk => itemConfigsCache[kk]?.id === c.id);
+      if (cacheKey) delete itemConfigsCache[cacheKey];
+      n++;
+    } catch (e) { console.error('Remover config órfão:', e); }
+  }
+  return n;
 }
 
 /* CEO usa a tela de separacao como se fosse colaborador */
@@ -3840,33 +3900,177 @@ async function extrairLinhasPDF(file) {
   const linhas = [];
 
   for (let num = 1; num <= pdf.numPages; num++) {
-    const page    = await pdf.getPage(num);
-    const content = await page.getTextContent();
+    const page     = await pdf.getPage(num);
+    const content  = await page.getTextContent();
+    const viewport = page.getViewport({ scale: 1 });
+    const larguraPagina = viewport.width || 595;
 
-    // Agrupar itens de texto pela posicao vertical (y) arredondada
-    const grupos = {};
-    for (const item of content.items) {
-      const y = Math.round(item.transform[5]);
-      if (!grupos[y]) grupos[y] = [];
-      grupos[y].push({ x: item.transform[4], txt: item.str.trim() });
+    const itens = content.items
+      .filter(it => it && typeof it.str === 'string' && Array.isArray(it.transform))
+      .map(it => ({
+        x:   it.transform[4],
+        y:   Math.round(it.transform[5]),
+        w:   it.width || 0,
+        txt: it.str.trim(),
+      }))
+      .filter(it => it.txt.length > 0);
+
+    if (!itens.length) continue;
+
+    /* ── Detectar layout em 2 colunas ─────────────────────────────────
+       A Folha de Separação nova (impressão A4) sai em 2 colunas. O pdf.js
+       lê o texto por altura (y), então itens da coluna esquerda e da
+       direita que estão na mesma linha vêm grudados
+       ("Bartender 10 UN LARANJA BAHIA"). Aqui a gente acha onde a 2ª
+       coluna começa (um x, no meio da página, onde MUITOS itens se
+       alinham — os nomes de item da coluna direita) e separa o texto por
+       coluna: coluna esquerda inteira (de cima a baixo), depois a
+       direita. Se não achar, processa como coluna única (formato antigo). */
+    const freqX = {};
+    itens.forEach(it => {
+      const bucket = Math.round(it.x / 4) * 4;
+      freqX[bucket] = (freqX[bucket] || 0) + 1;
+    });
+    const freqEmTorno = x => (freqX[x - 4] || 0) + (freqX[x] || 0) + (freqX[x + 4] || 0);
+    let fronteiraX = null;
+    Object.keys(freqX).map(Number).sort((a, b) => a - b).forEach(x => {
+      if (fronteiraX == null &&
+          x > larguraPagina * 0.42 &&
+          x < larguraPagina * 0.66 &&
+          freqEmTorno(x) >= 5) {
+        fronteiraX = x;
+      }
+    });
+
+    /* Confirmar que é 2 colunas de verdade: precisa ter várias linhas com um
+       NOME (não só "SAÍDA/VOLTA/QTD") começando na fronteira. Evita falso
+       positivo em folha de 1 coluna com as colunas Saída/Volta vazias. */
+    if (fronteiraX != null) {
+      const RUIDO_COLUNA = /^(SA[ÍI]DA|SAIDA|EXTRAS|VOLTA|QTD|ITEM|UN)$/i;
+      const linhasComNomeNaFronteira = new Set();
+      itens.forEach(it => {
+        if (Math.abs(it.x - fronteiraX) <= 12 && /[A-Za-zÀ-ÿ]{3,}/.test(it.txt) && !RUIDO_COLUNA.test(it.txt)) {
+          linhasComNomeNaFronteira.add(it.y);
+        }
+      });
+      if (linhasComNomeNaFronteira.size < 5) fronteiraX = null;
     }
 
-    // Ordenar grupos de cima para baixo (y decrescente) e montar linhas
-    Object.keys(grupos)
-      .map(Number)
-      .sort((a, b) => b - a)
-      .forEach(y => {
-        const linha = grupos[y]
-          .sort((a, b) => a.x - b.x)
-          .map(i => i.txt)
-          .filter(t => t.length > 0)
-          .join(' ')
-          .trim();
-        if (linha) linhas.push(linha);
-      });
+    const juntar = arr => arr
+      .slice()
+      .sort((a, b) => a.x - b.x)
+      .map(i => i.txt)
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const grupos = {};
+    itens.forEach(it => { (grupos[it.y] = grupos[it.y] || []).push(it); });
+
+    /* Linhas full-width (cabeçalhos) entram no fluxo principal na ordem certa;
+       linhas de corpo em 2 colunas vão pra 2 baldes — esquerda toda, depois
+       direita toda. */
+    const linhasEsq = [], linhasDir = [];
+    Object.keys(grupos).map(Number).sort((a, b) => b - a).forEach(y => {
+      const g = grupos[y];
+
+      if (fronteiraX == null) {
+        const l = juntar(g);
+        if (l) linhasEsq.push(l);
+        return;
+      }
+
+      const esq = g.filter(it => it.x <  fronteiraX - 2);
+      const dir = g.filter(it => it.x >= fronteiraX - 2);
+
+      /* Só é linha de 2 colunas se o texto da direita COMEÇA alinhado com a
+         fronteira (é a coluna direita de verdade). Cabeçalho largo tem texto
+         corrido passando pela fronteira em qualquer x → não divide. */
+      const iniDir = dir.length ? Math.min(...dir.map(it => it.x)) : Infinity;
+      const ehLinha2Colunas = esq.length && dir.length && Math.abs(iniDir - fronteiraX) <= 12;
+
+      if (ehLinha2Colunas) {
+        const e = juntar(esq), d = juntar(dir);
+        if (e) linhasEsq.push(e);
+        if (d) linhasDir.push(d);
+      } else if (!esq.length && dir.length) {
+        const d = juntar(dir);
+        if (d) linhasDir.push(d);
+      } else {
+        const l = juntar(g);
+        if (l) linhasEsq.push(l);
+      }
+    });
+
+    linhas.push(...linhasEsq, ...linhasDir);
   }
 
   return linhas;
+}
+
+/* Junta linhas de nome que o PDF quebrou em duas (coluna estreita da folha
+   nova): "TEQUILA JOSE CUERVO ESPECIAL OURO -" + "750ML (Consignado) 24 UN".
+   Uma linha "solta" (não é item, não é cabeçalho) só é tratada como
+   categoria se a próxima linha for o cabeçalho de coluna "ITEM QTD SAÍDA
+   VOLTA" ou se ela for uma categoria conhecida — senão a gente tenta juntar
+   com a(s) linha(s) seguinte(s) até formar um item. */
+const _CATEGORIAS_FOLHA_CONHECIDAS = new Set([
+  'EQUIPE','EQUIPE HORTIFRUTI','COPOS E TACAS','XAROPES','BEBIDAS NAO ALCOOLIC',
+  'BEBIDAS NAO ALCOOLICAS','BEBIDAS ALCOOLICAS','DESCARTAVEIS','HORTIFRUTI',
+  'PRODUCAO','SODAS E ESPUMAS','MIX','MATERIAL','ESPECIARIAS','KIT BARTENDER',
+  'GELO','COQUETEIS','SHOTS','MIX ARTESANAL','MATERIAL ESPECIARIAS',
+]);
+
+function _mesclarLinhasQuebradasPDF(linhas, RE_ITEM, RE_ITEM_NOVO) {
+  const temItem = l => RE_ITEM.test(l) || RE_ITEM_NOVO.test(l);
+  const ehCabecalhoColuna = l =>
+    (/^ITEM\b/i.test(l) && /\bQTD\b/i.test(l)) ||
+    /^(ITEM|QTD|SA[ÍI]DA|VOLTA|EXTRAS)$/i.test(l.trim());
+  const ehCabecalhoDoc = l =>
+    /^FOLHA\s+DE\s+SEPARA/i.test(l) ||
+    /\bData\s*:/i.test(l) || /\bLocal\s*:/i.test(l) || /\bHor[aá]rio\s*:/i.test(l) ||
+    /\bConvidados\s*:/i.test(l) || /\bOR\s*\d/i.test(l) ||
+    /Impress[oa]\s+em/i.test(l) || /Quebras\s+no\s+transporte/i.test(l) ||
+    /^\d{2}\/\d{2}\/\d{4}/.test(l) || /^Separa[çc][aã]o\s*[—–-]/i.test(l);
+  const ehCategoriaConhecida = l => {
+    const norm = normalizarNomeItem(l).replace(/_/g, ' ').toUpperCase().trim();
+    if (_CATEGORIAS_FOLHA_CONHECIDAS.has(norm)) return true;
+    return (categoriasCache || []).some(c =>
+      normalizarNomeItem(c.nome || '').replace(/_/g, ' ').toUpperCase().trim() === norm);
+  };
+
+  const out = [];
+  for (let i = 0; i < linhas.length; i++) {
+    const atual = (linhas[i] || '').trim();
+    if (!atual) continue;
+    if (temItem(atual) || ehCabecalhoColuna(atual) || ehCabecalhoDoc(atual) || ehCategoriaConhecida(atual)) {
+      out.push(atual);
+      continue;
+    }
+
+    let j = i + 1;
+    while (j < linhas.length && !(linhas[j] || '').trim()) j++;
+    const proxima = j < linhas.length ? linhas[j].trim() : '';
+
+    if (!proxima || ehCabecalhoColuna(proxima) || ehCabecalhoDoc(proxima)) {
+      out.push(atual);
+      continue;
+    }
+
+    /* tenta juntar atual + próxima(s) até virar um item (no máx. 2 junções) */
+    let buffer = atual, k = j, juntou = false;
+    for (let passo = 0; passo < 2 && k < linhas.length; k++) {
+      const cand = (linhas[k] || '').trim();
+      if (!cand) continue;
+      if (ehCabecalhoColuna(cand) || ehCabecalhoDoc(cand) || ehCategoriaConhecida(cand)) break;
+      buffer = (buffer + ' ' + cand).replace(/\s+/g, ' ').trim();
+      passo++;
+      if (temItem(buffer)) { juntou = true; k++; break; }
+    }
+    if (juntou) { out.push(buffer); i = k - 1; }
+    else out.push(atual);
+  }
+  return out;
 }
 
 function parsearOR(linhas) {
@@ -3880,11 +4084,17 @@ function parsearOR(linhas) {
   const RE_DATA       = /(\d{2})\/(\d{2})\/(\d{4})/;
   // Formato novo: "FOLHA DE SEPARAÇÃO — Nome do Evento/Cliente"
   const RE_TITULO     = /^FOLHA\s+DE\s+SEPARA[ÇC][ÃA]O\s*[—–-]\s*(.+)/i;
+  // Cabeçalho de página que se repete: "... Separação — Nome do Cliente"
+  // (útil quando o título principal foi quebrado pela coluna estreita)
+  const RE_TITULO_HDR = /Separa[çc][ãa]o\s*[—–-]\s*([A-Za-zÀ-ÿ][^|]+?)\s*$/i;
 
   const IGNORAR = [
     'Saída','Extras','Volta','SAÍDA','ITEM QTD SAÍDA VOLTA','Data de Impressão','SAIDA','EXTRAS','VOLTA',
     '1/3','2/3','3/3','1/2','2/2','1/1',
   ];
+
+  // Juntar nomes que o PDF quebrou em 2 linhas (coluna estreita da folha nova)
+  linhas = _mesclarLinhasQuebradasPDF(linhas, RE_ITEM, RE_ITEM_NOVO);
 
   let categoriaAtual = '';
 
@@ -3910,6 +4120,21 @@ function parsearOR(linhas) {
         resultado.cliente = resultado.cliente || nome;
       }
       continue;
+    }
+
+    // Cabeçalho de página repetido ("... Separação — Nome") — usado como reforço
+    // do nome (o título de cima às vezes vem cortado pela coluna estreita).
+    if (!/about:blank/i.test(linha) && !/FOLHA\s+DE\s+SEPARA/i.test(linha)) {
+      const matchTitHdr = linha.match(RE_TITULO_HDR);
+      if (matchTitHdr) {
+        const nomeHdr = matchTitHdr[1].trim().replace(/\s+\d+\/\d+$/, '').trim();
+        // só usa se for mais completo que o que já temos
+        if (nomeHdr.length > (resultado.evento || '').length) {
+          resultado.evento  = nomeHdr;
+          resultado.cliente = nomeHdr;
+        }
+        continue;
+      }
     }
 
     // Cabecalho: CLIENTE
@@ -6552,6 +6777,7 @@ function trocarAbaItens(aba, btn) {
   const btnPadr    = document.getElementById('btn-padronizar-nomes');
   const btnDup     = document.getElementById('btn-resolver-duplicados');
   const btnUn      = document.getElementById('btn-corrigir-unidades');
+  const btnLimpar  = document.getElementById('btn-limpar-sem-uso');
   const busca      = document.getElementById('busca-cadastro-wrap');
 
   /* Reset todos */
@@ -6567,6 +6793,7 @@ function trocarAbaItens(aba, btn) {
   if (btnPadr)      btnPadr.classList.add('hidden');
   if (btnDup)       btnDup.classList.add('hidden');
   if (btnUn)        btnUn.classList.add('hidden');
+  if (btnLimpar)    btnLimpar.classList.add('hidden');
   if (busca)        busca.classList.add('hidden');
 
   if (aba === 'categorias') {
@@ -6589,6 +6816,7 @@ function trocarAbaItens(aba, btn) {
     if (btnPadr)    btnPadr.classList.remove('hidden');
     if (btnDup)     btnDup.classList.remove('hidden');
     if (btnUn)      btnUn.classList.remove('hidden');
+    if (btnLimpar)  btnLimpar.classList.remove('hidden');
     if (busca)      busca.classList.remove('hidden');
     renderizarCadastroItens();
   }
@@ -7552,6 +7780,117 @@ async function confirmarCorrigirUnidades() {
   }
 }
 
+/* ════════════════════════════════════════
+   LIMPAR ITENS SEM USO (Cadastro)
+   Remove do Cadastro os itens que nenhuma festa usa. Mesmo padrão de
+   preview + confirmar dos outros utilitários. Itens criados pelo import de
+   PDF (origemAuto) vêm pré-marcados; os configurados à mão vêm
+   desmarcados, com aviso.
+════════════════════════════════════════ */
+let _limparSemUsoCandidatos = []; /* [{id, nome, grupo, pareceAuto}] */
+
+/* Item que nunca foi revisado na tela de cadastro (só existe por causa de
+   um import). origemAuto explícito manda; senão, heurística de "tudo no
+   padrão". */
+function _configPareceAuto(c) {
+  if (c.origemAuto === true)  return true;
+  if (c.origemAuto === false) return false;
+  return (c.ordemSeparacao == null || c.ordemSeparacao === 999)
+    && !c.prioridade
+    && c.eProducao !== true
+    && !c.setor && !c.prateleira
+    && c.estoqueMinimo == null
+    && c.qtdSugerida == null
+    && c.unidadesPorEmbalagem == null
+    && c.exigeFoto !== true
+    && (!c.unidade || c.unidade === 'un');
+}
+
+async function abrirModalLimparItensSemUso() {
+  const listaEl    = document.getElementById('limpar-sem-uso-lista');
+  const btnAplicar = document.getElementById('btn-aplicar-limpar-sem-uso');
+  if (btnAplicar) { btnAplicar.disabled = false; btnAplicar.textContent = 'Remover selecionados'; btnAplicar.classList.remove('hidden'); }
+  if (listaEl) listaEl.innerHTML = '<p style="font-size:13px;color:#6B7280;padding:12px 0">Carregando...</p>';
+  document.getElementById('modal-limpar-sem-uso').classList.remove('hidden');
+
+  let festas, configs;
+  try {
+    [festas, configs] = await Promise.all([buscarTodasFestas(), listarItemConfigs()]);
+  } catch (e) {
+    console.error(e);
+    if (listaEl) listaEl.innerHTML = '<p style="font-size:13px;color:var(--vermelho);padding:12px 0">Erro ao carregar. Tente de novo.</p>';
+    return;
+  }
+
+  const usados = new Set();
+  festas.forEach(f => (f.itens || []).forEach(it => {
+    const k = normalizarNomeItem(nomeBasDisplay(it.nome || ''));
+    usados.add(k); usados.add(nomeBaseKey(k));
+  }));
+
+  _limparSemUsoCandidatos = configs
+    .filter(c => {
+      const ck = c.nomeKey, cb = nomeBaseKey(c.nomeKey || '');
+      return !usados.has(ck) && !usados.has(cb);
+    })
+    .map(c => ({ id: c.id, nome: nomeBasDisplay(c.nome || ''), grupo: c.grupo || '', pareceAuto: _configPareceAuto(c) }))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  if (!_limparSemUsoCandidatos.length) {
+    if (listaEl) listaEl.innerHTML = '<p style="font-size:13px;color:#6B7280;padding:12px 0">Nenhum item sem uso. Todos os itens do Cadastro estão em pelo menos uma festa.</p>';
+    if (btnAplicar) btnAplicar.classList.add('hidden');
+    return;
+  }
+  if (btnAplicar) btnAplicar.classList.remove('hidden');
+
+  listaEl.innerHTML = _limparSemUsoCandidatos.map(c => `
+    <label style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #F3F4F6;cursor:pointer">
+      <input type="checkbox" class="limpar-su-chk" data-id="${_escHtml(c.id)}" ${c.pareceAuto ? 'checked' : ''} style="margin-top:3px">
+      <span>
+        <span style="font-weight:600;font-size:13px">${_escHtml(c.nome)}</span>
+        ${c.grupo ? `<span style="font-size:12px;color:#6B7280"> — ${_escHtml(c.grupo)}</span>` : ''}
+        ${c.pareceAuto
+          ? '<span style="font-size:11px;color:#6B7280;display:block">criado no import</span>'
+          : '<span style="font-size:11px;color:#B45309;display:block">configurado à mão — confira antes de remover</span>'}
+      </span>
+    </label>
+  `).join('');
+}
+
+function fecharModalLimparItensSemUso() {
+  document.getElementById('modal-limpar-sem-uso').classList.add('hidden');
+}
+
+function _limparSemUsoMarcarTodos(marcar) {
+  document.querySelectorAll('#limpar-sem-uso-lista .limpar-su-chk').forEach(chk => { chk.checked = marcar; });
+}
+
+async function confirmarLimparItensSemUso() {
+  const ids = [...document.querySelectorAll('#limpar-sem-uso-lista .limpar-su-chk')]
+    .filter(chk => chk.checked)
+    .map(chk => chk.dataset.id);
+  if (!ids.length) { toast('Marque ao menos um item.', 'aviso'); return; }
+  if (!confirm(`Remover ${ids.length} item${ids.length !== 1 ? 's' : ''} do Cadastro?\n\nNão afeta nenhuma festa (esses itens não estão em nenhuma).`)) return;
+
+  const btnAplicar = document.getElementById('btn-aplicar-limpar-sem-uso');
+  if (btnAplicar) { btnAplicar.disabled = true; btnAplicar.textContent = 'Removendo...'; }
+
+  let n = 0;
+  for (const id of ids) {
+    try {
+      await deletarItemConfigDB(id);
+      const cacheKey = Object.keys(itemConfigsCache).find(kk => itemConfigsCache[kk]?.id === id);
+      if (cacheKey) delete itemConfigsCache[cacheKey];
+      n++;
+    } catch (e) { console.error('Limpar item sem uso:', e); }
+  }
+
+  if (btnAplicar) { btnAplicar.disabled = false; btnAplicar.textContent = 'Remover selecionados'; }
+  toast(`${n} item(ns) removido(s) do Cadastro.`, 'sucesso');
+  fecharModalLimparItensSemUso();
+  if (typeof renderizarCadastroItens === 'function') renderizarCadastroItens();
+}
+
 function onClickItemCadastro(id) {
   if (_modoSelecaoCadastro) toggleSelecaoItemCadastro(id);
 }
@@ -7562,7 +7901,7 @@ async function abrirFormItemConfig(id, nomePreenchido) {
 
   const resetForm = (cfg) => {
     document.getElementById('ic-nome').value    = (cfg?.nome ? nomeBasDisplay(cfg.nome) : nomePreenchido) || '';
-    document.getElementById('ic-grupo').value   = cfg?.grupo || '';
+    _setGrupoItemConfig(cfg?.grupo || '', true);
     document.getElementById('ic-ordem').value   = (cfg?.ordemSeparacao && cfg.ordemSeparacao !== 999) ? cfg.ordemSeparacao : '';
     document.getElementById('ic-unidade').value = cfg?.unidade || 'un';
     document.getElementById('ic-un-embalagem').value = cfg?.unidadesPorEmbalagem != null ? cfg.unidadesPorEmbalagem : '';
@@ -7592,7 +7931,8 @@ async function abrirFormItemConfig(id, nomePreenchido) {
     mostrarTela('tela-form-item-config', 'Editar Item');
   } else {
     resetForm(null);
-    /* Pré-preencher grupo com categoria detectada automaticamente (sugestão editável) */
+    /* Pré-preencher grupo só se a categoria detectada já estiver cadastrada;
+       caso contrário fica em "Sem categoria" (não cria categoria nova). */
     if (nomePreenchido) {
       const keyBusca = normalizarNomeItem(nomePreenchido);
       let sugestao = '';
@@ -7604,31 +7944,66 @@ async function abrirFormItemConfig(id, nomePreenchido) {
           if (k === keyBusca || nomeBaseKey(k) === keyBusca) sugestao = it.categoria || '';
         });
       });
-      if (sugestao) document.getElementById('ic-grupo').value = sugestao;
+      if (sugestao) _setGrupoItemConfig(sugestao);
     }
     historico.push('tela-form-item-config');
     mostrarTela('tela-form-item-config', nomePreenchido ? `Configurar: ${nomePreenchido}` : 'Novo Item');
   }
 }
 
+/* Seleciona a categoria no <select> #ic-grupo.
+   - vazio  -> "Sem categoria"
+   - categoria já cadastrada -> seleciona
+   - categoria desconhecida:
+       preservarSeDesconhecida = true  -> mantém como opção temporária (edição
+         de item antigo, pra não apagar o dado sem a pessoa perceber)
+       preservarSeDesconhecida = false -> cai em "Sem categoria" */
+function _setGrupoItemConfig(valor, preservarSeDesconhecida) {
+  const sel = document.getElementById('ic-grupo');
+  if (!sel) return;
+  const v = (valor || '').trim();
+  /* limpa qualquer opção temporária de uma abertura anterior */
+  sel.querySelectorAll('option[data-temp="1"]').forEach(o => o.remove());
+  if (!v) { sel.value = ''; return; }
+  const existe = [...sel.options].some(o => o.value === v);
+  if (!existe) {
+    if (!preservarSeDesconhecida) { sel.value = ''; return; }
+    const opt = document.createElement('option');
+    opt.value = v;
+    opt.textContent = `${v} (categoria não cadastrada)`;
+    opt.dataset.temp = '1';
+    sel.appendChild(opt);
+  }
+  sel.value = v;
+}
+
 async function preencherSugestoesItemConfig() {
   try {
     const festas = todasFestasCache.length ? todasFestasCache : await buscarTodasFestas();
     const nomesSet  = new Set();
-    const gruposSet = new Set();
 
     festas.forEach(f => (f.itens || []).forEach(it => {
       if (it.nome) nomesSet.add(nomeBasDisplay(it.nome));
     }));
-    /* Prioridade: categorias cadastradas, depois grupos dos configs */
-    categoriasCache.forEach(c => { if (c.nome) gruposSet.add(c.nome); });
-    Object.values(itemConfigsCache).forEach(c => { if (c.grupo) gruposSet.add(c.grupo); });
 
     const dlNomes = document.getElementById('ic-nomes-lista');
     if (dlNomes) dlNomes.innerHTML = [...nomesSet].sort().map(n => `<option value="${_escHtml(n)}">`).join('');
 
-    const dlGrupos = document.getElementById('ic-grupos-lista');
-    if (dlGrupos) dlGrupos.innerHTML = [...gruposSet].sort().map(g => `<option value="${_escHtml(g)}">`).join('');
+    /* Categoria: só permite escolher uma categoria já cadastrada (tela de
+       Categorias). Item que não se encaixa em nenhuma fica sem categoria —
+       nunca cria categoria nova a partir do cadastro do item. */
+    const selGrupo = document.getElementById('ic-grupo');
+    if (selGrupo) {
+      let cats = categoriasCache;
+      if (!cats.length) {
+        try { cats = await listarCategorias(); categoriasCache = cats; } catch(e) { cats = []; }
+      }
+      const opcoes = cats.slice()
+        .sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'))
+        .map(c => `<option value="${_escHtml(c.nome)}">${_escHtml(c.nome)}</option>`)
+        .join('');
+      selGrupo.innerHTML = `<option value="">Sem categoria</option>` + opcoes;
+    }
   } catch(e) { console.error(e); }
 }
 
@@ -7678,6 +8053,7 @@ async function salvarItemConfig() {
     estoqueMinimo: (() => { const v = parseFloat(document.getElementById('ic-estoque-min').value); return isNaN(v) ? null : v; })(),
     qtdSugerida:   (() => { const v = parseFloat(document.getElementById('ic-qtd-sugerida').value); return isNaN(v) ? null : v; })(),
     unidadesPorEmbalagem: (() => { const v = parseFloat(document.getElementById('ic-un-embalagem').value); return isNaN(v) || v <= 0 ? null : v; })(),
+    origemAuto:       false,   /* salvou pela tela = item revisado pela CEO, não é mais "auto" */
   };
 
   if (_itemConfigEditId) dados.id = _itemConfigEditId;
@@ -7711,11 +8087,24 @@ async function salvarItemConfig() {
   }
 }
 
-/* Festas ainda não concluídas (agendada em diante) cujos itens usam este item do Cadastro */
+/* Uma festa só impede a remoção de um item do Cadastro se ainda estiver ativa
+   (agendada..galpão) E a data dela ainda não tiver passado. Festas antigas
+   presas em algum status (ex.: "Em Conferência" nunca concluída) não devem
+   travar a limpeza do Cadastro. */
+function festaBloqueiaRemocaoItem(f) {
+  if (!festaAtiva(f)) return false;
+  const fd = toDate(f.data);
+  if (isNaN(fd)) return true;              /* data inválida: mantém o bloqueio por segurança */
+  fd.setHours(0, 0, 0, 0);
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  return fd >= hoje;
+}
+
+/* Festas futuras ainda não concluídas cujos itens usam este item do Cadastro */
 async function _festasUsandoItemCadastro(nomeKey) {
   const festas = await buscarTodasFestas();
   return festas.filter(f => {
-    if (!festaAtiva(f)) return false;
+    if (!festaBloqueiaRemocaoItem(f)) return false;
     return (f.itens || []).some(it => {
       const cfg = buscarConfigItem(normalizarNomeItem(it.nome));
       return cfg && cfg.nomeKey === nomeKey;
@@ -7735,7 +8124,7 @@ async function confirmarDeletarItemConfig(id, nome) {
       return;
     }
     if (festasEmUso.length) {
-      alert(`Não é possível remover "${nome}": está em uso em ${festasEmUso.length} festa${festasEmUso.length !== 1 ? 's' : ''} ainda não concluída${festasEmUso.length !== 1 ? 's' : ''}:\n\n${festasEmUso.map(f => `- ${f.nome} (${STATUS_LABELS[f.status] || f.status})`).join('\n')}`);
+      alert(`Não é possível remover "${nome}": está em uso em ${festasEmUso.length} festa${festasEmUso.length !== 1 ? 's' : ''} futura${festasEmUso.length !== 1 ? 's' : ''} ainda não concluída${festasEmUso.length !== 1 ? 's' : ''}:\n\n${festasEmUso.map(f => `- ${f.nome} (${STATUS_LABELS[f.status] || f.status})`).join('\n')}`);
       return;
     }
   }
@@ -7840,7 +8229,7 @@ async function excluirSelecionadosCadastro() {
     if (btnDel) { btnDel.disabled = false; btnDel.textContent = 'Excluir'; }
     return;
   }
-  const festasAtivas = festas.filter(festaAtiva);
+  const festasAtivas = festas.filter(festaBloqueiaRemocaoItem);
   const bloqueados = ids
     .map(id => Object.values(itemConfigsCache).find(c => c.id === id))
     .filter(cfg => cfg && festasAtivas.some(f => (f.itens || []).some(it => {
@@ -7849,7 +8238,7 @@ async function excluirSelecionadosCadastro() {
     })));
 
   if (bloqueados.length) {
-    alert(`Não é possível remover ${bloqueados.length} ite${bloqueados.length !== 1 ? 'ns' : 'm'} porque ${bloqueados.length !== 1 ? 'estão' : 'está'} em uso em festas ainda não concluídas:\n\n${bloqueados.map(c => c.nome).join(', ')}\n\nDesmarque ${bloqueados.length !== 1 ? 'esses itens' : 'esse item'} para remover o restante.`);
+    alert(`Não é possível remover ${bloqueados.length} ite${bloqueados.length !== 1 ? 'ns' : 'm'} porque ${bloqueados.length !== 1 ? 'estão' : 'está'} em uso em festas futuras ainda não concluídas:\n\n${bloqueados.map(c => c.nome).join(', ')}\n\nDesmarque ${bloqueados.length !== 1 ? 'esses itens' : 'esse item'} para remover o restante.`);
     if (btnDel) { btnDel.disabled = false; btnDel.textContent = 'Excluir'; }
     return;
   }

@@ -305,6 +305,22 @@
     </div>
   </div>
 
+  <!-- ══════════ MODAL: LIMPAR ITENS SEM USO (Cadastro) ══════════ -->
+  <div id="modal-limpar-sem-uso" class="modal-overlay hidden" onclick="fecharModalLimparItensSemUso()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:640px;width:95%">
+      <div class="modal-titulo">Limpar itens sem uso</div>
+      <div style="font-size:13px;color:#6B7280;margin:8px 0 4px">
+        Itens do Cadastro que nenhuma festa usa (nem ativa, nem concluída). Os que o import de PDF criou sozinho já vêm marcados; os que você configurou à mão vêm desmarcados — confira antes de aplicar. O que for marcado é removido do Cadastro.
+      </div>
+      <div style="margin:6px 0 2px"><a href="#" onclick="_limparSemUsoMarcarTodos(true);return false" style="font-size:12px">Marcar todos</a> · <a href="#" onclick="_limparSemUsoMarcarTodos(false);return false" style="font-size:12px">Desmarcar todos</a></div>
+      <div id="limpar-sem-uso-lista" style="max-height:52vh;overflow-y:auto;margin-top:8px"></div>
+      <div class="modal-acoes">
+        <button class="btn-secundario" onclick="fecharModalLimparItensSemUso()">Cancelar</button>
+        <button class="btn-primario" id="btn-aplicar-limpar-sem-uso" onclick="confirmarLimparItensSemUso()" style="background:var(--vermelho)">Remover selecionados</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════ TELA: AGENDA — MESES ══════════ -->
   <div id="tela-agenda-meses" class="tela hidden">
     <div class="container">
@@ -828,6 +844,7 @@
           <button class="btn-secundario btn-sm hidden" id="btn-padronizar-nomes" onclick="abrirModalPadronizarNomes()">Padronizar nomes</button>
           <button class="btn-secundario btn-sm hidden" id="btn-resolver-duplicados" onclick="abrirModalResolverDuplicados()">Resolver duplicados</button>
           <button class="btn-secundario btn-sm hidden" id="btn-corrigir-unidades" onclick="abrirModalCorrigirUnidades()">Corrigir unidades</button>
+          <button class="btn-secundario btn-sm hidden" id="btn-limpar-sem-uso" onclick="abrirModalLimparItensSemUso()">Limpar itens sem uso</button>
           <button class="btn-primario" id="btn-novo-item-config" onclick="abrirFormItemConfig()">&#43; Novo Item</button>
           <button class="btn-primario hidden" id="btn-nova-categoria" onclick="abrirFormCategoria()">&#43; Nova Categoria</button>
         </div>
@@ -880,15 +897,15 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Grupo / Categoria *</label>
-            <input type="text" id="ic-grupo" placeholder="Ex: Bebidas" list="ic-grupos-lista" />
-            <datalist id="ic-grupos-lista"></datalist>
+            <label>Grupo / Categoria</label>
+            <select id="ic-grupo"></select>
           </div>
           <div class="form-group">
             <label>Ordem de Separação</label>
             <input type="number" id="ic-ordem" placeholder="1" min="1" />
           </div>
         </div>
+        <p class="form-hint" style="margin-bottom:16px">Só dá pra escolher uma categoria já cadastrada. Item que não se encaixa em nenhuma fica em "Sem categoria" — pra criar ou ajustar categorias, use a tela de Categorias.</p>
         <div class="form-row">
           <div class="form-group">
             <label>Unidade de Medida</label>
@@ -1588,7 +1605,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=49"></script>
-  <script src="js/app.js?v=105"></script>
+  <script src="js/app.js?v=108"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->
