@@ -678,6 +678,9 @@ function renderizarInicio(papel) {
         <div class="inicio-card" onclick="irInicioAgenda()">
           <div class="inicio-card-nome">Agenda</div>
         </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirFolhasGestao()">
+          <div class="inicio-card-nome">Folhas da Gestão</div>
+        </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEquipe()">
           <div class="inicio-card-nome">Equipe</div>
         </div>
@@ -3055,6 +3058,335 @@ async function submitCriarFesta() {
   } catch (e) {
     console.error(e);
     toast('Erro ao criar festa. Verifique a conexão.', 'erro');
+  }
+}
+
+/* ══════════════════════════════════════════════════
+   FOLHAS DA GESTÃO — import ao vivo (sem PDF)
+   Lê dados/separacoes do controle-gestao-main (mesmo canal read-only da aba
+   Equipe/Estoque/Preços) e cria/atualiza a festa aqui a partir do dado
+   estruturado — nome completo, fornecimento e categoria vêm certos, sem o
+   parsing frágil do PDF.
+══════════════════════════════════════════════════ */
+let _folhasGestaoCache   = [];
+let _insumosGestaoIndex  = null;   /* nomeBaseKey -> insumo do controle-gestao-main */
+
+async function _garantirInsumosGestaoIndex() {
+  if (_insumosGestaoIndex) return _insumosGestaoIndex;
+  const lista = await buscarInsumosGestao();
+  const idx = {};
+  (lista || []).forEach(ins => {
+    [ins.nome, ...((ins.aliases) || [])].forEach(n => {
+      const ch = nomeBaseKey(normalizarNomeItem(n || ''));
+      if (ch && !(ch in idx)) idx[ch] = ins;
+    });
+  });
+  _insumosGestaoIndex = idx;
+  return idx;
+}
+
+function _insumoGestaoPorNome(nome) {
+  if (!_insumosGestaoIndex) return null;
+  return _insumosGestaoIndex[nomeBaseKey(normalizarNomeItem(nome || ''))] || null;
+}
+
+/* Converte um registro de separação da Gestão (sep.itens {cat:{nome:qtd}} +
+   sep.fornecedores {cat:{nome:forn}}) na lista de itens de festa daqui. */
+function _sepGestaoParaItens(sep) {
+  const itens = [];
+  const catObj = sep.itens || {};
+  Object.keys(catObj).forEach(cat => {
+    const nomesObj = catObj[cat] || {};
+    Object.keys(nomesObj).forEach(nome => {
+      const qtd = Number(nomesObj[nome]) || 0;
+      if (qtd <= 0) return;
+
+      const fornRaw = String(((sep.fornecedores || {})[cat] || {})[nome] || '').toLowerCase();
+      const fornecimento = SUFIXOS_FORNECIMENTO.includes(fornRaw) ? fornRaw : '';
+
+      const key     = normalizarNomeItem(nome);
+      const cfgLocal = itemConfigsCache[key] || itemConfigsCache[nomeBaseKey(key)];
+      const insG     = _insumoGestaoPorNome(nome);
+
+      itens.push({
+        id:            `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        nome:          (nome || '').trim(),
+        categoria:     (cfgLocal && cfgLocal.grupo) || (insG && insG.categoria) || cat || '',
+        fornecimento,
+        qtdNecessaria: qtd,
+        unidade:       (cfgLocal && cfgLocal.unidade) ||
+                       (insG && insG.unidadeCompra && String(insG.unidadeCompra).toLowerCase()) || 'un',
+        qtdSeparada:   0, qtdConferida: 0, qtdRetorno: 0, qtdGalpao: 0, qtdDanificada: 0,
+      });
+    });
+  });
+  return itens;
+}
+
+async function abrirFolhasGestao() {
+  historico.push('tela-folhas-gestao');
+  mostrarTela('tela-folhas-gestao', 'Folhas da Gestão');
+
+  const lista  = document.getElementById('folhas-gestao-lista');
+  const status = document.getElementById('folhas-gestao-status');
+  if (status) status.classList.add('hidden');
+  if (lista)  lista.innerHTML = '<div class="estado-vazio"><p>Carregando folhas da Gestão…</p></div>';
+
+  try {
+    if (!Object.keys(itemConfigsCache).length) {
+      try { (await listarItemConfigs()).forEach(c => { itemConfigsCache[c.nomeKey] = c; }); } catch (_) {}
+    }
+    const seps = await buscarSeparacoesGestao();
+    await _garantirInsumosGestaoIndex();
+
+    if (seps === null) {
+      if (lista)  lista.innerHTML = '';
+      if (status) { status.textContent = 'Não foi possível ler as folhas do sistema de gestão agora. Tente de novo em instantes.'; status.classList.remove('hidden'); }
+      return;
+    }
+    _folhasGestaoCache = seps.slice().sort((a, b) => String(b.data || '').localeCompare(String(a.data || '')));
+    await _renderFolhasGestao();
+  } catch (e) {
+    console.error('Folhas da Gestão:', e);
+    if (lista)  lista.innerHTML = '';
+    if (status) { status.textContent = 'Erro ao carregar. Tente de novo.'; status.classList.remove('hidden'); }
+  }
+}
+
+async function _renderFolhasGestao() {
+  const lista = document.getElementById('folhas-gestao-lista');
+  if (!lista) return;
+
+  let festas = [];
+  try { festas = await buscarTodasFestas(); } catch (_) {}
+  const festasPorChave = new Map();
+  festas.forEach(f => festasPorChave.set(_chaveMatchEvento(f.nome, f.data), f));
+
+  if (!_folhasGestaoCache.length) {
+    lista.innerHTML = '<div class="estado-vazio"><p>Nenhuma folha de separação encontrada no sistema de gestão.</p></div>';
+    return;
+  }
+
+  lista.innerHTML = _folhasGestaoCache.map((sep, i) => {
+    const nItens = _sepGestaoParaItens(sep).length;
+    const festa  = festasPorChave.get(_chaveMatchEvento(sep.evento || sep.cliente, sep.data));
+    let badge, acao;
+    if (festa) {
+      badge = `<span class="badge-ordem">Festa aqui: ${_escHtml(STATUS_LABELS[festa.status] || festa.status)}</span>`;
+      acao  = `<button class="btn-secundario btn-sm" id="fg-btn-${i}" onclick="importarFolhaGestao(${i})">Atualizar itens</button>`;
+    } else {
+      badge = `<span class="badge-ordem">Nova</span>`;
+      acao  = `<button class="btn-primario btn-sm" id="fg-btn-${i}" onclick="importarFolhaGestao(${i})">Importar</button>`;
+    }
+    return `
+      <div class="card-festa" style="display:flex;gap:12px;align-items:center;cursor:default">
+        <div style="flex:1;min-width:0">
+          <div class="card-festa-nome">${_escHtml(sep.evento || sep.cliente || 'Sem nome')} ${badge}</div>
+          <div class="card-festa-meta">${sep.data ? _escHtml(formatarData(sep.data)) : 'sem data'} · ${_escHtml(sep.local || 'sem local')}</div>
+          <div class="card-festa-meta">${nItens} ite${nItens !== 1 ? 'ns' : 'm'}${sep.convidados ? ' · ' + _escHtml(String(sep.convidados)) + ' convidados' : ''}</div>
+        </div>
+        <div style="flex-shrink:0">${acao}</div>
+      </div>`;
+  }).join('');
+}
+
+async function importarFolhaGestao(idx) {
+  const sep = (_folhasGestaoCache || [])[idx];
+  if (!sep) return;
+
+  const btn = document.getElementById(`fg-btn-${idx}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Importando…'; }
+
+  try {
+    const itens = _sepGestaoParaItens(sep);
+    if (!itens.length) { toast('Essa folha não tem itens com quantidade.', 'aviso'); return; }
+
+    const festas   = await buscarTodasFestas();
+    const chaveSep = _chaveMatchEvento(sep.evento || sep.cliente, sep.data);
+    const festa    = festas.find(f => _chaveMatchEvento(f.nome, f.data) === chaveSep);
+
+    if (festa) {
+      /* Atualiza SÓ os itens: adiciona os que faltam, atualiza qtd/fornecimento
+         dos que já existem, nunca mexe em qtdSeparada/qtdConferida/etc. */
+      const atuais   = (festa.itens || []).slice();
+      const idxPorCh = {};
+      atuais.forEach((it, i) => { idxPorCh[nomeBaseKey(normalizarNomeItem(it.nome))] = i; });
+
+      let novos = 0, atualizados = 0;
+      itens.forEach(it => {
+        const ch = nomeBaseKey(normalizarNomeItem(it.nome));
+        if (ch in idxPorCh) {
+          const cur = atuais[idxPorCh[ch]];
+          const mudou = (cur.qtdNecessaria !== it.qtdNecessaria) || ((cur.fornecimento || '') !== it.fornecimento);
+          atuais[idxPorCh[ch]] = {
+            ...cur,
+            qtdNecessaria: it.qtdNecessaria,
+            unidade:       cur.unidade || it.unidade,
+            fornecimento:  it.fornecimento || cur.fornecimento || '',
+          };
+          if (mudou) atualizados++;
+        } else {
+          atuais.push(it);
+          novos++;
+        }
+      });
+
+      await atualizarFesta(festa.id, { itens: atuais });
+      _autoCriarConfigsDeItensPDF(itens);
+      toast(`Folha vinculada a "${festa.nome}". ${novos} novo(s), ${atualizados} atualizado(s).`, 'sucesso');
+    } else {
+      const dataObj = sep.data ? new Date(sep.data + 'T12:00:00') : new Date();
+      await salvarFesta({
+        nome:              sep.evento || sep.cliente || 'Evento sem nome',
+        cliente:           sep.cliente || sep.evento || '',
+        data:              dataObj,
+        hora:              sep.hrInicio || '',
+        local:             sep.local || '',
+        convidados:        Number(sep.convidados) || null,
+        obs:               '',
+        itens,
+        criadoPor:         usuarioAtual?.nome || 'Gestão',
+        origemFolhaGestao: sep.id || '',
+      });
+      _autoCriarConfigsDeItensPDF(itens);
+      toast(`Festa "${sep.evento || sep.cliente}" criada com ${itens.length} item(ns).`, 'sucesso');
+    }
+
+    await _renderFolhasGestao();
+  } catch (e) {
+    console.error('Importar folha da Gestão:', e);
+    const msg = e?.code === 'permission-denied' ? 'Sem permissão no banco.' : (e?.message || 'tente de novo');
+    toast('Erro ao importar: ' + msg, 'erro');
+    if (btn) { btn.disabled = false; btn.textContent = 'Importar'; }
+  }
+}
+
+/* ── Conferir cadastros: divergências de nome/categoria entre a Gestão e o
+   Cadastro daqui, coletadas das folhas de separação. ── */
+const _CONFERIR_IGNORA_CAT = new Set(['EQUIPE', 'COQUETEIS', 'COQUETÉIS']);
+let _conferirFaltando = [];   /* [{nome, catGestao}] */
+let _conferirCatDif   = [];   /* [{nome, id, catGestao, catLocal}] */
+
+function _normCat(s) {
+  return normalizarNomeItem(s || '').replace(/_/g, ' ').toUpperCase().trim();
+}
+
+async function abrirConferirCadastros() {
+  const el = document.getElementById('conferir-cadastros-lista');
+  if (el) el.innerHTML = '<p style="font-size:13px;color:#6B7280;padding:12px 0">Carregando…</p>';
+  document.getElementById('modal-conferir-cadastros').classList.remove('hidden');
+
+  try {
+    if (!Object.keys(itemConfigsCache).length) {
+      (await listarItemConfigs()).forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    }
+    let seps = _folhasGestaoCache;
+    if (!seps || !seps.length) seps = await buscarSeparacoesGestao();
+    await _garantirInsumosGestaoIndex();
+
+    if (!seps || !seps.length) {
+      if (el) el.innerHTML = '<p style="font-size:13px;color:#6B7280;padding:12px 0">Nenhuma folha da Gestão pra comparar.</p>';
+      return;
+    }
+
+    const vistos = {};   /* nome -> catGestao */
+    seps.forEach(sep => {
+      Object.keys(sep.itens || {}).forEach(cat => {
+        if (_CONFERIR_IGNORA_CAT.has(_normCat(cat))) return;
+        Object.keys(sep.itens[cat] || {}).forEach(nome => {
+          if ((Number(sep.itens[cat][nome]) || 0) <= 0) return;
+          if (nome in vistos) return;
+          const insG = _insumoGestaoPorNome(nome);
+          vistos[nome] = (insG && insG.categoria) || cat || '';
+        });
+      });
+    });
+
+    _conferirFaltando = [];
+    _conferirCatDif   = [];
+    Object.keys(vistos).forEach(nome => {
+      const key = normalizarNomeItem(nome);
+      const cfg = itemConfigsCache[key] || itemConfigsCache[nomeBaseKey(key)];
+      if (!cfg) { _conferirFaltando.push({ nome, catGestao: vistos[nome] }); return; }
+      const cg = _normCat(vistos[nome]);
+      const cl = _normCat(cfg.grupo);
+      if (cg && cg !== cl) _conferirCatDif.push({ nome, id: cfg.id, catGestao: vistos[nome], catLocal: cfg.grupo || '(sem categoria)' });
+    });
+    _conferirFaltando.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    _conferirCatDif.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+    if (!_conferirFaltando.length && !_conferirCatDif.length) {
+      if (el) el.innerHTML = '<p style="font-size:13px;color:#166534;padding:12px 0">Tudo alinhado — nenhum item das folhas diverge do Cadastro daqui.</p>';
+      return;
+    }
+
+    let html = '';
+    if (_conferirFaltando.length) {
+      html += `<div style="font-weight:700;font-size:13px;margin:6px 0">Não existem no Cadastro daqui (${_conferirFaltando.length})</div>`;
+      html += _conferirFaltando.map((f, i) => `
+        <div class="conf-row" data-conf-falta="${i}" style="display:flex;gap:8px;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F3F4F6">
+          <span><span style="font-weight:600;font-size:13px">${_escHtml(f.nome)}</span>
+          <span style="font-size:12px;color:#6B7280"> — Gestão: ${_escHtml(f.catGestao || 'sem categoria')}</span></span>
+          <button class="btn-secundario btn-sm" onclick="_conferirCriarLocal(${i}, this)">Criar aqui</button>
+        </div>`).join('');
+    }
+    if (_conferirCatDif.length) {
+      html += `<div style="font-weight:700;font-size:13px;margin:14px 0 6px">Categoria diferente (${_conferirCatDif.length})</div>`;
+      html += _conferirCatDif.map((c, i) => `
+        <div class="conf-row" data-conf-cat="${i}" style="display:flex;gap:8px;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #F3F4F6">
+          <span><span style="font-weight:600;font-size:13px">${_escHtml(c.nome)}</span>
+          <span style="font-size:12px;color:#6B7280;display:block">aqui: ${_escHtml(c.catLocal)} · Gestão: ${_escHtml(c.catGestao)}</span></span>
+          <button class="btn-secundario btn-sm" onclick="_conferirUsarCatGestao(${i}, this)">Usar da Gestão</button>
+        </div>`).join('');
+    }
+    if (el) el.innerHTML = html;
+  } catch (e) {
+    console.error('Conferir cadastros:', e);
+    if (el) el.innerHTML = '<p style="font-size:13px;color:var(--vermelho);padding:12px 0">Erro ao carregar. Tente de novo.</p>';
+  }
+}
+
+function fecharModalConferirCadastros() {
+  document.getElementById('modal-conferir-cadastros').classList.add('hidden');
+}
+
+async function _conferirCriarLocal(idx, btn) {
+  const item = _conferirFaltando[idx];
+  if (!item) return;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const dados = {
+      nome: item.nome, nomeKey: normalizarNomeItem(item.nome), grupo: item.catGestao || '',
+      unidade: 'un', ordemSeparacao: 999, prioridade: '',
+      eProducao: false, exibirSeparacao: true, exibirCompras: true,
+      exigeFoto: false, conferirCoord: true, refrigerado: false, diasAntesEvento: 1,
+      origemAuto: false,
+    };
+    await salvarItemConfigDB(dados);
+    itemConfigsCache[dados.nomeKey] = dados;
+    toast(`"${item.nome}" criado no Cadastro.`, 'sucesso');
+    if (btn) { const w = btn.closest('.conf-row'); if (w) w.style.opacity = '.4'; btn.textContent = 'Criado'; }
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao criar. Tente de novo.', 'erro');
+    if (btn) { btn.disabled = false; btn.textContent = 'Criar aqui'; }
+  }
+}
+
+async function _conferirUsarCatGestao(idx, btn) {
+  const item = _conferirCatDif[idx];
+  if (!item) return;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    await salvarItemConfigDB({ id: item.id, grupo: item.catGestao });
+    const k = Object.keys(itemConfigsCache).find(kk => itemConfigsCache[kk]?.id === item.id);
+    if (k) itemConfigsCache[k].grupo = item.catGestao;
+    toast('Categoria alinhada com a Gestão.', 'sucesso');
+    if (btn) { const w = btn.closest('.conf-row'); if (w) w.style.opacity = '.4'; btn.textContent = 'Feito'; }
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao salvar. Tente de novo.', 'erro');
+    if (btn) { btn.disabled = false; btn.textContent = 'Usar da Gestão'; }
   }
 }
 

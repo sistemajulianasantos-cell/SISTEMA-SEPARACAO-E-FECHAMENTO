@@ -342,16 +342,29 @@
       <h2 class="titulo-tela">Nova Festa</h2>
 
       <div class="importar-or-box">
-        <input type="file" id="input-importar-or" accept=".pdf" style="display:none"
-          onchange="processarArquivoOR(this)">
         <div>
-          <div class="importar-or-titulo">Importar Ordem de Separacao</div>
-          <div class="importar-or-desc">Selecione o PDF gerado pelo sistema para preencher automaticamente os campos e a lista de itens.</div>
+          <div class="importar-or-titulo">Puxar da Gestão</div>
+          <div class="importar-or-desc">Lê direto as Folhas de Separação já geradas no sistema de gestão — sem precisar baixar e importar PDF. Nome, fornecimento e categoria vêm certos.</div>
         </div>
-        <button class="btn-primario btn-sm" onclick="document.getElementById('input-importar-or').click()">
-          Selecionar PDF
+        <button class="btn-primario btn-sm" onclick="abrirFolhasGestao()">
+          Ver folhas da Gestão
         </button>
       </div>
+
+      <details class="importar-or-fallback" style="margin-bottom:14px">
+        <summary style="cursor:pointer;font-size:13px;color:var(--cinza-600)">Importar por PDF (reserva)</summary>
+        <div class="importar-or-box" style="margin-top:8px">
+          <input type="file" id="input-importar-or" accept=".pdf" style="display:none"
+            onchange="processarArquivoOR(this)">
+          <div>
+            <div class="importar-or-titulo">Importar Ordem de Separacao</div>
+            <div class="importar-or-desc">Selecione o PDF gerado pelo sistema para preencher automaticamente os campos e a lista de itens.</div>
+          </div>
+          <button class="btn-primario btn-sm" onclick="document.getElementById('input-importar-or').click()">
+            Selecionar PDF
+          </button>
+        </div>
+      </details>
 
       <div class="form-secao">
         <div class="form-row">
@@ -413,6 +426,33 @@
       <div class="rodape-form">
         <button class="btn-secundario" onclick="goBack()">Cancelar</button>
         <button class="btn-primario"   onclick="submitCriarFesta()">Criar Festa</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: FOLHAS DA GESTÃO (import ao vivo) ══════════ -->
+  <div id="tela-folhas-gestao" class="tela hidden">
+    <div class="container">
+      <div class="secao-header">
+        <h2 class="titulo-tela">Folhas da Gestão</h2>
+        <button class="btn-secundario btn-sm" onclick="abrirConferirCadastros()">Conferir cadastros</button>
+      </div>
+      <p class="form-hint" style="margin-bottom:12px">Folhas de Separação geradas no sistema de gestão. "Importar" cria a festa aqui (ou atualiza os itens, se a festa já existir com o mesmo nome e data).</p>
+      <div id="folhas-gestao-status" class="equipe-status-gestao hidden"></div>
+      <div id="folhas-gestao-lista" class="lista-festas"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ MODAL: CONFERIR CADASTROS (Gestão × aqui) ══════════ -->
+  <div id="modal-conferir-cadastros" class="modal-overlay hidden" onclick="fecharModalConferirCadastros()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:680px;width:95%">
+      <div class="modal-titulo">Conferir cadastros — Gestão × aqui</div>
+      <div style="font-size:13px;color:#6B7280;margin:8px 0 4px">
+        Itens que aparecem nas Folhas de Separação da Gestão e não batem com o Cadastro daqui — nome inexistente ou categoria diferente. Alinhar os dois lados evita erro de estoque no import.
+      </div>
+      <div id="conferir-cadastros-lista" style="max-height:56vh;overflow-y:auto;margin-top:10px"></div>
+      <div class="modal-acoes">
+        <button class="btn-secundario" onclick="fecharModalConferirCadastros()">Fechar</button>
       </div>
     </div>
   </div>
@@ -1604,8 +1644,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=3"></script>
-  <script src="js/firestore.js?v=49"></script>
-  <script src="js/app.js?v=108"></script>
+  <script src="js/firestore.js?v=50"></script>
+  <script src="js/app.js?v=109"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

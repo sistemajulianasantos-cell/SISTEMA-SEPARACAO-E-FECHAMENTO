@@ -599,10 +599,11 @@ async function _buscarDocGestao(docId) {
   }
 }
 
-async function buscarEquipeGestao()    { return _buscarDocGestao('equipe'); }
-async function buscarEscalasGestao()   { return _buscarDocGestao('escalas'); }
-async function buscarContratosGestao() { return _buscarDocGestao('contratos'); }
-async function buscarInsumosGestao()   { return _buscarDocGestao('insumos'); }
+async function buscarEquipeGestao()      { return _buscarDocGestao('equipe'); }
+async function buscarEscalasGestao()     { return _buscarDocGestao('escalas'); }
+async function buscarContratosGestao()   { return _buscarDocGestao('contratos'); }
+async function buscarInsumosGestao()     { return _buscarDocGestao('insumos'); }
+async function buscarSeparacoesGestao()  { return _buscarDocGestao('separacoes'); }
 
 /* ════════════════════════════════════════
    CLOUDINARY — fotos
