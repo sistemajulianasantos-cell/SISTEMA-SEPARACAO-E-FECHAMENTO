@@ -678,9 +678,6 @@ function renderizarInicio(papel) {
         <div class="inicio-card" onclick="irInicioAgenda()">
           <div class="inicio-card-nome">Agenda</div>
         </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirFolhasGestao()">
-          <div class="inicio-card-nome">Folhas da Gestão</div>
-        </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEquipe()">
           <div class="inicio-card-nome">Equipe</div>
         </div>
