@@ -593,6 +593,12 @@ async function lancarMovimentacaoEstoque(mov) {
   if (absoluto) patch.ultimaContagemEm = mov.ultimaContagemEm || TS();
   await docRef.set(patch, { merge: true });
 
+  /* Data do lançamento: normalmente "agora"; num lançamento retroativo a tela
+     passa mov.data (a data real da saída/entrada) pra aparecer no dia certo. */
+  const dataLanc = (mov.data instanceof Date && !isNaN(mov.data))
+    ? firebase.firestore.Timestamp.fromDate(mov.data)
+    : TS();
+
   const lanc = {
     nomeKey, nome, unidade,
     tipo:  mov.tipo,
@@ -601,7 +607,8 @@ async function lancarMovimentacaoEstoque(mov) {
     delta,
     saldoDepois,
     contadoPor: mov.por || '—',
-    contadoEm:  TS(),
+    contadoEm:  dataLanc,
+    ...(mov.data instanceof Date && !isNaN(mov.data) ? { retroativo: true, registradoEm: TS() } : {}),
   };
   if (mov.festaId)   lanc.festaId   = mov.festaId;
   if (mov.festaNome) lanc.festaNome = mov.festaNome;

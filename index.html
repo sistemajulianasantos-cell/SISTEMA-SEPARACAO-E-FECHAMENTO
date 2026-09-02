@@ -1645,21 +1645,27 @@
     <div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;width:95%">
       <div class="modal-titulo">Registrar movimentação de estoque</div>
 
-      <div class="form-group" style="margin-top:14px">
-        <label>Tipo</label>
-        <select id="mov-tipo" onchange="_movAoTrocarTipo()">
-          <option value="saida_evento">Saída — para um evento</option>
-          <option value="saida_pedido_cliente">Saída — pedido de cliente</option>
-          <option value="saida_emprestimo">Saída — empréstimo / locação</option>
-          <option value="saida_uso_interno">Saída — uso interno / equipe</option>
-          <option value="saida_perda">Saída — perda / quebra</option>
-          <option value="entrada">Entrada avulsa</option>
-        </select>
+      <div class="form-row" style="margin-top:14px">
+        <div class="form-group">
+          <label>Tipo</label>
+          <select id="mov-tipo" onchange="_movAoTrocarTipo()">
+            <option value="saida_evento">Saída — para um evento</option>
+            <option value="saida_pedido_cliente">Saída — pedido de cliente</option>
+            <option value="saida_emprestimo">Saída — empréstimo / locação</option>
+            <option value="saida_uso_interno">Saída — uso interno / equipe</option>
+            <option value="saida_perda">Saída — perda / quebra</option>
+            <option value="entrada">Entrada avulsa</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Data</label>
+          <input type="date" id="mov-data" />
+        </div>
       </div>
 
       <div class="form-group hidden" id="mov-festa-wrap">
         <label>Evento</label>
-        <select id="mov-festa"></select>
+        <select id="mov-festa" onchange="_movAoEscolherFesta()"></select>
       </div>
 
       <div class="form-group hidden" id="mov-obs-wrap">
@@ -1716,8 +1722,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=4"></script>
-  <script src="js/firestore.js?v=51"></script>
-  <script src="js/app.js?v=116"></script>
+  <script src="js/firestore.js?v=52"></script>
+  <script src="js/app.js?v=117"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

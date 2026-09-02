@@ -6445,22 +6445,22 @@ async function abrirModalRegistrarMov() {
       .map(n => `<option value="${_escHtml(n)}">`).join('');
   }
 
-  /* dropdown de festas: ativas + recém-concluídas (últimos 60 dias) */
+  /* dropdown de festas: todas (menos canceladas), mais recentes primeiro —
+     pra dar pra amarrar uma saída retroativa a um evento antigo também. */
   const sel = document.getElementById('mov-festa');
   if (sel) {
     let festas = todasFestasCache && todasFestasCache.length ? todasFestasCache.slice() : [];
     if (!festas.length) { try { festas = await buscarTodasFestas(); } catch (_) {} }
-    const limite = Date.now() - 60 * 24 * 60 * 60 * 1000;
     festas = festas
-      .filter(f => {
-        if (f.status === 'cancelada') return false;
-        const d = toDate(f.data);
-        return isNaN(d) ? true : d.getTime() >= limite;
-      })
+      .filter(f => f.status !== 'cancelada')
       .sort((a, b) => toDate(b.data) - toDate(a.data));
     sel.innerHTML = '<option value="">— escolher evento —</option>' +
-      festas.map(f => `<option value="${_escHtml(f.id)}" data-nome="${_escHtml(f.nome)}">${_escHtml(f.nome)}${f.data ? ' — ' + _escHtml(formatarData(f.data)) : ''}</option>`).join('');
+      festas.map(f => `<option value="${_escHtml(f.id)}" data-nome="${_escHtml(f.nome)}" data-data="${_escHtml(normalizarData(f.data) || '')}">${_escHtml(f.nome)}${f.data ? ' — ' + _escHtml(formatarData(f.data)) : ''}</option>`).join('');
   }
+
+  const hojeIso = normalizarData(new Date());
+  const elData = document.getElementById('mov-data');
+  if (elData) { elData.value = hojeIso; elData.max = hojeIso; }
 
   document.getElementById('mov-tipo').value = 'saida_evento';
   document.getElementById('mov-obs').value  = '';
@@ -6481,6 +6481,15 @@ function _movAoTrocarTipo() {
   const obsWrap = document.getElementById('mov-obs-wrap');
   obsWrap.classList.toggle('hidden', !cfg.obs);
   if (cfg.obs) document.getElementById('mov-obs-label').textContent = cfg.obs;
+}
+
+/* Ao escolher o evento, joga a data da movimentação pra data do evento
+   (é o normal numa saída retroativa) — ela ainda pode ajustar. */
+function _movAoEscolherFesta() {
+  const sel = document.getElementById('mov-festa');
+  const dataFesta = sel?.options[sel.selectedIndex]?.dataset.data || '';
+  const elData = document.getElementById('mov-data');
+  if (elData && dataFesta) elData.value = dataFesta;
 }
 
 function _movAddLinha(preNome = '') {
@@ -6508,6 +6517,12 @@ async function confirmarRegistrarMov() {
   }
   const obs = document.getElementById('mov-obs').value.trim();
 
+  /* Data da movimentação: se for hoje, deixa "agora" (data null → serverTimestamp);
+     se for uma data passada, é um lançamento retroativo. */
+  const dataStr  = document.getElementById('mov-data')?.value || '';
+  const hojeStr  = normalizarData(new Date());
+  const dataMov  = (dataStr && dataStr !== hojeStr) ? new Date(dataStr + 'T12:00:00') : null;
+
   const linhas = [...document.querySelectorAll('#mov-itens-lista .item-criar-row')].map(r => ({
     nome: r.querySelector('.mov-item-nome').value.trim(),
     qtd:  parseFloat(r.querySelector('.mov-item-qtd').value) || 0,
@@ -6534,6 +6549,7 @@ async function confirmarRegistrarMov() {
         festaId: festaId || undefined,
         festaNome: festaNome || undefined,
         obs: obs || undefined,
+        data: dataMov || undefined,
         por: usuarioAtual?.nome || '—',
       });
       estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome: nomeReal, unidade, qtd: saldo, nomeKey };
