@@ -535,6 +535,98 @@ async function registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contado
   });
 }
 
+/* ════════════════════════════════════════
+   LIVRO-CAIXA DE ESTOQUE
+   Toda mudança de estoque passa por aqui: atualiza o saldo do item E grava
+   um lançamento em historico_contagem com o saldo resultante e (quando for
+   saída de evento) o vínculo com a festa. É a fonte única de mutação —
+   nenhuma tela deve chamar salvarItemEstoque diretamente para MUDAR
+   quantidade (só renomear chave / metadados).
+
+   mov = {
+     nomeKey, nome, unidade,
+     tipo,        // 'entrada' | 'saida' | 'retorno' | 'contagem' | 'producao_baixa' | 'producao_entrada'
+     motivo,      // p/ tipo 'saida': 'evento' | 'pedido_cliente' | 'emprestimo' | 'uso_interno' | 'perda'
+     qtd,         // magnitude (sempre positiva); p/ 'contagem' é o valor absoluto contado
+     festaId, festaNome,   // quando motivo === 'evento'
+     obs,         // texto livre (nome do cliente, etc.)
+     por,         // quem registrou
+     ultimaContagemEm,     // opcional, só p/ 'contagem'
+   }
+   Retorna o novo saldo do item.
+════════════════════════════════════════ */
+const _SINAL_MOV = {
+  entrada: 1, retorno: 1, producao_entrada: 1,
+  saida: -1, producao_baixa: -1,
+};
+
+async function lancarMovimentacaoEstoque(mov) {
+  const nomeKey  = mov.nomeKey;
+  if (!nomeKey) throw new Error('lancarMovimentacaoEstoque: nomeKey obrigatório');
+  const absoluto = mov.tipo === 'contagem';
+
+  const snap  = await db.collection('estoque').where('nomeKey', '==', nomeKey).limit(1).get();
+  const docRef     = snap.empty ? db.collection('estoque').doc() : snap.docs[0].ref;
+  const atual      = snap.empty ? {} : snap.docs[0].data();
+  const saldoAntes = Number(atual.qtd) || 0;
+
+  let delta, saldoDepois;
+  if (absoluto) {
+    saldoDepois = Number(mov.qtd) || 0;
+    delta       = saldoDepois - saldoAntes;
+  } else {
+    delta       = (_SINAL_MOV[mov.tipo] || 0) * Math.abs(Number(mov.qtd) || 0);
+    saldoDepois = saldoAntes + delta;
+  }
+
+  const nome    = mov.nome    || atual.nome    || nomeKey;
+  const unidade = mov.unidade || atual.unidade || 'un';
+
+  const patch = { nomeKey, nome, unidade, updatedAt: TS() };
+  /* increment() só é seguro se o campo já for numérico; senão escreve o
+     valor absoluto calculado. */
+  if (absoluto || snap.empty || typeof atual.qtd !== 'number') {
+    patch.qtd = saldoDepois;
+  } else {
+    patch.qtd = firebase.firestore.FieldValue.increment(delta);
+  }
+  if (absoluto) patch.ultimaContagemEm = mov.ultimaContagemEm || TS();
+  await docRef.set(patch, { merge: true });
+
+  const lanc = {
+    nomeKey, nome, unidade,
+    tipo:  mov.tipo,
+    motivo: mov.motivo || '',
+    qtd:   absoluto ? saldoDepois : Math.abs(Number(mov.qtd) || 0),
+    delta,
+    saldoDepois,
+    contadoPor: mov.por || '—',
+    contadoEm:  TS(),
+  };
+  if (mov.festaId)   lanc.festaId   = mov.festaId;
+  if (mov.festaNome) lanc.festaNome = mov.festaNome;
+  if (mov.obs)       lanc.obs       = mov.obs;
+  await db.collection('historico_contagem').add(lanc);
+
+  return saldoDepois;
+}
+
+/* Lançamentos de estoque de uma festa específica (saídas de evento e retornos
+   já registrados) — usado na tela de Detalhe da Festa. */
+async function listarMovimentacoesDaFesta(festaId) {
+  if (!festaId) return [];
+  const snap = await db.collection('historico_contagem')
+    .where('festaId', '==', festaId)
+    .get();
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => {
+      const ta = a.contadoEm?.toMillis ? a.contadoEm.toMillis() : 0;
+      const tb = b.contadoEm?.toMillis ? b.contadoEm.toMillis() : 0;
+      return tb - ta;
+    });
+}
+
 async function listarHistoricoContagem(limite = 300) {
   const snap = await db.collection('historico_contagem')
     .orderBy('contadoEm', 'desc')

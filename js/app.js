@@ -2626,6 +2626,11 @@ async function concluirConferencia() {
       coordenador:      usuarioAtual.nome,
     });
 
+    /* Baixa automática do estoque: o que foi conferido saiu do galpão pra
+       este evento. Não trava a conclusão se falhar. */
+    try { await _baixarEstoqueDaFesta({ ...festaAtual, estoqueBaixado: festaAtual.estoqueBaixado }, itens); }
+    catch (e) { console.error('Baixa automática de estoque:', e); }
+
     const msg = divergencias.length
       ? `Conferencia concluida com ${divergencias.length} divergencia(s). Festa liberada.`
       : 'Conferencia concluida sem divergencias. Festa liberada.';
@@ -2734,6 +2739,10 @@ async function concluirRetorno() {
       obsRetorno:   document.getElementById('ret-obs').value,
       fotosRetorno: fotoUrls,
     });
+
+    /* Volta pro estoque o que retornou do evento. */
+    try { await _retornarEstoqueDaFesta(festaAtual, itens); }
+    catch (e) { console.error('Retorno automático de estoque:', e); }
 
     toast('Retorno registrado. Festa enviada para o Galpao.', 'sucesso');
     abrirRelatorioRetorno({ ...festaAtual, itens, fotosRetorno: fotoUrls });
@@ -3598,7 +3607,10 @@ function renderizarDetalhe(festa) {
         <div class="grade-fotos">${festa.fotosRetorno.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
       </div>` : ''}
 
+    <div id="detalhe-mov-estoque"></div>
   `;
+
+  _renderMovEstoqueFesta(festa.id);
 }
 
 /* Festas "Agendada" sempre podem ser excluídas. Festas de teste (nome contém
@@ -5506,11 +5518,13 @@ async function invAdicionarItem() {
   const nomeKey  = cfg ? (cfg.nomeKey || normalizarNomeItem(cfg.nome)) : normalizarNomeItem(nome);
   const unidade  = cfg?.unidade || 'un';
   const nomeReal = cfg?.nome || nome;
-  const dadosSalvar = { nome: nomeReal, unidade, qtd, ultimaContagemEm: new Date() };
 
   try {
-    await salvarItemEstoque(nomeKey, dadosSalvar);
-    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), ...dadosSalvar, nomeKey };
+    const saldo = await lancarMovimentacaoEstoque({
+      nomeKey, nome: nomeReal, unidade, tipo: 'contagem', qtd,
+      por: usuarioAtual?.nome || '—', ultimaContagemEm: new Date(),
+    });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome: nomeReal, unidade, qtd: saldo, nomeKey, ultimaContagemEm: new Date() };
     if (nomeInput) nomeInput.value = '';
     if (qtdInput)  qtdInput.value  = '';
     const unEl = document.getElementById('inv-add-un');
@@ -5520,12 +5534,6 @@ async function invAdicionarItem() {
   } catch (e) {
     console.error(e);
     toast('Erro ao salvar.', 'erro');
-    return;
-  }
-  try {
-    await registrarContagemHistorico({ nomeKey, nome: nomeReal, unidade, qtd, contadoPor: usuarioAtual?.nome || '—', tipo: 'contagem' });
-  } catch (e) {
-    toast('Aviso: não foi possível salvar no histórico.', 'erro');
   }
 }
 
@@ -5687,26 +5695,21 @@ async function entAdicionarItem() {
   const nomeKey  = cfg ? (cfg.nomeKey || normalizarNomeItem(cfg.nome)) : normalizarNomeItem(nome);
   const unidade  = cfg?.unidade || 'un';
   const nomeReal = cfg?.nome || nome;
-  const qtdAtual = estoqueCache[nomeKey]?.qtd || 0;
-  const qtdNova  = qtdAtual + qtdChegando;
   try {
-    await salvarItemEstoque(nomeKey, { nome: nomeReal, unidade, qtd: qtdNova });
-    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome: nomeReal, unidade, qtd: qtdNova, nomeKey };
+    const saldo = await lancarMovimentacaoEstoque({
+      nomeKey, nome: nomeReal, unidade, tipo: 'entrada', qtd: qtdChegando,
+      por: usuarioAtual?.nome || '—',
+    });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome: nomeReal, unidade, qtd: saldo, nomeKey };
     if (nomeInput) nomeInput.value = '';
     if (qtdInput)  qtdInput.value  = '';
     const unEl = document.getElementById('ent-add-un');
     if (unEl) unEl.textContent = '';
-    toast(`+${qtdChegando} ${unidade} de "${nomeReal}" — total agora: ${qtdNova} ${unidade}`, 'sucesso');
+    toast(`+${qtdChegando} ${unidade} de "${nomeReal}" — total agora: ${saldo} ${unidade}`, 'sucesso');
     renderizarEntradaMercadoria();
   } catch (e) {
     console.error(e);
     toast('Erro ao salvar.', 'erro');
-    return;
-  }
-  try {
-    await registrarContagemHistorico({ nomeKey, nome: nomeReal, unidade, qtd: qtdChegando, contadoPor: usuarioAtual?.nome || '—', tipo: 'entrada' });
-  } catch (e) {
-    toast('Aviso: não foi possível salvar no histórico.', 'erro');
   }
 }
 
@@ -5772,26 +5775,17 @@ async function registrarEntradaMercadoria(nomeKey, nome, unidade) {
   const input       = document.getElementById(`ent-qty-${nomeKey}`);
   const qtdChegando = input ? (parseFloat(input.value) || 0) : 0;
   if (qtdChegando <= 0) return toast('Informe quanto está chegando.', 'erro');
-  const qtdAtual = estoqueCache[nomeKey]?.qtd || 0;
-  const qtdNova  = qtdAtual + qtdChegando;
   try {
-    await salvarItemEstoque(nomeKey, { nome, unidade, qtd: qtdNova });
-    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd: qtdNova, nomeKey };
-    toast(`+${qtdChegando} ${unidade || 'un'} de "${nome}" — total agora: ${qtdNova} ${unidade || 'un'}`, 'sucesso');
+    const saldo = await lancarMovimentacaoEstoque({
+      nomeKey, nome, unidade, tipo: 'entrada', qtd: qtdChegando,
+      por: usuarioAtual?.nome || '—',
+    });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd: saldo, nomeKey };
+    toast(`+${qtdChegando} ${unidade || 'un'} de "${nome}" — total agora: ${saldo} ${unidade || 'un'}`, 'sucesso');
     renderizarEntradaMercadoria();
   } catch (e) {
     console.error(e);
     toast('Erro ao registrar entrada. Tente novamente.', 'erro');
-    return;
-  }
-  try {
-    await registrarContagemHistorico({
-      nomeKey, nome, unidade, qtd: qtdChegando,
-      contadoPor: usuarioAtual?.nome || '—', tipo: 'entrada',
-    });
-  } catch (e) {
-    console.error('Erro ao registrar histórico:', e);
-    toast('Aviso: não foi possível salvar no histórico de contagem.', 'erro');
   }
 }
 
@@ -5974,25 +5968,20 @@ async function confirmarRegistrarProducao() {
     /* Baixa cada insumo usado */
     for (const insumo of _prodInsumos) {
       const qtdAtual = estoqueCache[insumo.nomeKey]?.qtd || 0;
-      const qtdNova  = qtdAtual - insumo.qtd;
-      if (qtdNova < 0) avisosNegativo.push(insumo.nome);
-      await salvarItemEstoque(insumo.nomeKey, { nome: insumo.nome, unidade: insumo.unidade, qtd: qtdNova });
-      estoqueCache[insumo.nomeKey] = { ...(estoqueCache[insumo.nomeKey] || {}), nome: insumo.nome, unidade: insumo.unidade, qtd: qtdNova, nomeKey: insumo.nomeKey };
-      await registrarContagemHistorico({
-        nomeKey: insumo.nomeKey, nome: insumo.nome, unidade: insumo.unidade, qtd: insumo.qtd,
-        contadoPor: usuarioAtual?.nome || '—', tipo: 'producao_baixa',
+      if (qtdAtual - insumo.qtd < 0) avisosNegativo.push(insumo.nome);
+      const saldo = await lancarMovimentacaoEstoque({
+        nomeKey: insumo.nomeKey, nome: insumo.nome, unidade: insumo.unidade,
+        tipo: 'producao_baixa', qtd: insumo.qtd, por: usuarioAtual?.nome || '—',
       });
+      estoqueCache[insumo.nomeKey] = { ...(estoqueCache[insumo.nomeKey] || {}), nome: insumo.nome, unidade: insumo.unidade, qtd: saldo, nomeKey: insumo.nomeKey };
     }
 
     /* Soma o que foi produzido */
-    const qtdAtualSaida = estoqueCache[nomeKeySaida]?.qtd || 0;
-    const qtdNovaSaida  = qtdAtualSaida + qtdSaida;
-    await salvarItemEstoque(nomeKeySaida, { nome: nomeSaidaReal, unidade: unidadeSaida, qtd: qtdNovaSaida });
-    estoqueCache[nomeKeySaida] = { ...(estoqueCache[nomeKeySaida] || {}), nome: nomeSaidaReal, unidade: unidadeSaida, qtd: qtdNovaSaida, nomeKey: nomeKeySaida };
-    await registrarContagemHistorico({
-      nomeKey: nomeKeySaida, nome: nomeSaidaReal, unidade: unidadeSaida, qtd: qtdSaida,
-      contadoPor: usuarioAtual?.nome || '—', tipo: 'producao_entrada',
+    const saldoSaida = await lancarMovimentacaoEstoque({
+      nomeKey: nomeKeySaida, nome: nomeSaidaReal, unidade: unidadeSaida,
+      tipo: 'producao_entrada', qtd: qtdSaida, por: usuarioAtual?.nome || '—',
     });
+    estoqueCache[nomeKeySaida] = { ...(estoqueCache[nomeKeySaida] || {}), nome: nomeSaidaReal, unidade: unidadeSaida, qtd: saldoSaida, nomeKey: nomeKeySaida };
 
     toast(
       avisosNegativo.length
@@ -6023,20 +6012,16 @@ async function salvarInventarioQtd(nomeKey, nome, unidade) {
   const qtd   = parseFloat(input.value) || 0;
   const agora = new Date();
   try {
-    await salvarItemEstoque(nomeKey, { nome, unidade, qtd, ultimaContagemEm: agora });
-    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey, ultimaContagemEm: agora };
-    toast(`${nome}: ${qtd} ${unidade || 'un'}`, 'sucesso');
+    const saldo = await lancarMovimentacaoEstoque({
+      nomeKey, nome, unidade, tipo: 'contagem', qtd,
+      por: usuarioAtual?.nome || '—', ultimaContagemEm: agora,
+    });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd: saldo, nomeKey, ultimaContagemEm: agora };
+    toast(`${nome}: ${saldo} ${unidade || 'un'}`, 'sucesso');
     renderizarInventario();
   } catch (e) {
     console.error(e);
     toast('Erro ao salvar. Tente novamente.', 'erro');
-    return;
-  }
-  try {
-    await registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor: usuarioAtual?.nome || '—', tipo: 'contagem' });
-  } catch (e) {
-    console.error('Erro ao registrar histórico:', e);
-    toast('Aviso: não foi possível salvar no histórico de contagem.', 'erro');
   }
 }
 
@@ -6063,9 +6048,11 @@ async function desfazerContagemInventario(btn, nomeKey, nome, unidade) {
        "Contados" com o número só corrigido. Por isso ultimaContagemEm
        recua pro passado em vez de virar "agora". */
     const passado = new Date(0);
-    await salvarItemEstoque(nomeKey, { nome, unidade, qtd: valorAnterior, ultimaContagemEm: passado });
+    await lancarMovimentacaoEstoque({
+      nomeKey, nome, unidade, tipo: 'contagem', qtd: valorAnterior,
+      por: usuarioAtual?.nome || '—', ultimaContagemEm: passado,
+    });
     estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd: valorAnterior, nomeKey, ultimaContagemEm: passado };
-    await registrarContagemHistorico({ nomeKey, nome, unidade, qtd: valorAnterior, contadoPor: usuarioAtual?.nome || '—', tipo: 'contagem' });
     toast(`Contagem de "${nome}" desfeita — voltou pra ${valorAnterior} ${unidade || 'un'} e pra aba "A Contar".`, 'sucesso');
     renderizarInventario();
   } catch (e) {
@@ -6103,10 +6090,17 @@ async function _abrirHistoricoContagemLegado() {
 /* Tipos de lançamento no historico_contagem — cada ação de estoque grava um
    desses, usado tanto na tabela de Histórico quanto na legenda dela. */
 const TIPO_HISTORICO = {
-  contagem:         { label: 'Contagem',        cor: '#111827', sinal: ''  },
-  entrada:          { label: 'Entrada',         cor: '#1D4ED8', sinal: '+' },
-  producao_baixa:   { label: 'Baixa (produção)', cor: '#B91C1C', sinal: '-' },
-  producao_entrada: { label: 'Produzido',       cor: '#6D28D9', sinal: '+' },
+  contagem:         { label: 'Contagem',         cor: '#111827', sinal: ''  },
+  entrada:          { label: 'Entrada',          cor: '#1D4ED8', sinal: '+' },
+  saida:            { label: 'Saída',            cor: '#B45309', sinal: '−' },
+  retorno:          { label: 'Retorno',          cor: '#047857', sinal: '+' },
+  producao_baixa:   { label: 'Baixa (produção)', cor: '#B91C1C', sinal: '−' },
+  producao_entrada: { label: 'Produzido',        cor: '#6D28D9', sinal: '+' },
+};
+
+const _MOTIVO_LABEL = {
+  evento: 'evento', pedido_cliente: 'pedido de cliente', emprestimo: 'empréstimo',
+  uso_interno: 'uso interno', perda: 'perda',
 };
 
 function renderizarHistoricoContagem(registros, containerId) {
@@ -6137,7 +6131,11 @@ function renderizarHistoricoContagem(registros, containerId) {
   const chaveBaseRegistro = r =>
     nomeBaseKey(r.nomeKey || normalizarNomeItem(r.nome || '')) || (r.nome || '');
 
-  registros.forEach(r => {
+  const regsFiltrados = _movFiltroTipo
+    ? registros.filter(r => (r.tipo || 'contagem') === _movFiltroTipo)
+    : registros;
+
+  regsFiltrados.forEach(r => {
     const d = r.contadoEm?.toDate ? r.contadoEm.toDate() : new Date(r.contadoEm);
     if (isNaN(d)) return;
     const diaKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -6159,17 +6157,21 @@ function renderizarHistoricoContagem(registros, containerId) {
   /* Sem isso, só aparece na tabela quem já teve pelo menos um registro de
      histórico (contagem/entrada/produção) — item cadastrado que nunca foi
      contado nem movimentado simplesmente sumia da lista. Completa com todo
-     item do Cadastro que ainda não apareceu, mesmo que fique só com "—". */
-  Object.values(itemConfigsCache).forEach(cfg => {
-    const chave = nomeBaseKey(cfg.nomeKey || '');
-    if (!chave || porProdutoDia[chave]) return;
-    porProdutoDia[chave] = {
-      chave,
-      nome:    cfg.nome,
-      unidade: cfg.unidade || estoqueDoItem(cfg.nomeKey)?.unidade || 'un',
-      porDia:  {},
-    };
-  });
+     item do Cadastro que ainda não apareceu, mesmo que fique só com "—".
+     Com filtro de tipo ativo, não completa (só interessa quem teve aquele
+     tipo de movimento). */
+  if (!_movFiltroTipo) {
+    Object.values(itemConfigsCache).forEach(cfg => {
+      const chave = nomeBaseKey(cfg.nomeKey || '');
+      if (!chave || porProdutoDia[chave]) return;
+      porProdutoDia[chave] = {
+        chave,
+        nome:    cfg.nome,
+        unidade: cfg.unidade || estoqueDoItem(cfg.nomeKey)?.unidade || 'un',
+        porDia:  {},
+      };
+    });
+  }
 
   const dias = Object.keys(diasTs).sort((a, b) => diasTs[b] - diasTs[a]);
   const fmtDia = diaKey => {
@@ -6212,9 +6214,14 @@ function renderizarHistoricoContagem(registros, containerId) {
       const info = TIPO_HISTORICO[r.tipo] || TIPO_HISTORICO.contagem;
       const d = r.contadoEm?.toDate ? r.contadoEm.toDate() : new Date(r.contadoEm);
       const hora = !isNaN(d) ? `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
+      const contexto = r.festaNome
+        ? ` (${_MOTIVO_LABEL[r.motivo] || r.motivo || 'evento'}: ${r.festaNome})`
+        : (r.motivo ? ` (${_MOTIVO_LABEL[r.motivo] || r.motivo}${r.obs ? ': ' + r.obs : ''})`
+                    : (r.obs ? ` (${r.obs})` : ''));
+      const saldoTxt = (r.saldoDepois != null) ? ` · saldo: ${r.saldoDepois}` : '';
       return `
         <td style="padding:8px 10px;text-align:center;font-weight:700;white-space:nowrap;border-bottom:1px solid #F3F4F6;color:${info.cor}"
-          title="${info.label} — ${_escHtml(r.contadoPor || '—')} às ${hora}">
+          title="${_escHtml(info.label + contexto)} — ${_escHtml(r.contadoPor || '—')} às ${hora}${_escHtml(saldoTxt)}">
           ${info.sinal}${r.qtd}
         </td>`;
     }).join('');
@@ -6318,6 +6325,8 @@ function trocarAbaEstoque(aba, btn) {
 
   const elConteudo  = document.getElementById('estoque-conteudo');
   const elHistorico = document.getElementById('estoque-historico');
+  const elMovFilt   = document.getElementById('estoque-mov-filtros');
+  if (elMovFilt) elMovFilt.classList.toggle('hidden', aba !== 'historico');
 
   if (aba === 'historico') {
     if (elConteudo)  elConteudo.classList.add('hidden');
@@ -6367,6 +6376,241 @@ function filtrarEstoqueCat(val) {
 function ordenarEstoque(val) {
   _estoqueOrdem = val || 'az';
   _reRenderEstoqueAtual();
+}
+
+let _movFiltroTipo = '';
+function filtrarMovTipo(val) {
+  _movFiltroTipo = val || '';
+  renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
+}
+
+/* ══════════════════════════════════════════════════
+   REGISTRAR MOVIMENTAÇÃO DE ESTOQUE (saída p/ evento ou pedido, entrada avulsa)
+══════════════════════════════════════════════════ */
+const _MOV_MODAL = {
+  saida_evento:         { tipo: 'saida', motivo: 'evento',         festa: true  },
+  saida_pedido_cliente: { tipo: 'saida', motivo: 'pedido_cliente', obs: 'Cliente' },
+  saida_emprestimo:     { tipo: 'saida', motivo: 'emprestimo',     obs: 'Para quem / contrato' },
+  saida_uso_interno:    { tipo: 'saida', motivo: 'uso_interno',    obs: 'Motivo (degustação, treino…)' },
+  saida_perda:          { tipo: 'saida', motivo: 'perda',          obs: 'O que aconteceu' },
+  entrada:              { tipo: 'entrada', motivo: '',             obs: 'Origem (opcional)' },
+};
+
+async function abrirModalRegistrarMov() {
+  if (!Object.keys(itemConfigsCache).length) {
+    try { (await listarItemConfigs()).forEach(c => { itemConfigsCache[c.nomeKey] = c; }); } catch (_) {}
+  }
+
+  /* datalist de itens */
+  const dl = document.getElementById('mov-itens-datalist');
+  if (dl) {
+    dl.innerHTML = Object.values(itemConfigsCache)
+      .map(c => c.nome).filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+      .map(n => `<option value="${_escHtml(n)}">`).join('');
+  }
+
+  /* dropdown de festas: ativas + recém-concluídas (últimos 60 dias) */
+  const sel = document.getElementById('mov-festa');
+  if (sel) {
+    let festas = todasFestasCache && todasFestasCache.length ? todasFestasCache.slice() : [];
+    if (!festas.length) { try { festas = await buscarTodasFestas(); } catch (_) {} }
+    const limite = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    festas = festas
+      .filter(f => {
+        if (f.status === 'cancelada') return false;
+        const d = toDate(f.data);
+        return isNaN(d) ? true : d.getTime() >= limite;
+      })
+      .sort((a, b) => toDate(b.data) - toDate(a.data));
+    sel.innerHTML = '<option value="">— escolher evento —</option>' +
+      festas.map(f => `<option value="${_escHtml(f.id)}" data-nome="${_escHtml(f.nome)}">${_escHtml(f.nome)}${f.data ? ' — ' + _escHtml(formatarData(f.data)) : ''}</option>`).join('');
+  }
+
+  document.getElementById('mov-tipo').value = 'saida_evento';
+  document.getElementById('mov-obs').value  = '';
+  document.getElementById('mov-itens-lista').innerHTML = '';
+  _movAddLinha();
+  _movAoTrocarTipo();
+
+  document.getElementById('modal-registrar-mov').classList.remove('hidden');
+}
+
+function fecharModalRegistrarMov() {
+  document.getElementById('modal-registrar-mov').classList.add('hidden');
+}
+
+function _movAoTrocarTipo() {
+  const cfg = _MOV_MODAL[document.getElementById('mov-tipo').value] || {};
+  document.getElementById('mov-festa-wrap').classList.toggle('hidden', !cfg.festa);
+  const obsWrap = document.getElementById('mov-obs-wrap');
+  obsWrap.classList.toggle('hidden', !cfg.obs);
+  if (cfg.obs) document.getElementById('mov-obs-label').textContent = cfg.obs;
+}
+
+function _movAddLinha(preNome = '') {
+  const row = document.createElement('div');
+  row.className = 'item-criar-row';
+  row.innerHTML = `
+    <input type="text"   class="mov-item-nome" list="mov-itens-datalist" placeholder="Nome do item" value="${_escHtml(preNome)}" />
+    <input type="number" class="mov-item-qtd"  min="0" step="any" placeholder="0" />
+    <button class="btn-del-item" onclick="this.closest('.item-criar-row').remove()">x</button>
+  `;
+  document.getElementById('mov-itens-lista').appendChild(row);
+}
+
+async function confirmarRegistrarMov() {
+  const modalTipo = document.getElementById('mov-tipo').value;
+  const cfg = _MOV_MODAL[modalTipo];
+  if (!cfg) return;
+
+  let festaId = '', festaNome = '';
+  if (cfg.festa) {
+    const selF = document.getElementById('mov-festa');
+    festaId = selF.value;
+    if (!festaId) return toast('Escolha o evento.', 'erro');
+    festaNome = selF.options[selF.selectedIndex]?.dataset.nome || '';
+  }
+  const obs = document.getElementById('mov-obs').value.trim();
+
+  const linhas = [...document.querySelectorAll('#mov-itens-lista .item-criar-row')].map(r => ({
+    nome: r.querySelector('.mov-item-nome').value.trim(),
+    qtd:  parseFloat(r.querySelector('.mov-item-qtd').value) || 0,
+  })).filter(l => l.nome && l.qtd > 0);
+
+  if (!linhas.length) return toast('Adicione ao menos um item com quantidade.', 'erro');
+
+  const btn = document.getElementById('btn-confirmar-mov');
+  if (btn) { btn.disabled = true; btn.textContent = 'Registrando…'; }
+
+  let ok = 0;
+  const naoAchados = [];
+  for (const l of linhas) {
+    const c = _resolverItemCatalogoPorNome(l.nome);
+    const nomeKey  = c ? (c.nomeKey || normalizarNomeItem(c.nome)) : normalizarNomeItem(l.nome);
+    const nomeReal = c ? c.nome : l.nome;
+    const unidade  = c ? (c.unidade || estoqueDoItem(nomeKey)?.unidade || 'un') : (estoqueDoItem(nomeKey)?.unidade || 'un');
+    if (!c) naoAchados.push(l.nome);
+    try {
+      const saldo = await lancarMovimentacaoEstoque({
+        nomeKey, nome: nomeReal, unidade,
+        tipo: cfg.tipo, motivo: cfg.motivo,
+        qtd: l.qtd,
+        festaId: festaId || undefined,
+        festaNome: festaNome || undefined,
+        obs: obs || undefined,
+        por: usuarioAtual?.nome || '—',
+      });
+      estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome: nomeReal, unidade, qtd: saldo, nomeKey };
+      ok++;
+    } catch (e) {
+      console.error('Registrar movimentação:', e);
+    }
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Registrar'; }
+
+  if (ok) {
+    toast(`${ok} movimentação(ões) registrada(s).${naoAchados.length ? ' Itens fora do Cadastro: ' + naoAchados.join(', ') : ''}`, ok === linhas.length ? 'sucesso' : 'aviso');
+    fecharModalRegistrarMov();
+    if (abaEstoqueAtual === 'historico') {
+      try {
+        _histContagemCache = await listarHistoricoContagem(1500);
+        renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
+      } catch (_) {}
+    } else {
+      renderizarEstoque(todasFestasCache, estoqueCache);
+    }
+  } else {
+    toast('Não foi possível registrar. Tente de novo.', 'erro');
+  }
+}
+
+/* ── Baixa/retorno automáticos de estoque no fluxo da festa ──
+   Roda ao concluir a Conferência (saída) e o Retorno (volta). Guarda flags
+   na festa (estoqueBaixado / estoqueRetornado) pra nunca lançar 2×. Quantidade
+   sempre convertida pra unidade solta (o estoque é contado assim). Enquanto
+   a equipe não usar conferência/retorno, isso simplesmente não dispara — a
+   baixa é feita na mão pela tela "Registrar movimentação". */
+function _movEstoqueRefsDoItem(nomeItem) {
+  const keyExato = normalizarNomeItem(nomeItem);
+  const keyBase  = nomeBaseKey(keyExato);
+  const cfg = itemConfigsCache[keyExato] || itemConfigsCache[keyBase] || null;
+  const est = estoqueDoItem(cfg?.nomeKey || keyBase);
+  return {
+    nomeKey: est?.nomeKey || cfg?.nomeKey || keyBase,
+    nome:    cfg?.nome || nomeBasDisplay(nomeItem),
+    unidade: cfg?.unidade || est?.unidade || 'un',
+  };
+}
+
+async function _baixarEstoqueDaFesta(festa, itens) {
+  if (!festa || !festa.id) return 0;
+  try { const f = await buscarFestaPorId(festa.id); if (f && f.estoqueBaixado) return 0; } catch (_) {}
+  if (festa.estoqueBaixado) return 0;
+  let n = 0;
+  for (const item of (itens || [])) {
+    const q = qtdEmUnidadeBase(item.nome, item.qtdConferida ?? item.qtdSeparada ?? 0);
+    if (!(q > 0)) continue;
+    const ref = _movEstoqueRefsDoItem(item.nome);
+    try {
+      await lancarMovimentacaoEstoque({
+        ...ref, tipo: 'saida', motivo: 'evento', qtd: q,
+        festaId: festa.id, festaNome: festa.nome,
+        por: usuarioAtual?.nome || '—',
+      });
+      n++;
+    } catch (e) { console.error('Baixa de estoque —', item.nome, e); }
+  }
+  try { await atualizarFesta(festa.id, { estoqueBaixado: true }); } catch (_) {}
+  return n;
+}
+
+async function _retornarEstoqueDaFesta(festa, itens) {
+  if (!festa || !festa.id) return 0;
+  try { const f = await buscarFestaPorId(festa.id); if (f && f.estoqueRetornado) return 0; } catch (_) {}
+  if (festa.estoqueRetornado) return 0;
+  let n = 0;
+  for (const item of (itens || [])) {
+    const q = qtdEmUnidadeBase(item.nome, item.qtdRetorno || 0);
+    if (!(q > 0)) continue;
+    const ref = _movEstoqueRefsDoItem(item.nome);
+    try {
+      await lancarMovimentacaoEstoque({
+        ...ref, tipo: 'retorno', motivo: 'evento', qtd: q,
+        festaId: festa.id, festaNome: festa.nome,
+        por: usuarioAtual?.nome || '—',
+      });
+      n++;
+    } catch (e) { console.error('Retorno de estoque —', item.nome, e); }
+  }
+  try { await atualizarFesta(festa.id, { estoqueRetornado: true }); } catch (_) {}
+  return n;
+}
+
+/* Lançamentos de estoque já feitos pra esta festa — mostrado no Detalhe. */
+async function _renderMovEstoqueFesta(festaId) {
+  const el = document.getElementById('detalhe-mov-estoque');
+  if (!el) return;
+  let movs = [];
+  try { movs = await listarMovimentacoesDaFesta(festaId); } catch (_) { el.innerHTML = ''; return; }
+  if (!movs.length) { el.innerHTML = ''; return; }
+
+  const linhas = movs.map(m => {
+    const info = TIPO_HISTORICO[m.tipo] || {};
+    const d = m.contadoEm?.toDate ? m.contadoEm.toDate() : new Date(m.contadoEm);
+    const dataTxt = !isNaN(d) ? formatarData(d) : '';
+    return `<div class="detalhe-linha">
+      <span>${_escHtml(m.nome || m.nomeKey)}</span>
+      <span style="color:${info.cor || 'inherit'}">${info.sinal || ''}${m.qtd} ${_escHtml(m.unidade || 'un')} · ${_escHtml((info.label || m.tipo) + (dataTxt ? ' ' + dataTxt : ''))}</span>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="detalhe-card">
+      <h3>Estoque consumido / retornado</h3>
+      ${linhas}
+    </div>`;
 }
 
 function renderizarEstoque(festas, estoqueMap) {
@@ -6652,20 +6896,16 @@ function htmlEstoqueAnalitico(item, est) {
 async function salvarEstoqueQtd(nomeKey, nome, unidade, qtdStr) {
   const qtd = parseFloat(qtdStr) || 0;
   try {
-    await salvarItemEstoque(nomeKey, { nome, unidade, qtd });
-    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd, nomeKey };
+    const saldo = await lancarMovimentacaoEstoque({
+      nomeKey, nome, unidade, tipo: 'contagem', qtd,
+      por: usuarioAtual?.nome || '—',
+    });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd: saldo, nomeKey };
     renderizarEstoque(todasFestasCache, estoqueCache);
     toast('Estoque atualizado.', 'sucesso');
   } catch (e) {
     console.error(e);
     toast('Erro ao salvar estoque.', 'erro');
-    return;
-  }
-  try {
-    await registrarContagemHistorico({ nomeKey, nome, unidade, qtd, contadoPor: usuarioAtual?.nome || '—' });
-  } catch (e) {
-    console.error('Erro ao registrar histórico:', e);
-    toast('Aviso: não foi possível salvar no histórico de contagem.', 'erro');
   }
 }
 
@@ -6735,11 +6975,12 @@ async function confirmarCompra() {
   }
 
   const { nomeKey, nome, unidade } = _comprarContext;
-  const qtdAtual = estoqueCache[nomeKey]?.qtd || 0;
-  const novaQtd  = qtdAtual + qtdCompra;
 
   try {
-    await salvarItemEstoque(nomeKey, { nome, unidade, qtd: novaQtd });
+    const novaQtd = await lancarMovimentacaoEstoque({
+      nomeKey, nome, unidade, tipo: 'entrada', qtd: qtdCompra,
+      obs: 'compra', por: usuarioAtual?.nome || '—',
+    });
     estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade, qtd: novaQtd, nomeKey };
 
     /* Atualizar input visível se existir */
@@ -10779,8 +11020,10 @@ async function confirmarRecebimentoCompra() {
   if (isNaN(qty) || qty <= 0) return toast('Informe a quantidade recebida.', 'erro');
   const { id, nomeKey, nome, unidade } = _receberContext;
   try {
-    const qtdAtual = estoqueCache[nomeKey]?.qtd || 0;
-    await salvarItemEstoque(nomeKey, { qtd: qtdAtual + qty, unidade, nome });
+    await lancarMovimentacaoEstoque({
+      nomeKey, nome, unidade, tipo: 'entrada', qtd: qty,
+      obs: 'recebimento de compra', por: usuarioAtual?.nome || '—',
+    });
     await atualizarCompraDB(id, { status: 'recebido', qtdRecebida: qty, recebidoEm: new Date() });
     fecharModalReceberCompra();
     toast(`+${qty} ${unidade} de "${nome}" adicionados ao estoque!`, 'sucesso');

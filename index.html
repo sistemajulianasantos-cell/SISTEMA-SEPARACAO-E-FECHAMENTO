@@ -1236,7 +1236,10 @@
     <div class="container">
       <div class="secao-header">
         <h2 class="titulo-tela">Controle de Estoque</h2>
-        <button class="btn-secundario btn-sm" onclick="recarregarEstoque()">&#8635; Atualizar</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn-primario btn-sm" id="btn-registrar-mov" onclick="abrirModalRegistrarMov()">Registrar movimentação</button>
+          <button class="btn-secundario btn-sm" onclick="recarregarEstoque()">&#8635; Atualizar</button>
+        </div>
       </div>
       <p class="desc-tela" id="estoque-desc">Edite as quantidades em estoque. O sistema calcula automaticamente o saldo em relação às festas ativas.</p>
       <div class="barra-busca-wrap">
@@ -1259,7 +1262,19 @@
         <button class="tab ativo" data-aba="sintetico" onclick="trocarAbaEstoque('sintetico',this)">Sintético</button>
         <button class="tab"       data-aba="analitico" onclick="trocarAbaEstoque('analitico',this)">Por Festa</button>
         <button class="tab hidden" id="estoque-tab-valor" data-aba="valor" onclick="trocarAbaEstoque('valor',this)">Estoque R$</button>
-        <button class="tab"       data-aba="historico" onclick="trocarAbaEstoque('historico',this)">Histórico de Contagem</button>
+        <button class="tab"       data-aba="historico" onclick="trocarAbaEstoque('historico',this)">Movimentações</button>
+      </div>
+      <div id="estoque-mov-filtros" class="est-filtros-row hidden">
+        <span class="est-filtros-label">Tipo</span>
+        <select id="estoque-mov-tipo" class="est-filtros-select" onchange="filtrarMovTipo(this.value)">
+          <option value="">Todos</option>
+          <option value="entrada">Entrada</option>
+          <option value="saida">Saída</option>
+          <option value="retorno">Retorno</option>
+          <option value="contagem">Contagem</option>
+          <option value="producao_baixa">Baixa (produção)</option>
+          <option value="producao_entrada">Produzido</option>
+        </select>
       </div>
       <div id="estoque-conteudo"></div>
       <div id="estoque-historico" class="hidden"></div>
@@ -1625,6 +1640,48 @@
     </div>
   </div>
 
+  <!-- ══════════ MODAL: REGISTRAR MOVIMENTAÇÃO DE ESTOQUE ══════════ -->
+  <div id="modal-registrar-mov" class="modal-overlay hidden" onclick="fecharModalRegistrarMov()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;width:95%">
+      <div class="modal-titulo">Registrar movimentação de estoque</div>
+
+      <div class="form-group" style="margin-top:14px">
+        <label>Tipo</label>
+        <select id="mov-tipo" onchange="_movAoTrocarTipo()">
+          <option value="saida_evento">Saída — para um evento</option>
+          <option value="saida_pedido_cliente">Saída — pedido de cliente</option>
+          <option value="saida_emprestimo">Saída — empréstimo / locação</option>
+          <option value="saida_uso_interno">Saída — uso interno / equipe</option>
+          <option value="saida_perda">Saída — perda / quebra</option>
+          <option value="entrada">Entrada avulsa</option>
+        </select>
+      </div>
+
+      <div class="form-group hidden" id="mov-festa-wrap">
+        <label>Evento</label>
+        <select id="mov-festa"></select>
+      </div>
+
+      <div class="form-group hidden" id="mov-obs-wrap">
+        <label id="mov-obs-label">Observação</label>
+        <input type="text" id="mov-obs" placeholder="Ex: nome do cliente" />
+      </div>
+
+      <div class="secao-header" style="margin-top:6px">
+        <h3 style="font-size:14px;margin:0">Itens</h3>
+        <button class="btn-secundario btn-sm" onclick="_movAddLinha()">+ Adicionar item</button>
+      </div>
+      <div class="tabela-criar-header"><span>Item</span><span>Quantidade</span><span></span></div>
+      <div id="mov-itens-lista"></div>
+      <datalist id="mov-itens-datalist"></datalist>
+
+      <div class="modal-acoes">
+        <button class="btn-secundario" onclick="fecharModalRegistrarMov()">Cancelar</button>
+        <button class="btn-primario" id="btn-confirmar-mov" onclick="confirmarRegistrarMov()">Registrar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Datalist compartilhada: sugestões de Tipo de Evento -->
   <datalist id="tipo-evento-datalist">
     <option value="Casamento">
@@ -1659,8 +1716,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=3"></script>
-  <script src="js/firestore.js?v=50"></script>
-  <script src="js/app.js?v=114"></script>
+  <script src="js/firestore.js?v=51"></script>
+  <script src="js/app.js?v=115"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->
