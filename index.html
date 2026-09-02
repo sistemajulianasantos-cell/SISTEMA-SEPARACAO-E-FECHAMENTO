@@ -31,7 +31,7 @@
     form-action 'self';
   ">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=38">
+  <link rel="stylesheet" href="css/styles.css?v=39">
 </head>
 <body>
 
@@ -1248,6 +1248,12 @@
         <select id="estoque-filtro-cat" class="est-filtros-select" onchange="filtrarEstoqueCat(this.value)">
           <option value="">Todas as categorias</option>
         </select>
+        <span class="est-filtros-label">Ordenar</span>
+        <select id="estoque-ordem" class="est-filtros-select" onchange="ordenarEstoque(this.value)">
+          <option value="az">A &rarr; Z</option>
+          <option value="maior">Mais em estoque</option>
+          <option value="menor">Menos em estoque</option>
+        </select>
       </div>
       <div class="filtros-tabs" id="estoque-tabs">
         <button class="tab ativo" data-aba="sintetico" onclick="trocarAbaEstoque('sintetico',this)">Sintético</button>
@@ -1654,7 +1660,7 @@
 
   <script src="js/config.js?v=3"></script>
   <script src="js/firestore.js?v=50"></script>
-  <script src="js/app.js?v=113"></script>
+  <script src="js/app.js?v=114"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->

@@ -33,6 +33,8 @@ let _buscaFestas       = '';
 let _buscaUsuarios     = '';
 let _buscaEstoque          = '';
 let _estoqueFiltroCategoria = '';
+let _estoqueOrdem          = 'az';   /* 'az' | 'maior' | 'menor' (por qtd em estoque) */
+let _histContagemCache     = [];     /* registros do histórico já carregados (p/ busca/ordenação sem re-buscar) */
 let _buscaCompras      = '';
 let _usuariosCache     = [];
 let itemConfigsCache   = {};   /* nomeKey → config */
@@ -6143,7 +6145,7 @@ function renderizarHistoricoContagem(registros, containerId) {
 
     const chave = chaveBaseRegistro(r);
     if (!chave) return;
-    if (!porProdutoDia[chave]) porProdutoDia[chave] = { nome: r.nome || r.nomeKey, unidade: r.unidade, porDia: {} };
+    if (!porProdutoDia[chave]) porProdutoDia[chave] = { chave, nome: r.nome || r.nomeKey, unidade: r.unidade, porDia: {} };
 
     const existente = porProdutoDia[chave].porDia[diaKey];
     if (!existente) {
@@ -6162,6 +6164,7 @@ function renderizarHistoricoContagem(registros, containerId) {
     const chave = nomeBaseKey(cfg.nomeKey || '');
     if (!chave || porProdutoDia[chave]) return;
     porProdutoDia[chave] = {
+      chave,
       nome:    cfg.nome,
       unidade: cfg.unidade || estoqueDoItem(cfg.nomeKey)?.unidade || 'un',
       porDia:  {},
@@ -6174,13 +6177,35 @@ function renderizarHistoricoContagem(registros, containerId) {
     return `${String(dia).padStart(2, '0')}/${MESES[mes - 1]}`;
   };
 
-  const produtos = Object.values(porProdutoDia).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  /* Busca + filtro de categoria + ordenação (mesmos controles da tela de
+     Estoque; o Histórico não filtrava por nada). */
+  const buscaHist = (_buscaEstoque || '').toLowerCase().trim();
+  let produtos = Object.values(porProdutoDia);
+  if (buscaHist) produtos = produtos.filter(p => (p.nome || '').toLowerCase().includes(buscaHist));
+  if (_estoqueFiltroCategoria) {
+    produtos = produtos.filter(p => {
+      const cfg = buscarConfigItem(p.chave);
+      return cfg?.grupo === _estoqueFiltroCategoria;
+    });
+  }
+  const qEstHist = p => estoqueDoItem(p.chave)?.qtd || 0;
+  produtos.sort((a, b) => {
+    if (_estoqueOrdem === 'maior') return qEstHist(b) - qEstHist(a) || a.nome.localeCompare(b.nome, 'pt-BR');
+    if (_estoqueOrdem === 'menor') return qEstHist(a) - qEstHist(b) || a.nome.localeCompare(b.nome, 'pt-BR');
+    return a.nome.localeCompare(b.nome, 'pt-BR');
+  });
+
+  if (!produtos.length) {
+    el.innerHTML = estadoVazio('Nenhum item encontrado.');
+    return;
+  }
 
   const headerCols = dias.map(dia => `
     <th style="padding:8px 10px;text-align:center;font-size:11px;font-weight:700;color:var(--cinza-500);white-space:nowrap;border-bottom:2px solid #E5E7EB">${fmtDia(dia)}</th>
   `).join('');
 
   const linhas = produtos.map(p => {
+    const qAtual = qEstHist(p);
     const cols = dias.map(dia => {
       const r = p.porDia[dia];
       if (!r) return `<td style="padding:8px 10px;text-align:center;color:#D1D5DB;border-bottom:1px solid #F3F4F6">—</td>`;
@@ -6198,6 +6223,7 @@ function renderizarHistoricoContagem(registros, containerId) {
         <td style="padding:8px 10px;font-weight:600;font-size:13px;white-space:nowrap;border-bottom:1px solid #F3F4F6;position:sticky;left:0;background:#fff">
           ${_escHtml(p.nome)}<br><span style="font-weight:400;font-size:11px;color:var(--cinza-500)">${_escHtml(p.unidade || 'un')}</span>
         </td>
+        <td style="padding:8px 10px;text-align:center;font-weight:800;white-space:nowrap;border-bottom:1px solid #F3F4F6;background:#F9FAFB">${qAtual}</td>
         ${cols}
       </tr>`;
   }).join('');
@@ -6212,6 +6238,7 @@ function renderizarHistoricoContagem(registros, containerId) {
         <thead>
           <tr>
             <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--cinza-500);white-space:nowrap;border-bottom:2px solid #E5E7EB;position:sticky;left:0;background:#fff">Produto</th>
+            <th style="padding:8px 10px;text-align:center;font-size:11px;font-weight:700;color:var(--cinza-500);white-space:nowrap;border-bottom:2px solid #E5E7EB;background:#F9FAFB">Atual</th>
             ${headerCols}
           </tr>
         </thead>
@@ -6298,6 +6325,7 @@ function trocarAbaEstoque(aba, btn) {
       elHistorico.classList.remove('hidden');
       elHistorico.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
       listarHistoricoContagem(1500).then(registros => {
+        _histContagemCache = registros;
         renderizarHistoricoContagem(registros, 'estoque-historico');
       }).catch(e => {
         console.error(e);
@@ -6318,14 +6346,27 @@ function trocarAbaEstoque(aba, btn) {
   }
 }
 
+function _reRenderEstoqueAtual() {
+  if (abaEstoqueAtual === 'historico') {
+    renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
+  } else {
+    renderizarEstoque(todasFestasCache, estoqueCache);
+  }
+}
+
 function filtrarEstoque(valor) {
   _buscaEstoque = valor;
-  renderizarEstoque(todasFestasCache, estoqueCache);
+  _reRenderEstoqueAtual();
 }
 
 function filtrarEstoqueCat(val) {
   _estoqueFiltroCategoria = val;
-  renderizarEstoque(todasFestasCache, estoqueCache);
+  _reRenderEstoqueAtual();
+}
+
+function ordenarEstoque(val) {
+  _estoqueOrdem = val || 'az';
+  _reRenderEstoqueAtual();
 }
 
 function renderizarEstoque(festas, estoqueMap) {
@@ -6413,7 +6454,21 @@ function renderizarEstoque(festas, estoqueMap) {
     `;
   }
 
-  document.getElementById('estoque-conteudo').innerHTML = resumoValorHTML + Object.keys(grupos)
+  const elOut = document.getElementById('estoque-conteudo');
+
+  if (_estoqueOrdem === 'maior' || _estoqueOrdem === 'menor') {
+    /* Ordenação por quantidade em estoque = lista corrida (sem agrupar por
+       categoria), do que mais tem pro que menos tem (ou vice-versa). */
+    const q = it => estoqueDoItem(it.nomeKey)?.qtd || 0;
+    const ordenados = itens.slice().sort((a, b) => {
+      const d = _estoqueOrdem === 'maior' ? q(b) - q(a) : q(a) - q(b);
+      return d || a.nome.localeCompare(b.nome, 'pt-BR');
+    });
+    elOut.innerHTML = resumoValorHTML + ordenados.map(renderCard).join('');
+    return;
+  }
+
+  elOut.innerHTML = resumoValorHTML + Object.keys(grupos)
     .sort((a, b) => a.localeCompare(b, 'pt-BR'))
     .map(g => `
       <div class="grupo-titulo" style="margin-top:16px;margin-bottom:4px;font-size:12px;font-weight:700;text-transform:uppercase;color:var(--cinza-500);letter-spacing:.5px">${_escHtml(g)}</div>

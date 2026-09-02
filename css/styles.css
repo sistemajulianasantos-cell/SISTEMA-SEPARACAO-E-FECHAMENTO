@@ -2430,6 +2430,7 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
   margin: 0 0 14px;
 }
 .est-filtros-label {
