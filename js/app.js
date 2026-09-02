@@ -518,6 +518,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  /* Auto-login: se este aparelho já tem uma sessão real salva e a pessoa
+     marcou "Lembrar" no último login, entra direto — sem passar pela tela
+     de login. Qualquer falha aqui cai no fluxo normal (mostra o login). */
+  if (await _tentarAutoLogin()) return;
+
   try {
     const total = await contarUsuarios();
     if (total === 0) {
@@ -530,6 +535,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     mostrarTela('tela-login');
   }
 });
+
+async function _tentarAutoLogin() {
+  try {
+    if (localStorage.getItem('rc_auto_login') !== '1') return false;
+    const authUser = firebase.auth().currentUser;
+    if (!authUser || authUser.isAnonymous) return false;
+
+    const doc = await db.collection('usuarios').doc(authUser.uid).get();
+    if (!doc.exists || doc.data().ativo === false) return false;
+
+    const u = { id: authUser.uid, ...doc.data() };
+    if (!u.roles) u.roles = [u.role];
+    usuarioAtual = u;
+    roleAtivo    = null;
+    const hdr = document.getElementById('header-usuario');
+    if (hdr) hdr.textContent = u.nome;
+    roteamentoPosLogin(u);
+    return true;
+  } catch (e) {
+    console.error('Auto-login falhou, indo pro login normal:', e);
+    return false;
+  }
+}
 
 /* ══════════════════════════════════════════════════
    NAVEGAÇÃO
@@ -1023,11 +1051,15 @@ async function doLogin() {
     roleAtivo    = null;
     document.getElementById('header-usuario').textContent = usuario.nome;
 
-    /* Salvar ou limpar nome de usuário conforme checkbox (a senha nunca é persistida) */
+    /* "Lembrar": guarda o nome de usuário E liga o auto-login neste aparelho
+       (entrar direto na próxima vez, sem a tela de login). A senha nunca é
+       persistida — quem restaura a sessão é o próprio Firebase Auth. */
     if (document.getElementById('login-lembrar').checked) {
       localStorage.setItem('rc_nome', nome);
+      localStorage.setItem('rc_auto_login', '1');
     } else {
       localStorage.removeItem('rc_nome');
+      localStorage.removeItem('rc_auto_login');
     }
     document.getElementById('login-senha').value = '';
 
@@ -1170,6 +1202,9 @@ function logout() {
   if (_tvClockTimer)   { clearInterval(_tvClockTimer);   _tvClockTimer   = null; }
   if (_tvRefreshTimer) { clearInterval(_tvRefreshTimer); _tvRefreshTimer = null; }
   firebase.auth().signOut().catch(() => {});
+  /* Logout explícito desliga o auto-login neste aparelho (o nome fica salvo
+     só pra pré-preencher o campo). */
+  localStorage.removeItem('rc_auto_login');
   usuarioAtual = null;
   festaAtual   = null;
   fotosCache   = { separacao: [], conferencia: [], retorno: [], galpao: [] };

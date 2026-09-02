@@ -26,8 +26,29 @@ db.settings({ ignoreUndefinedProperties: true });
    do Firestore (firestore.rules) exigem uma conta real (não anônima) para
    ler/escrever festas, estoque, compras etc. Ao fazer login, essa sessão
    anônima é substituída pela sessão real do usuário. */
-const authReady = firebase.auth().signInAnonymously()
-  .catch(e => console.error('Erro na autenticação anônima:', e));
+const authReady = (async () => {
+  /* Persistência LOCAL: a sessão do usuário fica salva no aparelho e
+     sobrevive a fechar/reabrir o navegador (é o padrão em browser, mas
+     deixamos explícito). Assim o auto-login em js/app.js consegue reusar
+     uma sessão real já existente. */
+  try {
+    await firebase.auth().setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+  } catch (e) { console.error('setPersistence:', e); }
+
+  /* Espera o SDK terminar de restaurar (ou não) uma sessão salva antes de
+     decidir se precisa da sessão anônima. */
+  await new Promise(resolve => {
+    const unsub = firebase.auth().onAuthStateChanged(() => { unsub(); resolve(); });
+  });
+
+  /* Só entra anônimo se NÃO há nenhuma sessão restaurada — senão a chamada
+     abaixo trocaria a sessão real do usuário por uma anônima. */
+  if (!firebase.auth().currentUser) {
+    try {
+      await firebase.auth().signInAnonymously();
+    } catch (e) { console.error('Erro na autenticação anônima:', e); }
+  }
+})();
 
 /* Cloudinary — armazenamento de fotos (Firebase Storage exige plano pago) */
 const CLOUDINARY_CLOUD_NAME    = 'wwutkszi';
