@@ -455,21 +455,27 @@ async function listarItemConfigs() {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+/* Devolve SEMPRE o id do doc gravado (novo ou existente) — quem chama precisa
+   dele pra guardar no itemConfigsCache; sem isso a linha recém-criada fica com
+   id undefined e "Editar" acusa "Item não encontrado" até recarregar a página. */
 async function salvarItemConfigDB(dados) {
   /* Edição de doc existente — atualiza pelo ID para evitar duplicata se nomeKey mudou */
   if (dados.id) {
     const { id, ...rest } = dados;
-    return db.collection('item_config').doc(id).update({ ...rest, updatedAt: TS() });
+    await db.collection('item_config').doc(id).update({ ...rest, updatedAt: TS() });
+    return id;
   }
   /* Criação: upsert por nomeKey */
   const snap = await db.collection('item_config')
     .where('nomeKey', '==', dados.nomeKey).limit(1).get();
   if (!snap.empty) {
-    return db.collection('item_config').doc(snap.docs[0].id).update({
+    await db.collection('item_config').doc(snap.docs[0].id).update({
       ...dados, updatedAt: TS(),
     });
+    return snap.docs[0].id;
   }
-  return db.collection('item_config').add({ ...dados, criadoEm: TS(), updatedAt: TS() });
+  const ref = await db.collection('item_config').add({ ...dados, criadoEm: TS(), updatedAt: TS() });
+  return ref.id;
 }
 
 async function deletarItemConfigDB(id) {

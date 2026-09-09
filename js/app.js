@@ -3037,7 +3037,7 @@ function _autoCriarConfigsDeItensPDF(itens) {
         origemAuto:      true,   /* criado pelo import de PDF, não pela CEO — some junto com a festa se ninguém mais usar */
       };
       salvarItemConfigDB(dados)
-        .then(() => { itemConfigsCache[key] = dados; })
+        .then(newId => { if (newId) dados.id = newId; itemConfigsCache[key] = dados; })
         .catch(() => {});
     }
   });
@@ -3152,12 +3152,26 @@ function _sepGestaoParaItens(sep) {
       const cfgLocal = itemConfigsCache[key] || itemConfigsCache[nomeBaseKey(key)];
       const insG     = _insumoGestaoPorNome(nome);
 
+      /* A Folha de Separação da Gestão guarda TODA quantidade em unidade solta
+         (un) — inclusive copo, que na tela dela é digitado em caixas mas é
+         gravado convertido. Aqui, item controlado em CAIXAS
+         (cfgLocal.unidadesPorEmbalagem) precisa voltar pra nº de caixas: senão
+         o resto do sistema lê a qtd em un como se fosse nº de caixas e
+         multiplica de novo pelo fator (ex: 72 un de COPO BAIXO ELYSIA virava
+         "72 cx = 936 un"). Sem fator cadastrado, a qtd em un fica como está. */
+      const fatorCx  = (cfgLocal && Number(cfgLocal.unidadesPorEmbalagem)) || 0;
+      let   qtdFinal = qtd;
+      if (fatorCx > 1) {
+        const cx = qtd / fatorCx;
+        qtdFinal = Number.isInteger(cx) ? cx : Math.round(cx * 100) / 100;
+      }
+
       itens.push({
         id:            `item-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         nome:          (nome || '').trim(),
         categoria:     (cfgLocal && cfgLocal.grupo) || (insG && insG.categoria) || cat || '',
         fornecimento,
-        qtdNecessaria: qtd,
+        qtdNecessaria: qtdFinal,
         unidade:       (cfgLocal && cfgLocal.unidade) ||
                        (insG && insG.unidadeCompra && String(insG.unidadeCompra).toLowerCase()) || 'un',
         qtdSeparada:   0, qtdConferida: 0, qtdRetorno: 0, qtdGalpao: 0, qtdDanificada: 0,
@@ -3451,7 +3465,8 @@ async function _conferirCriarLocal(idx, btn) {
       exigeFoto: false, conferirCoord: true, refrigerado: false, diasAntesEvento: 1,
       origemAuto: false,
     };
-    await salvarItemConfigDB(dados);
+    const newId = await salvarItemConfigDB(dados);
+    if (newId) dados.id = newId;
     itemConfigsCache[dados.nomeKey] = dados;
     toast(`"${item.nome}" criado no Cadastro.`, 'sucesso');
     if (btn) { const w = btn.closest('.conf-row'); if (w) w.style.opacity = '.4'; btn.textContent = 'Criado'; }
@@ -8856,7 +8871,8 @@ async function salvarItemConfig() {
   }
 
   try {
-    await salvarItemConfigDB(dados);
+    const savedId = await salvarItemConfigDB(dados);
+    if (savedId) dados.id = savedId;   /* item novo: guarda o id gerado, senão "Editar" some */
     /* Se o nomeKey mudou durante edição, remove a entrada antiga do cache */
     if (_itemConfigEditId) {
       const oldKey = Object.keys(itemConfigsCache).find(k => itemConfigsCache[k].id === _itemConfigEditId);
