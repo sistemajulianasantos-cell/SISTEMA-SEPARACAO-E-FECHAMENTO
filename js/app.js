@@ -286,19 +286,30 @@ function _tvRenderProducao(producao) {
   const el = document.getElementById('tv-producao');
   if (!el) return;
 
-  if (!producao.length) {
-    el.innerHTML = '<div class="tv-vazio">Nenhum item de produção pendente</div>';
-    return;
-  }
-
-  /* Enriquecer com dados de estoque */
+  /* Enriquecer com dados de estoque e manter só o que está pendente — na TV
+     item com estoque suficiente (falta <= 0) some da tela; nas outras telas
+     (que usam `producao` cru, sem esse filtro) ele continua aparecendo. */
   const itens = producao.map(p => {
     const est    = estoqueCache[p.nomeKey] || estoqueCache[nomeBaseKey(p.nomeKey)] || {};
     const qtdEst = est.qtd || 0;
     const falta  = p.total - qtdEst;
     const pct    = p.total > 0 ? Math.min(100, Math.round((qtdEst / p.total) * 100)) : 100;
     return { ...p, qtdEst, falta, pct };
-  });
+  }).filter(p => p.falta > 0);
+
+  /* Alertas gerais de estoque (aba Compras) — abaixo do mínimo ou com compra
+     pendente, cobrindo todo o cadastro, não só o que as festas da semana
+     precisam. Não repete item que já apareceu na lista de produção acima. */
+  const chavesProducao = new Set(itens.map(p => nomeBaseKey(p.nomeKey)));
+  const _temPedido = a => comprasCache.some(c => c.nomeKey === a.nomeKey && (c.status === 'pendente' || c.status === 'pedido'));
+  const alertasGerais = _alertasCompras()
+    .filter(a => a.falta > 0 && !chavesProducao.has(nomeBaseKey(a.nomeKey)))
+    .sort((a, b) => (_temPedido(a) ? 1 : 0) - (_temPedido(b) ? 1 : 0) || b.falta - a.falta);
+
+  if (!itens.length && !alertasGerais.length) {
+    el.innerHTML = '<div class="tv-vazio">Nenhum item pendente de produção ou compra</div>';
+    return;
+  }
 
   /* Dentro de cada grupo: falta sem compra → aguardando chegada → ok */
   const grupos = {};
@@ -313,9 +324,7 @@ function _tvRenderProducao(producao) {
       (c.nomeKey === p.nomeKey || c.nomeKey === baseKey) &&
       (c.status === 'pendente' || c.status === 'pedido')
     );
-    if (p.falta > 0 && !temCompra) return 0;  // urgente
-    if (p.falta > 0 && temCompra)  return 1;  // aguardando chegada
-    return 2;                                  // ok
+    return temCompra ? 1 : 0;  // 0 = urgente (sem compra), 1 = aguardando chegada
   };
   Object.values(grupos).forEach(arr => arr.sort((a, b) => _prioridade(a) - _prioridade(b) || b.falta - a.falta));
 
@@ -344,44 +353,69 @@ function _tvRenderProducao(producao) {
         </div>`;
     }
 
-    if (p.falta > 0) {
-      /* Falta e sem compra registrada */
-      return `
-        <div class="tv-prod-item tv-prod-falta">
-          <div class="tv-prod-item-topo">
-            <div class="tv-prod-nome">${_escHtml(p.nome)}</div>
-            <div style="text-align:right">
-              <div class="tv-prod-falta-num">${p.falta}</div>
-              <div class="tv-prod-falta-label">${_escHtml(p.unidade)} falta</div>
-            </div>
-          </div>
-          <div class="tv-prod-detalhe">Estoque: ${p.qtdEst}</div>
-          <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill deficit" style="width:${p.pct}%"></div></div>
-        </div>`;
-    }
-
-    /* Estoque ok */
+    /* Falta e sem compra registrada */
     return `
-      <div class="tv-prod-item">
+      <div class="tv-prod-item tv-prod-falta">
         <div class="tv-prod-item-topo">
           <div class="tv-prod-nome">${_escHtml(p.nome)}</div>
           <div style="text-align:right">
-            <div class="tv-prod-qty">${p.total}</div>
-            <div class="tv-prod-ok-label">ok</div>
+            <div class="tv-prod-falta-num">${p.falta}</div>
+            <div class="tv-prod-falta-label">${_escHtml(p.unidade)} falta</div>
           </div>
         </div>
         <div class="tv-prod-detalhe">Estoque: ${p.qtdEst}</div>
-        <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill" style="width:${p.pct}%"></div></div>
+        <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill deficit" style="width:${p.pct}%"></div></div>
+      </div>`;
+  };
+
+  const renderAlertaGeral = a => {
+    const compra = comprasCache.find(c => c.nomeKey === a.nomeKey && (c.status === 'pendente' || c.status === 'pedido'));
+    if (compra) {
+      const statusLabel = compra.status === 'pedido' ? 'Pedido feito' : 'Compra solicitada';
+      return `
+        <div class="tv-prod-item tv-prod-aguardando">
+          <div class="tv-prod-item-topo">
+            <div class="tv-prod-nome">${_escHtml(a.nome)}</div>
+            <div style="text-align:right">
+              <div class="tv-prod-falta-num" style="color:#1d4ed8">${compra.qtdSolicitada}</div>
+              <div class="tv-prod-falta-label" style="color:#1d4ed8">${_escHtml(a.unidade)} a chegar</div>
+            </div>
+          </div>
+          <div class="tv-prod-detalhe">Estoque: ${a.qtdAtual} &nbsp;|&nbsp; Mínimo: ${a.estoqueMinimo}</div>
+          <div class="tv-prod-aguardando-label">${statusLabel} — aguardando chegada</div>
+          <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill tv-prod-barra-aguardando" style="width:${a.pct}%"></div></div>
+        </div>`;
+    }
+    return `
+      <div class="tv-prod-item tv-prod-falta">
+        <div class="tv-prod-item-topo">
+          <div class="tv-prod-nome">${_escHtml(a.nome)}</div>
+          <div style="text-align:right">
+            <div class="tv-prod-falta-num">${a.falta}</div>
+            <div class="tv-prod-falta-label">${_escHtml(a.unidade)} abaixo do mínimo</div>
+          </div>
+        </div>
+        <div class="tv-prod-detalhe">Estoque: ${a.qtdAtual} &nbsp;|&nbsp; Mínimo: ${a.estoqueMinimo}</div>
+        <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill deficit" style="width:${a.pct}%"></div></div>
       </div>`;
   };
 
   const ordemGrupos = Object.keys(grupos).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  el.innerHTML = ordemGrupos.map(g => `
+  const htmlProducao = ordemGrupos.map(g => `
     <div class="tv-prod-grupo">
       <div class="tv-prod-grupo-header">${_escHtml(g)}</div>
       ${grupos[g].map(renderItem).join('')}
     </div>
   `).join('');
+
+  const htmlComprasGerais = alertasGerais.length ? `
+    <div class="tv-prod-grupo">
+      <div class="tv-prod-grupo-header">Em compra (estoque geral)</div>
+      ${alertasGerais.map(renderAlertaGeral).join('')}
+    </div>
+  ` : '';
+
+  el.innerHTML = htmlProducao + htmlComprasGerais;
 }
 
 function _tvRenderEstoque(producao) {
