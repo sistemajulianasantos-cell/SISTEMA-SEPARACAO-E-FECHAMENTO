@@ -120,13 +120,15 @@ function htmlCardCatalogo(f) {
 
   return `
     <div class="catalogo-card">
+      <div class="catalogo-card-cabecalho">
+        <div class="catalogo-card-nome">${_escHtml(f.nome)}</div>
+        ${f.variantes ? `<div class="catalogo-card-variantes">${_escHtml(f.variantes)}</div>` : ''}
+      </div>
       <div class="catalogo-card-foto">
         <img id="catalogo-foto-${f.id}" src="" alt="${_escHtml(f.nome)}" class="hidden">
         <div id="catalogo-foto-vazia-${f.id}" class="catalogo-card-foto-vazia">sem foto</div>
       </div>
       <div class="catalogo-card-corpo">
-        <div class="catalogo-card-nome">${_escHtml(f.nome)}</div>
-        ${f.variantes  ? `<div class="catalogo-card-variantes">${_escHtml(f.variantes)}</div>` : ''}
         ${f.descricao  ? `<div class="catalogo-card-desc">${_escHtml(f.descricao)}</div>`       : ''}
         <div class="catalogo-card-ingr-label">Ingredientes</div>
         <div class="catalogo-card-ingr">${ingrHtml}</div>
