@@ -2977,12 +2977,18 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 }
 .catalogo-card-variantes { font-size: 11px; color: var(--cinza-400); margin-top: 3px; }
 .catalogo-card-foto {
+  aspect-ratio: 4 / 5;
   background: var(--cinza-100);
   overflow: hidden;
   display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.catalogo-card-foto img { width: 100%; height: auto; display: block; }
-.catalogo-card-foto-vazia { font-size: 11px; color: var(--cinza-400); text-align: center; padding: 60px 0; width: 100%; }
+/* Fotos novas já saem gravadas na proporção 4:5 certinha (recorte feito no
+   Gestão Main, na hora do upload) — cover aqui é só rede de segurança pra
+   foto antiga que ainda não passou por lá. */
+.catalogo-card-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.catalogo-card-foto-vazia { font-size: 11px; color: var(--cinza-400); text-align: center; }
 .catalogo-card-corpo { padding: 14px 16px 16px; flex: 1; display: flex; flex-direction: column; }
 .catalogo-card-desc { font-size: 12px; font-style: italic; color: var(--cinza-500); margin-bottom: 10px; line-height: 1.4; }
 .catalogo-card-ingr-label {
