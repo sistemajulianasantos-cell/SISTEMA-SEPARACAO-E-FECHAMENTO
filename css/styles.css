@@ -2936,3 +2936,76 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   #tela-relatorio-retorno { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
   .no-print { display: none !important; }
 }
+
+/* ══ CATÁLOGO (fichas de coquetéis lidas do controle-gestao-main, só consulta) ══ */
+.catalogo-filtros { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 18px; }
+.catalogo-busca {
+  flex: 1;
+  min-width: 200px;
+  width: auto;
+  box-sizing: border-box;
+  padding: 9px 14px;
+  border: 1px solid var(--cinza-300);
+  border-radius: var(--raio);
+  font-size: 14px;
+  color: var(--cinza-700);
+  background: #fff;
+}
+.catalogo-busca:focus { outline: none; border-color: var(--roxo); box-shadow: 0 0 0 3px rgba(196,98,45,.15); }
+.catalogo-busca::placeholder { color: var(--cinza-400); }
+
+.catalogo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 20px;
+}
+.catalogo-card {
+  background: var(--branco);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.catalogo-card-foto {
+  aspect-ratio: 4 / 5;
+  background: var(--cinza-100);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.catalogo-card-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.catalogo-card-foto-vazia { font-size: 11px; color: var(--cinza-400); text-align: center; }
+.catalogo-card-corpo { padding: 14px 16px 16px; flex: 1; display: flex; flex-direction: column; }
+.catalogo-card-nome {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: 21px;
+  font-weight: 700;
+  color: var(--roxo-escuro);
+  line-height: 1.15;
+  margin-bottom: 3px;
+}
+.catalogo-card-variantes { font-size: 11px; color: var(--cinza-400); margin-bottom: 6px; }
+.catalogo-card-desc { font-size: 12px; font-style: italic; color: var(--cinza-500); margin-bottom: 10px; line-height: 1.4; }
+.catalogo-card-ingr-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--cinza-400);
+  border-top: 1px solid var(--cinza-200);
+  padding-top: 8px;
+  margin-top: auto;
+  margin-bottom: 6px;
+}
+.catalogo-card-ingr {
+  columns: 2;
+  column-gap: 14px;
+  font-size: 12.5px;
+  color: var(--cinza-700);
+  line-height: 1.55;
+}
+.catalogo-card-ingr div { break-inside: avoid; }
+.catalogo-card-ingr strong { color: var(--cinza-900); }
+.catalogo-card-vazio { font-size: 12px; color: var(--cinza-400); }

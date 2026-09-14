@@ -745,6 +745,9 @@ function renderizarInicio(papel) {
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEquipe()">
           <div class="inicio-card-nome">Equipe</div>
         </div>
+        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirCatalogo()">
+          <div class="inicio-card-nome">Catálogo</div>
+        </div>
         <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEstoque()">
           <div class="inicio-card-nome">Estoque</div>
         </div>

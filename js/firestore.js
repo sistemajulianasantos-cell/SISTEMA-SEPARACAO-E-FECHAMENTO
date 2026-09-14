@@ -709,6 +709,25 @@ async function buscarEscalasGestao()     { return _buscarDocGestao('escalas'); }
 async function buscarContratosGestao()   { return _buscarDocGestao('contratos'); }
 async function buscarInsumosGestao()     { return _buscarDocGestao('insumos'); }
 async function buscarSeparacoesGestao()  { return _buscarDocGestao('separacoes'); }
+async function buscarFichasGestao()      { return _buscarDocGestao('fichas'); }
+
+/* Fotos (Catálogo) — cada foto é 1 documento próprio "fichaFoto_<id>" ou
+   "insumoFoto_<id>" (não um array em "valor" como os docs acima), por isso
+   não usa _buscarDocGestao. Coquetel sem foto própria cai na foto do copo. */
+async function _buscarFotoGestao(docId) {
+  if (!dbGestao) return null;
+  const ok = await gestaoAuthReady;
+  if (!ok) return null;
+  try {
+    const snap = await dbGestao.collection('dados').doc(docId).get();
+    return snap.exists ? (snap.data().valor || null) : null;
+  } catch (e) {
+    console.error(`Erro ao buscar foto ${docId} (gestao):`, e);
+    return null;
+  }
+}
+async function buscarFotoFichaGestao(fichaId)   { return _buscarFotoGestao('fichaFoto_' + fichaId); }
+async function buscarFotoInsumoGestao(insumoId) { return _buscarFotoGestao('insumoFoto_' + insumoId); }
 
 /* ════════════════════════════════════════
    CLOUDINARY — fotos

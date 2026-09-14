@@ -253,6 +253,20 @@
     </div>
   </div>
 
+  <!-- ══════════ TELA: CATÁLOGO (fichas de coquetéis lidas do controle-gestao-main, só consulta) ══════════ -->
+  <div id="tela-catalogo" class="tela hidden">
+    <div class="container">
+      <div class="catalogo-filtros">
+        <input type="search" id="catalogo-busca-nome" class="catalogo-busca" placeholder="Buscar coquetel..." oninput="filtrarCatalogo()" />
+        <input type="search" id="catalogo-busca-insumo" class="catalogo-busca" placeholder="Buscar por insumo..." oninput="filtrarCatalogo()" />
+      </div>
+      <div id="catalogo-status" class="equipe-status-gestao hidden">
+        Não foi possível carregar o catálogo agora. Tente novamente em instantes.
+      </div>
+      <div id="catalogo-lista" class="catalogo-grid"></div>
+    </div>
+  </div>
+
   <!-- MODAL: VINCULAR EQUIPE MANUALMENTE -->
   <div id="modal-vinculo-equipe" class="modal-overlay hidden" onclick="fecharModalVinculoEquipe()">
     <div class="modal-box" onclick="event.stopPropagation()">
@@ -1722,8 +1736,9 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=4"></script>
-  <script src="js/firestore.js?v=53"></script>
-  <script src="js/app.js?v=120"></script>
+  <script src="js/firestore.js?v=54"></script>
+  <script src="js/app.js?v=121"></script>
+  <script src="js/catalogo.js?v=1"></script>
 </body>
 </html>
 <!-- Sincronizado com GitHub - Juliana -->
