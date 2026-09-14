@@ -2983,8 +2983,10 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 12px;
+  box-sizing: border-box;
 }
-.catalogo-card-foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.catalogo-card-foto img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .catalogo-card-foto-vazia { font-size: 11px; color: var(--cinza-400); text-align: center; }
 .catalogo-card-corpo { padding: 14px 16px 16px; flex: 1; display: flex; flex-direction: column; }
 .catalogo-card-desc { font-size: 12px; font-style: italic; color: var(--cinza-500); margin-bottom: 10px; line-height: 1.4; }
