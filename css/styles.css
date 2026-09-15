@@ -1267,19 +1267,29 @@ input, select, textarea { font-size: 16px !important; }
 }
 
 /* ══ TELA INICIAL (CEO) — DASHBOARD + MENU LATERAL ════ */
+.inicio-data-hoje {
+  font-size: 13px; color: var(--cinza-500); margin: -10px 0 18px;
+}
 .inicio-layout {
-  display: flex; align-items: flex-start; gap: 24px;
+  display: flex; align-items: flex-start; gap: 20px;
 }
 .inicio-dash-col {
   flex: 1; min-width: 0;
   display: flex; flex-direction: column; gap: 16px;
 }
+
+/* Painel do menu — mesma ideia de sidebar do Controle e Gestão, mas no
+   tema claro e sem ícones (ver feedback da Juliana em 08-11). */
 .inicio-nav-col {
-  width: 220px; flex-shrink: 0;
+  width: 230px; flex-shrink: 0;
+  background: var(--cinza-50);
+  border: var(--borda);
+  border-radius: var(--raio);
+  padding: 16px 14px;
 }
 .inicio-nav-secao-label {
   font-size: 11px; font-weight: 700; color: var(--cinza-400);
-  text-transform: uppercase; letter-spacing: .8px; margin: 18px 0 8px;
+  text-transform: uppercase; letter-spacing: .8px; margin: 16px 4px 6px;
 }
 .inicio-nav-secao-label:first-child { margin-top: 0; }
 .inicio-nav {
@@ -1288,12 +1298,12 @@ input, select, textarea { font-size: 16px !important; }
 .inicio-nav-item {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 10px 12px;
-  border-radius: var(--raio);
+  border-radius: 8px;
   font-size: 14px; font-weight: 600; color: var(--cinza-700);
   cursor: pointer;
-  transition: background .15s;
+  transition: background .15s, color .15s;
 }
-.inicio-nav-item:hover, .inicio-nav-item:active { background: var(--cinza-50); }
+.inicio-nav-item:hover, .inicio-nav-item:active { background: var(--branco); color: var(--roxo); }
 .inicio-nav-badge {
   display: inline-flex; align-items: center; justify-content: center;
   background: #DC2626; color: #fff;
@@ -1301,6 +1311,25 @@ input, select, textarea { font-size: 16px !important; }
   border-radius: 999px; min-width: 18px; height: 18px;
   padding: 0 5px;
 }
+
+/* Tiras de números (equivalente aos "stat tiles" do Controle e Gestão) */
+.dash-stats-row {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+.dash-stat-tile {
+  background: var(--branco);
+  border: var(--borda);
+  border-radius: var(--raio);
+  padding: 14px 16px;
+}
+.dash-stat-label {
+  font-size: 11px; font-weight: 700; color: var(--cinza-400);
+  text-transform: uppercase; letter-spacing: .6px;
+}
+.dash-stat-valor { font-size: 26px; font-weight: 800; color: var(--cinza-900); margin: 4px 0 2px; }
+.dash-stat-valor.alerta { color: var(--vermelho); }
+.dash-stat-sub   { font-size: 12px; color: var(--cinza-500); }
 
 .dash-card {
   background: var(--branco);
@@ -1310,7 +1339,7 @@ input, select, textarea { font-size: 16px !important; }
 }
 .dash-card-header {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .dash-card-titulo { font-size: 15px; font-weight: 800; color: var(--cinza-900); }
 .dash-card-sub    { font-size: 12px; color: var(--cinza-500); margin-top: 2px; }
@@ -1320,18 +1349,31 @@ input, select, textarea { font-size: 16px !important; }
   cursor: pointer; white-space: nowrap; padding: 2px 0;
 }
 .dash-card-link:hover { text-decoration: underline; }
-.dash-list-row {
+
+/* Linha com barra de progresso — usada tanto em Produção da Semana
+   (proporcional ao item mais usado) quanto em Compras Pendentes
+   (proporcional ao estoque mínimo, mesmo cálculo de _alertasCompras). */
+.dash-bar-row { padding: 8px 0; }
+.dash-bar-row + .dash-bar-row { border-top: 1px solid var(--cinza-100); }
+.dash-bar-cabecalho {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--cinza-100);
-  font-size: 13px;
+  font-size: 13px; margin-bottom: 6px;
 }
-.dash-list-row:last-of-type { border-bottom: none; }
-.dash-list-nome { color: var(--cinza-700); font-weight: 600; }
-.dash-list-val  { color: var(--cinza-500); white-space: nowrap; }
+.dash-bar-nome { color: var(--cinza-700); font-weight: 600; }
+.dash-bar-val  { color: var(--cinza-500); white-space: nowrap; font-weight: 600; }
+.dash-bar-track {
+  height: 6px; border-radius: 999px;
+  background: var(--cinza-100);
+  overflow: hidden;
+}
+.dash-bar-fill { height: 100%; border-radius: 999px; background: var(--roxo); }
+.dash-bar-fill.alerta { background: var(--vermelho); }
 .dash-list-mais { font-size: 12px; color: var(--cinza-500); padding-top: 8px; }
 .dash-empty     { font-size: 13px; color: var(--cinza-500); padding: 4px 0; }
 
+@media (max-width: 900px) {
+  .dash-stats-row { grid-template-columns: repeat(2, 1fr); }
+}
 @media (max-width: 640px) {
   .inicio-layout   { flex-direction: column; }
   .inicio-nav-col  { width: 100%; order: 2; margin-top: 8px; }

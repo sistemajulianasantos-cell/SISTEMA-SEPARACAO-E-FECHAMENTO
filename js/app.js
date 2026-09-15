@@ -732,10 +732,13 @@ function renderizarInicio(papel) {
   const saudacao = `<div class="inicio-saudacao">Olá${nome ? ', ' + nome : ''}!</div>`;
 
   if (papel === 'ceo') {
+    const hojeFmt = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     el.innerHTML = `
       ${saudacao}
+      <div class="inicio-data-hoje">${hojeFmt.charAt(0).toUpperCase() + hojeFmt.slice(1)}</div>
       <div class="inicio-layout">
         <div class="inicio-dash-col">
+          <div class="dash-stats-row" id="dash-stats"></div>
           <div class="dash-card" id="dash-producao-semana"></div>
           <div class="dash-card" id="dash-compras-pendentes"></div>
         </div>
@@ -789,25 +792,20 @@ function renderizarInicio(papel) {
   }
 }
 
-/* Dois cards da tela inicial do CEO: produção da semana (segunda a domingo
-   que contém hoje — mesmo recorte de "semana" usado no Painel TV) e itens
-   abaixo do estoque mínimo. Usam dados já em cache por carregarCEO()
-   (todasFestasCache/itemConfigsCache/estoqueCache), sem buscar nada novo. */
+/* Dashboard da tela inicial do CEO: tiras de números + produção da semana
+   (segunda a domingo que contém hoje — mesmo recorte de "semana" usado no
+   Painel TV) + itens abaixo do estoque mínimo. Usa dados já em cache por
+   carregarCEO() (todasFestasCache/itemConfigsCache/estoqueCache), sem
+   buscar nada novo. */
 function renderizarDashboardInicio() {
-  renderizarDashProducaoSemana();
-  renderizarDashComprasPendentes();
-}
-
-function renderizarDashProducaoSemana() {
-  const el = document.getElementById('dash-producao-semana');
-  if (!el) return;
-
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const hojeKey = normalizarData(hoje);
   const diaSemana    = hoje.getDay();
   const diffSegunda  = diaSemana === 0 ? -6 : 1 - diaSemana;
   const inicioSemana = new Date(hoje); inicioSemana.setDate(hoje.getDate() + diffSegunda);
   const fimSemana    = new Date(inicioSemana); fimSemana.setDate(inicioSemana.getDate() + 6);
 
+  const festasHoje = todasFestasCache.filter(f => festaAtiva(f) && normalizarData(f.data) === hojeKey);
   const festasSemana = todasFestasCache.filter(f => {
     if (!festaAtiva(f)) return false;
     const fd = toDate(f.data);
@@ -816,9 +814,40 @@ function renderizarDashProducaoSemana() {
     return fd >= inicioSemana && fd <= fimSemana;
   });
 
-  const itens = agregarItensFestas(festasSemana)
+  const itensProducao = agregarItensFestas(festasSemana)
     .filter(item => buscarConfigItem(item.nomeKey)?.eProducao === true)
     .sort((a, b) => b.total - a.total);
+
+  const itensCompra = _alertasCompras().filter(a => a.falta > 0);
+
+  renderizarDashStats({ festasHoje, festasSemana, itensProducao, itensCompra });
+  renderizarDashProducaoSemana(festasSemana, itensProducao);
+  renderizarDashComprasPendentes(itensCompra);
+}
+
+function renderizarDashStats({ festasHoje, festasSemana, itensProducao, itensCompra }) {
+  const el = document.getElementById('dash-stats');
+  if (!el) return;
+
+  const tiles = [
+    { label: 'Festas Hoje',       valor: festasHoje.length,   sub: festasHoje.length === 1 ? '1 festa' : `${festasHoje.length} festas` },
+    { label: 'Festas na Semana',  valor: festasSemana.length, sub: 'segunda a domingo' },
+    { label: 'Itens de Produção', valor: itensProducao.length, sub: 'a produzir na semana' },
+    { label: 'Abaixo do Mínimo',  valor: itensCompra.length,  sub: 'precisam comprar', alerta: itensCompra.length > 0 },
+  ];
+
+  el.innerHTML = tiles.map(t => `
+    <div class="dash-stat-tile">
+      <div class="dash-stat-label">${t.label}</div>
+      <div class="dash-stat-valor${t.alerta ? ' alerta' : ''}">${t.valor}</div>
+      <div class="dash-stat-sub">${t.sub}</div>
+    </div>
+  `).join('');
+}
+
+function renderizarDashProducaoSemana(festasSemana, itens) {
+  const el = document.getElementById('dash-producao-semana');
+  if (!el) return;
 
   const sub = `${festasSemana.length} festa${festasSemana.length !== 1 ? 's' : ''} esta semana`;
   const header = `
@@ -838,21 +867,23 @@ function renderizarDashProducaoSemana() {
 
   const TOP = 6;
   const top = itens.slice(0, TOP);
+  const max = top[0].total || 1;
   el.innerHTML = header
     + top.map(item => `
-        <div class="dash-list-row">
-          <span class="dash-list-nome">${_escHtml(nomeBasDisplay(item.nome))}</span>
-          <span class="dash-list-val">${item.total} ${item.unidade}</span>
+        <div class="dash-bar-row">
+          <div class="dash-bar-cabecalho">
+            <span class="dash-bar-nome">${_escHtml(nomeBasDisplay(item.nome))}</span>
+            <span class="dash-bar-val">${item.total} ${item.unidade}</span>
+          </div>
+          <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${Math.max(4, Math.round(item.total / max * 100))}%"></div></div>
         </div>
       `).join('')
     + (itens.length > TOP ? `<div class="dash-list-mais">+ ${itens.length - TOP} item${itens.length - TOP !== 1 ? 's' : ''}</div>` : '');
 }
 
-function renderizarDashComprasPendentes() {
+function renderizarDashComprasPendentes(urgentes) {
   const el = document.getElementById('dash-compras-pendentes');
   if (!el) return;
-
-  const urgentes = _alertasCompras().filter(a => a.falta > 0);
 
   const header = `
     <div class="dash-card-header">
@@ -873,9 +904,12 @@ function renderizarDashComprasPendentes() {
   const top = urgentes.slice(0, TOP);
   el.innerHTML = header
     + top.map(a => `
-        <div class="dash-list-row">
-          <span class="dash-list-nome">${_escHtml(a.nome)}</span>
-          <span class="dash-list-val">falta ${a.falta} ${a.unidade}</span>
+        <div class="dash-bar-row">
+          <div class="dash-bar-cabecalho">
+            <span class="dash-bar-nome">${_escHtml(a.nome)}</span>
+            <span class="dash-bar-val">falta ${a.falta} ${a.unidade}</span>
+          </div>
+          <div class="dash-bar-track"><div class="dash-bar-fill alerta" style="width:${Math.max(4, a.pct)}%"></div></div>
         </div>
       `).join('')
     + (urgentes.length > TOP ? `<div class="dash-list-mais">+ ${urgentes.length - TOP} item${urgentes.length - TOP !== 1 ? 's' : ''}</div>` : '');
