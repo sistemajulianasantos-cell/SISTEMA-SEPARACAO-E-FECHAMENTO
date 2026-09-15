@@ -1266,6 +1266,78 @@ input, select, textarea { font-size: 16px !important; }
   padding: 0 5px;
 }
 
+/* ══ TELA INICIAL (CEO) — DASHBOARD + MENU LATERAL ════ */
+.inicio-layout {
+  display: flex; align-items: flex-start; gap: 24px;
+}
+.inicio-dash-col {
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.inicio-nav-col {
+  width: 220px; flex-shrink: 0;
+}
+.inicio-nav-secao-label {
+  font-size: 11px; font-weight: 700; color: var(--cinza-400);
+  text-transform: uppercase; letter-spacing: .8px; margin: 18px 0 8px;
+}
+.inicio-nav-secao-label:first-child { margin-top: 0; }
+.inicio-nav {
+  display: flex; flex-direction: column; gap: 2px;
+}
+.inicio-nav-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--raio);
+  font-size: 14px; font-weight: 600; color: var(--cinza-700);
+  cursor: pointer;
+  transition: background .15s;
+}
+.inicio-nav-item:hover, .inicio-nav-item:active { background: var(--cinza-50); }
+.inicio-nav-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #DC2626; color: #fff;
+  font-size: 10px; font-weight: 800;
+  border-radius: 999px; min-width: 18px; height: 18px;
+  padding: 0 5px;
+}
+
+.dash-card {
+  background: var(--branco);
+  border: var(--borda);
+  border-radius: var(--raio);
+  padding: 18px;
+}
+.dash-card-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+  margin-bottom: 10px;
+}
+.dash-card-titulo { font-size: 15px; font-weight: 800; color: var(--cinza-900); }
+.dash-card-sub    { font-size: 12px; color: var(--cinza-500); margin-top: 2px; }
+.dash-card-link {
+  background: none; border: none;
+  color: var(--roxo); font-size: 13px; font-weight: 700;
+  cursor: pointer; white-space: nowrap; padding: 2px 0;
+}
+.dash-card-link:hover { text-decoration: underline; }
+.dash-list-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--cinza-100);
+  font-size: 13px;
+}
+.dash-list-row:last-of-type { border-bottom: none; }
+.dash-list-nome { color: var(--cinza-700); font-weight: 600; }
+.dash-list-val  { color: var(--cinza-500); white-space: nowrap; }
+.dash-list-mais { font-size: 12px; color: var(--cinza-500); padding-top: 8px; }
+.dash-empty     { font-size: 13px; color: var(--cinza-500); padding: 4px 0; }
+
+@media (max-width: 640px) {
+  .inicio-layout   { flex-direction: column; }
+  .inicio-nav-col  { width: 100%; order: 2; margin-top: 8px; }
+  .inicio-dash-col { order: 1; }
+}
+
 /* ══ AGENDA — CARDS DE MÊS E DE DATA ══════════════════ */
 .agenda-ver-todas {
   display: inline-flex; align-items: center; gap: 4px;

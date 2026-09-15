@@ -734,47 +734,36 @@ function renderizarInicio(papel) {
   if (papel === 'ceo') {
     el.innerHTML = `
       ${saudacao}
-      <div class="inicio-secao-label">Principal</div>
-      <div class="inicio-grid">
-        <div class="inicio-card" onclick="irInicioProducao()">
-          <div class="inicio-card-nome">Produção</div>
+      <div class="inicio-layout">
+        <div class="inicio-dash-col">
+          <div class="dash-card" id="dash-producao-semana"></div>
+          <div class="dash-card" id="dash-compras-pendentes"></div>
         </div>
-        <div class="inicio-card" onclick="irInicioAgenda()">
-          <div class="inicio-card-nome">Agenda</div>
-        </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEquipe()">
-          <div class="inicio-card-nome">Equipe</div>
-        </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirCatalogo()">
-          <div class="inicio-card-nome">Catálogo</div>
-        </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEstoque()">
-          <div class="inicio-card-nome">Estoque</div>
-        </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirListaCompras()">
-          <div class="inicio-card-nome">Compras &amp; Lista</div>
-          <span id="badge-compras" class="inicio-card-badge hidden"></span>
-        </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirPainelTV()">
-          <div class="inicio-card-nome">Painel TV</div>
-        </div>
-      </div>
-      <div class="inicio-secao-label">Administrativo</div>
-      <div class="inicio-grid">
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirRelatorio()">
-          <div class="inicio-card-nome">Relatórios</div>
-        </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirAnalise()">
-          <div class="inicio-card-nome">Análise</div>
-        </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirCadastroItens()">
-          <div class="inicio-card-nome">Cadastro</div>
-        </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirUsuarios()">
-          <div class="inicio-card-nome">Usuários</div>
+        <div class="inicio-nav-col">
+          <div class="inicio-nav-secao-label">Principal</div>
+          <div class="inicio-nav">
+            <div class="inicio-nav-item" onclick="irInicioProducao()">Produção</div>
+            <div class="inicio-nav-item" onclick="irInicioAgenda()">Agenda</div>
+            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirEquipe()">Equipe</div>
+            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirCatalogo()">Catálogo</div>
+            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirEstoque()">Estoque</div>
+            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirListaCompras()">
+              Compras &amp; Lista
+              <span id="badge-compras" class="inicio-nav-badge hidden"></span>
+            </div>
+            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirPainelTV()">Painel TV</div>
+          </div>
+          <div class="inicio-nav-secao-label">Administrativo</div>
+          <div class="inicio-nav">
+            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirRelatorio()">Relatórios</div>
+            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirAnalise()">Análise</div>
+            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirCadastroItens()">Cadastro</div>
+            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirUsuarios()">Usuários</div>
+          </div>
         </div>
       </div>
     `;
+    renderizarDashboardInicio();
   } else {
     /* separador, colaborador ou qualquer outro papel */
     el.innerHTML = `
@@ -798,6 +787,98 @@ function renderizarInicio(papel) {
       </div>
     `;
   }
+}
+
+/* Dois cards da tela inicial do CEO: produção da semana (segunda a domingo
+   que contém hoje — mesmo recorte de "semana" usado no Painel TV) e itens
+   abaixo do estoque mínimo. Usam dados já em cache por carregarCEO()
+   (todasFestasCache/itemConfigsCache/estoqueCache), sem buscar nada novo. */
+function renderizarDashboardInicio() {
+  renderizarDashProducaoSemana();
+  renderizarDashComprasPendentes();
+}
+
+function renderizarDashProducaoSemana() {
+  const el = document.getElementById('dash-producao-semana');
+  if (!el) return;
+
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const diaSemana    = hoje.getDay();
+  const diffSegunda  = diaSemana === 0 ? -6 : 1 - diaSemana;
+  const inicioSemana = new Date(hoje); inicioSemana.setDate(hoje.getDate() + diffSegunda);
+  const fimSemana    = new Date(inicioSemana); fimSemana.setDate(inicioSemana.getDate() + 6);
+
+  const festasSemana = todasFestasCache.filter(f => {
+    if (!festaAtiva(f)) return false;
+    const fd = toDate(f.data);
+    if (isNaN(fd)) return false;
+    fd.setHours(0, 0, 0, 0);
+    return fd >= inicioSemana && fd <= fimSemana;
+  });
+
+  const itens = agregarItensFestas(festasSemana)
+    .filter(item => buscarConfigItem(item.nomeKey)?.eProducao === true)
+    .sort((a, b) => b.total - a.total);
+
+  const sub = `${festasSemana.length} festa${festasSemana.length !== 1 ? 's' : ''} esta semana`;
+  const header = `
+    <div class="dash-card-header">
+      <div>
+        <div class="dash-card-titulo">Produção da Semana</div>
+        <div class="dash-card-sub">${sub}</div>
+      </div>
+      <button class="dash-card-link" onclick="irInicioProducao()">Ver tudo</button>
+    </div>
+  `;
+
+  if (!itens.length) {
+    el.innerHTML = header + `<div class="dash-empty">Nenhum item de produção pendente nessa semana.</div>`;
+    return;
+  }
+
+  const TOP = 6;
+  const top = itens.slice(0, TOP);
+  el.innerHTML = header
+    + top.map(item => `
+        <div class="dash-list-row">
+          <span class="dash-list-nome">${_escHtml(nomeBasDisplay(item.nome))}</span>
+          <span class="dash-list-val">${item.total} ${item.unidade}</span>
+        </div>
+      `).join('')
+    + (itens.length > TOP ? `<div class="dash-list-mais">+ ${itens.length - TOP} item${itens.length - TOP !== 1 ? 's' : ''}</div>` : '');
+}
+
+function renderizarDashComprasPendentes() {
+  const el = document.getElementById('dash-compras-pendentes');
+  if (!el) return;
+
+  const urgentes = _alertasCompras().filter(a => a.falta > 0);
+
+  const header = `
+    <div class="dash-card-header">
+      <div>
+        <div class="dash-card-titulo">Compras Pendentes</div>
+        <div class="dash-card-sub">${urgentes.length} item${urgentes.length !== 1 ? 's' : ''} abaixo do mínimo</div>
+      </div>
+      <button class="dash-card-link" onclick="abrirCompras()">Ver tudo</button>
+    </div>
+  `;
+
+  if (!urgentes.length) {
+    el.innerHTML = header + `<div class="dash-empty">Nenhum item abaixo do estoque mínimo.</div>`;
+    return;
+  }
+
+  const TOP = 6;
+  const top = urgentes.slice(0, TOP);
+  el.innerHTML = header
+    + top.map(a => `
+        <div class="dash-list-row">
+          <span class="dash-list-nome">${_escHtml(a.nome)}</span>
+          <span class="dash-list-val">falta ${a.falta} ${a.unidade}</span>
+        </div>
+      `).join('')
+    + (urgentes.length > TOP ? `<div class="dash-list-mais">+ ${urgentes.length - TOP} item${urgentes.length - TOP !== 1 ? 's' : ''}</div>` : '');
 }
 
 /* ══════════════════════════════════════════════════
@@ -1362,6 +1443,7 @@ async function carregarCEO() {
     renderizarStatsCEO(festas);
     renderizarProducaoCEO();
     atualizarBadgeCompras();
+    renderizarDashboardInicio();
     if (!document.getElementById('tela-agenda-meses').classList.contains('hidden')) renderizarAgendaMeses();
     if (!document.getElementById('tela-agenda-datas').classList.contains('hidden')) renderizarAgendaDatas(_agendaMesSelecionado);
   });
