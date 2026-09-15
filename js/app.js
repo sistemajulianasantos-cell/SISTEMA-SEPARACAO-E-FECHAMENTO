@@ -737,11 +737,6 @@ function renderizarInicio(papel) {
       ${saudacao}
       <div class="inicio-data-hoje">${hojeFmt.charAt(0).toUpperCase() + hojeFmt.slice(1)}</div>
       <div class="inicio-layout">
-        <div class="inicio-dash-col">
-          <div class="dash-stats-row" id="dash-stats"></div>
-          <div class="dash-card" id="dash-producao-semana"></div>
-          <div class="dash-card" id="dash-compras-pendentes"></div>
-        </div>
         <div class="inicio-nav-col">
           <div class="inicio-nav-secao-label">Principal</div>
           <div class="inicio-nav">
@@ -763,6 +758,11 @@ function renderizarInicio(papel) {
             <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirCadastroItens()">Cadastro</div>
             <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirUsuarios()">Usuários</div>
           </div>
+        </div>
+        <div class="inicio-dash-col">
+          <div class="dash-stats-row" id="dash-stats"></div>
+          <div class="dash-card" id="dash-producao-semana"></div>
+          <div class="dash-card" id="dash-compras-pendentes"></div>
         </div>
       </div>
     `;
