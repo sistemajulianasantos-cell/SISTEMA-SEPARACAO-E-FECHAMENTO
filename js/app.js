@@ -865,11 +865,13 @@ function renderizarDashProducaoSemana(festasSemana, itens) {
     return;
   }
 
-  const TOP = 6;
-  const top = itens.slice(0, TOP);
-  const max = top[0].total || 1;
+  /* Mostra TODOS os itens (rola dentro do card) — cortar numa "top N" já
+     escondeu item de produção real por baixo de "+ N itens" (ver feedback
+     da Juliana em 09-16). */
+  const max = itens[0].total || 1;
   el.innerHTML = header
-    + top.map(item => `
+    + `<div class="dash-card-scroll">`
+    + itens.map(item => `
         <div class="dash-bar-row">
           <div class="dash-bar-cabecalho">
             <span class="dash-bar-nome">${_escHtml(nomeBasDisplay(item.nome))}</span>
@@ -878,7 +880,7 @@ function renderizarDashProducaoSemana(festasSemana, itens) {
           <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${Math.max(4, Math.round(item.total / max * 100))}%"></div></div>
         </div>
       `).join('')
-    + (itens.length > TOP ? `<div class="dash-list-mais">+ ${itens.length - TOP} item${itens.length - TOP !== 1 ? 's' : ''}</div>` : '');
+    + `</div>`;
 }
 
 function renderizarDashComprasPendentes(urgentes) {
@@ -900,10 +902,11 @@ function renderizarDashComprasPendentes(urgentes) {
     return;
   }
 
-  const TOP = 6;
-  const top = urgentes.slice(0, TOP);
+  /* Mostra TODOS os itens (rola dentro do card) — mesma razão da Produção
+     da Semana acima: cortar numa "top N" escondia item urgente. */
   el.innerHTML = header
-    + top.map(a => `
+    + `<div class="dash-card-scroll">`
+    + urgentes.map(a => `
         <div class="dash-bar-row">
           <div class="dash-bar-cabecalho">
             <span class="dash-bar-nome">${_escHtml(a.nome)}</span>
@@ -912,7 +915,7 @@ function renderizarDashComprasPendentes(urgentes) {
           <div class="dash-bar-track"><div class="dash-bar-fill alerta" style="width:${Math.max(4, a.pct)}%"></div></div>
         </div>
       `).join('')
-    + (urgentes.length > TOP ? `<div class="dash-list-mais">+ ${urgentes.length - TOP} item${urgentes.length - TOP !== 1 ? 's' : ''}</div>` : '');
+    + `</div>`;
 }
 
 /* ══════════════════════════════════════════════════
