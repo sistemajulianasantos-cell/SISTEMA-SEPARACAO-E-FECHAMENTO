@@ -1151,10 +1151,26 @@ function garantirListenerEstoque() {
       unsubEstoque = escutarEstoque(mapa => {
         estoqueCache = mapa;
         resolve();
+        _onEstoqueAtualizado();
       });
     });
   }
   return _estoquePronto;
+}
+
+/* Roda a cada snapshot do estoque, não só no primeiro — sem isso, uma
+   contagem registrada em outro aparelho (ou pelo próprio separador na tela
+   de Inventário) só aparecia em Compras & Lista/Estoque depois de sair e
+   voltar pra tela (feedback da Juliana em 09-16: painel de compras não
+   atualizava em tempo real). Cada render* abaixo já se protege sozinho se
+   o elemento da tela não existir (tela fechada), então é seguro chamar
+   sempre, não só na tela que estiver aberta no momento. */
+function _onEstoqueAtualizado() {
+  renderizarDashboardInicio();
+  atualizarBadgeCompras();
+  renderizarCompras();
+  renderizarProducaoCEO();
+  renderizarEstoque(todasFestasCache, estoqueCache);
 }
 
 /* ══════════════════════════════════════════════════
