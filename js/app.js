@@ -1784,7 +1784,9 @@ async function carregarColab() {
   /* Escuta todas as festas e filtra no cliente para agendada + separando */
   unsubFestas = escutarFestas({}, festas => {
     todasFestasCache = festas;
-    const visiveis = festas.filter(f => f.status === 'agendada' || f.status === 'separando');
+    const visiveis = festas
+      .filter(f => f.status === 'agendada' || f.status === 'separando')
+      .sort((a, b) => toDate(a.data) - toDate(b.data));
     const el = document.getElementById('colab-lista');
     el.innerHTML = visiveis.length
       ? visiveis.map(f => htmlCardFesta(f, 'colaborador')).join('')
