@@ -730,66 +730,56 @@ function renderizarInicio(papel) {
   if (!el) return;
   const nome = (usuarioAtual?.nome || '').split(' ')[0] || '';
   const saudacao = `<div class="inicio-saudacao">Olá${nome ? ', ' + nome : ''}!</div>`;
+  const hojeFmt  = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-  if (papel === 'ceo') {
-    const hojeFmt = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-    el.innerHTML = `
-      ${saudacao}
-      <div class="inicio-data-hoje">${hojeFmt.charAt(0).toUpperCase() + hojeFmt.slice(1)}</div>
-      <div class="inicio-layout">
-        <div class="inicio-nav-col">
-          <div class="inicio-nav-secao-label">Principal</div>
-          <div class="inicio-nav">
-            <div class="inicio-nav-item" onclick="irInicioProducao()">Produção</div>
-            <div class="inicio-nav-item" onclick="irInicioAgenda()">Agenda</div>
-            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirEquipe()">Equipe</div>
-            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirCatalogo()">Catálogo</div>
-            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirEstoque()">Estoque</div>
-            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirListaCompras()">
-              Compras &amp; Lista
-              <span id="badge-compras" class="inicio-nav-badge hidden"></span>
-            </div>
-            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirPainelTV()">Painel TV</div>
-          </div>
-          <div class="inicio-nav-secao-label">Administrativo</div>
-          <div class="inicio-nav">
-            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirRelatorio()">Relatórios</div>
-            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirAnalise()">Análise</div>
-            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirCadastroItens()">Cadastro</div>
-            <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirUsuarios()">Usuários</div>
-          </div>
-        </div>
-        <div class="inicio-dash-col">
-          <div class="dash-stats-row" id="dash-stats"></div>
-          <div class="dash-card" id="dash-producao-semana"></div>
-          <div class="dash-card" id="dash-compras-pendentes"></div>
-        </div>
+  const navCeo = `
+    <div class="inicio-nav-secao-label">Principal</div>
+    <div class="inicio-nav">
+      <div class="inicio-nav-item" onclick="irInicioProducao()">Produção</div>
+      <div class="inicio-nav-item" onclick="irInicioAgenda()">Agenda</div>
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirEquipe()">Equipe</div>
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirCatalogo()">Catálogo</div>
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirEstoque()">Estoque</div>
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirListaCompras()">
+        Compras &amp; Lista
+        <span id="badge-compras" class="inicio-nav-badge hidden"></span>
       </div>
-    `;
-    renderizarDashboardInicio();
-  } else {
-    /* separador, colaborador ou qualquer outro papel */
-    el.innerHTML = `
-      ${saudacao}
-      <div class="inicio-grid">
-        <div class="inicio-card" onclick="irInicioColab()">
-          <div class="inicio-card-nome">Festas para Separar</div>
-        </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirInventario()">
-          <div class="inicio-card-nome">Inventário</div>
-        </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEntradaMercadoria()">
-          <div class="inicio-card-nome">Entrada de Mercadoria</div>
-        </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirEstoque()">
-          <div class="inicio-card-nome">Controle de Estoque</div>
-        </div>
-        <div class="inicio-card" onclick="historico=['tela-inicial']; abrirRegistrarProducao()">
-          <div class="inicio-card-nome">Registrar Produção</div>
-        </div>
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirPainelTV()">Painel TV</div>
+    </div>
+    <div class="inicio-nav-secao-label">Administrativo</div>
+    <div class="inicio-nav">
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirRelatorio()">Relatórios</div>
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirAnalise()">Análise</div>
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirCadastroItens()">Cadastro</div>
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirUsuarios()">Usuários</div>
+    </div>
+  `;
+
+  /* separador, colaborador ou qualquer outro papel não-CEO */
+  const navColab = `
+    <div class="inicio-nav-secao-label">Principal</div>
+    <div class="inicio-nav">
+      <div class="inicio-nav-item" onclick="irInicioColab()">Festas para Separar</div>
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirInventario()">Inventário</div>
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirEntradaMercadoria()">Entrada de Mercadoria</div>
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirEstoque()">Controle de Estoque</div>
+      <div class="inicio-nav-item" onclick="historico=['tela-inicial']; abrirRegistrarProducao()">Registrar Produção</div>
+    </div>
+  `;
+
+  el.innerHTML = `
+    ${saudacao}
+    <div class="inicio-data-hoje">${hojeFmt.charAt(0).toUpperCase() + hojeFmt.slice(1)}</div>
+    <div class="inicio-layout">
+      <div class="inicio-nav-col">${papel === 'ceo' ? navCeo : navColab}</div>
+      <div class="inicio-dash-col">
+        <div class="dash-stats-row" id="dash-stats"></div>
+        <div class="dash-card" id="dash-producao-semana"></div>
+        <div class="dash-card" id="dash-compras-pendentes"></div>
       </div>
-    `;
-  }
+    </div>
+  `;
+  renderizarDashboardInicio();
 }
 
 /* Dashboard da tela inicial do CEO: tiras de números + produção da semana
@@ -1776,16 +1766,37 @@ function filtrarPorData(dia, btn) {
    COLABORADOR
 ══════════════════════════════════════════════════ */
 
-function carregarColab() {
+async function carregarColab() {
   pararListeners();
+  garantirListenerEstoque();
+  /* Mesmo cache de configs/categorias do CEO — o dashboard da tela inicial
+     (Produção da Semana / Compras Pendentes) precisa disso também no
+     acesso do separador. */
+  if (!Object.keys(itemConfigsCache).length) {
+    try {
+      const [configs, cats] = await Promise.all([listarItemConfigs(), listarCategorias()]);
+      itemConfigsCache = {};
+      configs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+      categoriasCache = cats;
+    } catch(e) { console.error('Erro ao carregar dados iniciais:', e); }
+  }
+
   /* Escuta todas as festas e filtra no cliente para agendada + separando */
   unsubFestas = escutarFestas({}, festas => {
+    todasFestasCache = festas;
     const visiveis = festas.filter(f => f.status === 'agendada' || f.status === 'separando');
     const el = document.getElementById('colab-lista');
     el.innerHTML = visiveis.length
       ? visiveis.map(f => htmlCardFesta(f, 'colaborador')).join('')
       : estadoVazio('Nenhuma festa aguardando separação no momento.');
     renderizarAlertaHoje(festas, 'alerta-hoje-colab');
+    /* renderizarProducaoCEO()/atualizarBadgeCompras() só mexem em elementos
+       da tela Lista de Produção / menu do CEO — inofensivo aqui, e garante
+       que essa tela venha atualizada se o separador navegar até ela pelo
+       "Ver tudo" do dashboard. */
+    renderizarProducaoCEO();
+    atualizarBadgeCompras();
+    renderizarDashboardInicio();
   });
 }
 
