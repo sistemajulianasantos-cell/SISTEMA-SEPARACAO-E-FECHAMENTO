@@ -794,8 +794,8 @@ function renderizarInicio(papel) {
 
 /* Dashboard da tela inicial do CEO: tiras de números + produção da semana
    (segunda a domingo que contém hoje — mesmo recorte de "semana" usado no
-   Painel TV) + itens abaixo do estoque mínimo. Usa dados já em cache por
-   carregarCEO() (todasFestasCache/itemConfigsCache/estoqueCache), sem
+   Painel TV) + itens que faltam pras festas ativas. Usa dados já em cache
+   por carregarCEO() (todasFestasCache/itemConfigsCache/estoqueCache), sem
    buscar nada novo. */
 function renderizarDashboardInicio() {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
@@ -818,11 +818,34 @@ function renderizarDashboardInicio() {
     .filter(item => buscarConfigItem(item.nomeKey)?.eProducao === true)
     .sort((a, b) => b.total - a.total);
 
-  const itensCompra = _alertasCompras().filter(a => a.falta > 0);
+  const itensCompra = _itensFaltandoParaFestas();
 
   renderizarDashStats({ festasHoje, festasSemana, itensProducao, itensCompra });
   renderizarDashProducaoSemana(festasSemana, itensProducao);
   renderizarDashComprasPendentes(itensCompra);
+}
+
+/* O que falta comprar é o que as festas ainda não separadas (agendada ou
+   separando) precisam e o estoque atual não cobre — não tem relação com
+   "estoque mínimo" (esse é outro alerta, da aba Alertas de Compras &
+   Lista). Mesmo cálculo usado no Controle de Estoque (htmlEstoqueSintetico
+   — diff = estoque atual - total pedido pelas festas), pra bater o número
+   aqui com o de lá. Ver feedback da Juliana em 09-16: compras pendentes é
+   "por festa", não por mínimo. */
+function _itensFaltandoParaFestas() {
+  const festasRelevantes = todasFestasCache.filter(f => f.status === 'agendada' || f.status === 'separando');
+  return agregarItensFestas(festasRelevantes)
+    .filter(item => deveExibirNaListaCompras(buscarConfigItem(item.nomeKey)))
+    .map(item => {
+      const est     = estoqueDoItem(item.nomeKey);
+      const qtdEst  = est?.qtd || 0;
+      const unidade = est?.unidade || item.unidade || 'un';
+      const diff    = qtdEst - item.totalBase;
+      const pct     = item.totalBase > 0 ? Math.min(100, Math.round((qtdEst / item.totalBase) * 100)) : 100;
+      return { nomeKey: item.nomeKey, nome: item.nome, unidade, falta: diff < 0 ? -diff : 0, pct };
+    })
+    .filter(x => x.falta > 0)
+    .sort((a, b) => b.falta - a.falta);
 }
 
 function renderizarDashStats({ festasHoje, festasSemana, itensProducao, itensCompra }) {
@@ -833,7 +856,7 @@ function renderizarDashStats({ festasHoje, festasSemana, itensProducao, itensCom
     { label: 'Festas Hoje',       valor: festasHoje.length,   sub: festasHoje.length === 1 ? '1 festa' : `${festasHoje.length} festas` },
     { label: 'Festas na Semana',  valor: festasSemana.length, sub: 'segunda a domingo' },
     { label: 'Itens de Produção', valor: itensProducao.length, sub: 'a produzir na semana' },
-    { label: 'Abaixo do Mínimo',  valor: itensCompra.length,  sub: 'precisam comprar', alerta: itensCompra.length > 0 },
+    { label: 'Itens em Falta',    valor: itensCompra.length,  sub: 'faltam para as festas', alerta: itensCompra.length > 0 },
   ];
 
   el.innerHTML = tiles.map(t => `
@@ -891,14 +914,14 @@ function renderizarDashComprasPendentes(urgentes) {
     <div class="dash-card-header">
       <div>
         <div class="dash-card-titulo">Compras Pendentes</div>
-        <div class="dash-card-sub">${urgentes.length} item${urgentes.length !== 1 ? 's' : ''} abaixo do mínimo</div>
+        <div class="dash-card-sub">${urgentes.length} item${urgentes.length !== 1 ? 's' : ''} faltando para as festas</div>
       </div>
-      <button class="dash-card-link" onclick="abrirCompras()">Ver tudo</button>
+      <button class="dash-card-link" onclick="historico=['tela-inicial']; abrirEstoque()">Ver tudo</button>
     </div>
   `;
 
   if (!urgentes.length) {
-    el.innerHTML = header + `<div class="dash-empty">Nenhum item abaixo do estoque mínimo.</div>`;
+    el.innerHTML = header + `<div class="dash-empty">Nenhum item faltando para as festas ativas.</div>`;
     return;
   }
 
