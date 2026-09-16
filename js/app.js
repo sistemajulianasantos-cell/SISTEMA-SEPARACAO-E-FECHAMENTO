@@ -880,19 +880,30 @@ function renderizarDashProducaoSemana(festasSemana, itens) {
 
   /* Mostra TODOS os itens (rola dentro do card) — cortar numa "top N" já
      escondeu item de produção real por baixo de "+ N itens" (ver feedback
-     da Juliana em 09-16). */
-  const max = itens[0].total || 1;
+     da Juliana em 09-16).
+     A barra é cobertura de estoque (quanto do necessário já está pronto),
+     igual ao resto do sistema (Estoque, Compras Pendentes) — antes era só
+     o tamanho desse item comparado ao maior item da lista, o que fazia um
+     item com estoque de sobra (ex.: Mix Aurora: precisa 6, tem 13) parecer
+     "faltando" só por pedir menos que outro item da lista (ver feedback da
+     Juliana em 09-16). */
   el.innerHTML = header
     + `<div class="dash-card-scroll">`
-    + itens.map(item => `
+    + itens.map(item => {
+        const est    = estoqueDoItem(item.nomeKey);
+        const unEst  = est?.unidade || item.unidade || 'un';
+        const qtdEst = est?.qtd || 0;
+        const pct    = item.totalBase > 0 ? Math.min(100, Math.round((qtdEst / item.totalBase) * 100)) : 100;
+        const falta  = qtdEst < item.totalBase;
+        return `
         <div class="dash-bar-row">
           <div class="dash-bar-cabecalho">
             <span class="dash-bar-nome">${_escHtml(nomeBasDisplay(item.nome))}</span>
-            <span class="dash-bar-val">${item.total} ${item.unidade}</span>
+            <span class="dash-bar-val">${qtdEst} ${unEst} / ${item.total} ${item.unidade}</span>
           </div>
-          <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${Math.max(4, Math.round(item.total / max * 100))}%"></div></div>
-        </div>
-      `).join('')
+          <div class="dash-bar-track"><div class="dash-bar-fill${falta ? ' alerta' : ''}" style="width:${Math.max(4, pct)}%"></div></div>
+        </div>`;
+      }).join('')
     + `</div>`;
 }
 
