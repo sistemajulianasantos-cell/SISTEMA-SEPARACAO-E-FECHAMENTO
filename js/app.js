@@ -8198,17 +8198,27 @@ let _padronizacaoPendenteFesta = []; /* [{festaId, festaNome, itemIdx, nomeAtual
 let _padronizacaoPendenteNovos = []; /* [{nomeNovo}] — produtos a cadastrar do zero */
 let _padronizacaoFestasSnapshot = []; /* festas ativas no momento do preview, reusadas na confirmação p/ os itemIdx baterem */
 
+/* Chave de comparação da Padronização de Nomes — igual/maiúsculas/espaços
+   nas pontas não distingue (como o comentário da função já dizia), mas até
+   09-16 acento distinguia: "Água com Gás" (como o item costuma vir digitado
+   na festa) não batia com o apelido "AGUA COM GAS" (sem acento) da lista,
+   então a ferramenta nunca oferecia essa troca — Cadastro ficava padronizado
+   e a festa continuava divergente sem ela nunca aparecer pra corrigir. */
+function _chaveComparacaoNomePadrao(s) {
+  return (s || '').trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
 async function abrirModalPadronizarNomes() {
   const configs = Object.values(itemConfigsCache);
   const porNomeAtualCfg = {};
-  configs.forEach(c => { porNomeAtualCfg[(c.nome || '').trim().toUpperCase()] = c; });
+  configs.forEach(c => { porNomeAtualCfg[_chaveComparacaoNomePadrao(c.nome)] = c; });
 
   const festasTodas = await buscarTodasFestas();
   _padronizacaoFestasSnapshot = festasTodas.filter(festaAtiva);
 
   const porNomeAtualFesta = {};
   _padronizacaoFestasSnapshot.forEach(f => (f.itens || []).forEach((it, idx) => {
-    const chave = (it.nome || '').trim().toUpperCase();
+    const chave = _chaveComparacaoNomePadrao(it.nome);
     if (!chave) return;
     if (!porNomeAtualFesta[chave]) porNomeAtualFesta[chave] = [];
     porNomeAtualFesta[chave].push({ festaId: f.id, festaNome: f.nome, itemIdx: idx, nomeAtual: it.nome });
@@ -8231,7 +8241,7 @@ async function abrirModalPadronizarNomes() {
   Object.entries(porCanonico).forEach(([canonico, aliasesSet]) => {
     let achouEmAlgumLugar = false;
     aliasesSet.forEach(alias => {
-      const chave = alias.toUpperCase();
+      const chave = _chaveComparacaoNomePadrao(alias);
 
       const cfg = porNomeAtualCfg[chave];
       if (cfg) {
