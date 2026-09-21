@@ -829,7 +829,7 @@ function _itensFaltandoParaFestas() {
     .map(item => {
       const est     = estoqueDoItem(item.nomeKey);
       const qtdEst  = est?.qtd || 0;
-      const unidade = est?.unidade || item.unidade || 'un';
+      const unidade = unidadeEstoqueDoItem(item.nomeKey, est, item.unidade);
       const diff    = qtdEst - item.totalBase;
       const pct     = item.totalBase > 0 ? Math.min(100, Math.round((qtdEst / item.totalBase) * 100)) : 100;
       return { nomeKey: item.nomeKey, nome: item.nome, unidade, falta: diff < 0 ? -diff : 0, pct };
@@ -891,7 +891,7 @@ function renderizarDashProducaoSemana(festasSemana, itens) {
     + `<div class="dash-card-scroll">`
     + itens.map(item => {
         const est    = estoqueDoItem(item.nomeKey);
-        const unEst  = est?.unidade || item.unidade || 'un';
+        const unEst  = unidadeEstoqueDoItem(item.nomeKey, est, item.unidade);
         const qtdEst = est?.qtd || 0;
         const pct    = item.totalBase > 0 ? Math.min(100, Math.round((qtdEst / item.totalBase) * 100)) : 100;
         const falta  = qtdEst < item.totalBase;
@@ -3581,7 +3581,9 @@ async function _renderFolhasGestao() {
     const festa  = festasPorChave.get(_chaveMatchEvento(sep.evento || sep.cliente, sep.data));
     let badge, acao;
     if (festa) {
-      badge = `<span class="badge-ordem">Festa aqui: ${_escHtml(STATUS_LABELS[festa.status] || festa.status)}</span>`;
+      const nFalta = _diffFolhaGestaoFesta(festa, sep).faltando.length;
+      badge = `<span class="badge-ordem">Festa aqui: ${_escHtml(STATUS_LABELS[festa.status] || festa.status)}</span>` +
+              (nFalta ? ` <span class="badge-ordem" style="background:var(--amarelo);color:#fff">${nFalta} item(ns) faltando na festa</span>` : '');
       acao  = `<button class="btn-secundario btn-sm" id="fg-btn-${i}" onclick="importarFolhaGestao(${i})">Atualizar itens</button>`;
     } else {
       badge = `<span class="badge-ordem">Nova</span>`;
@@ -3672,6 +3674,105 @@ async function importarFolhaGestao(idx) {
     const msg = e?.code === 'permission-denied' ? 'Sem permissão no banco.' : (e?.message || 'tente de novo');
     toast('Erro ao importar: ' + msg, 'erro');
     if (btn) { btn.disabled = false; btn.textContent = 'Importar'; }
+  }
+}
+
+/* ── Detector de divergência Folha da Gestão × Festa ──
+   A festa recebe os itens da Gestão só no momento do import (manual). Se a
+   folha muda depois (regra nova, item acrescentado, folha regerada), a festa
+   fica desatualizada em silêncio — item "some" da separação. Aqui a festa
+   compara sozinha com a folha da Gestão ao ser aberta e avisa o que falta. */
+let _sepsGestaoCacheDetalhe = { ts: 0, seps: null };
+
+function _diffFolhaGestaoFesta(festa, sep) {
+  const chaveDe = n => nomeBaseKey(normalizarNomeItem(n));
+  const naFesta = new Map();
+  (festa.itens || []).forEach(it => naFesta.set(chaveDe(it.nome), it));
+
+  const faltando = [], qtdDiferente = [];
+  _sepGestaoParaItens(sep).forEach(it => {
+    const cur = naFesta.get(chaveDe(it.nome));
+    if (!cur) faltando.push(it);
+    else if (Math.abs((Number(cur.qtdNecessaria) || 0) - (Number(it.qtdNecessaria) || 0)) > 0.001) {
+      qtdDiferente.push({ nome: cur.nome, festa: cur.qtdNecessaria, gestao: it.qtdNecessaria });
+    }
+  });
+  return { faltando, qtdDiferente };
+}
+
+async function _verificarDivergenciaGestao(festa) {
+  const box = document.getElementById('banner-divergencia-gestao');
+  if (!box || !festa || (festa.status !== 'agendada' && festa.status !== 'separando')) return;
+
+  try {
+    if (!_sepsGestaoCacheDetalhe.seps || Date.now() - _sepsGestaoCacheDetalhe.ts > 60000) {
+      const seps = await buscarSeparacoesGestao();
+      if (seps === null) return;
+      _sepsGestaoCacheDetalhe = { ts: Date.now(), seps };
+    }
+    if (!Object.keys(itemConfigsCache).length) {
+      try { (await listarItemConfigs()).forEach(c => { itemConfigsCache[c.nomeKey] = c; }); } catch (_) {}
+    }
+    await _garantirInsumosGestaoIndex();
+
+    const chave = _chaveMatchEvento(festa.nome, festa.data);
+    const sep   = _sepsGestaoCacheDetalhe.seps.find(s => _chaveMatchEvento(s.evento || s.cliente, s.data) === chave);
+    const alvo  = document.getElementById('banner-divergencia-gestao');
+    if (!alvo) return;   /* a tela re-renderizou / mudou enquanto buscava */
+    if (!sep) { alvo.innerHTML = ''; return; }
+
+    const { faltando, qtdDiferente } = _diffFolhaGestaoFesta(festa, sep);
+    if (!faltando.length && !qtdDiferente.length) { alvo.innerHTML = ''; return; }
+
+    alvo.innerHTML = `
+      <div class="detalhe-card" style="border-left:3px solid var(--amarelo);margin-bottom:12px">
+        <h3 style="color:var(--amarelo)">Folha da Gestão diferente desta festa</h3>
+        ${faltando.length ? `
+          <p style="font-size:13px;margin:6px 0"><strong>${faltando.length} item(ns) estão na Gestão e NÃO estão nesta festa:</strong></p>
+          ${faltando.map(it => `<div class="detalhe-linha"><span>${_escHtml(it.nome)}</span><span>${_fmtQtd(it.qtdNecessaria)} ${_escHtml(it.unidade || 'un')}</span></div>`).join('')}
+          <button class="btn-primario btn-sm" style="margin-top:10px" id="btn-add-faltantes-gestao"
+            onclick="adicionarItensFaltantesGestao('${festa.id}')">Adicionar os ${faltando.length} item(ns) que faltam</button>` : ''}
+        ${qtdDiferente.length ? `
+          <p style="font-size:13px;margin:12px 0 6px"><strong>${qtdDiferente.length} item(ns) com quantidade diferente</strong> (podem ser ajustes feitos aqui — use "Puxar da Gestão" abaixo só se quiser igualar à Gestão):</p>
+          ${qtdDiferente.map(d => `<div class="detalhe-linha"><span>${_escHtml(d.nome)}</span><span>Festa: ${_fmtQtd(d.festa)} · Gestão: ${_fmtQtd(d.gestao)}</span></div>`).join('')}` : ''}
+      </div>`;
+  } catch (e) {
+    console.warn('Divergência Gestão × Festa:', e);
+  }
+}
+
+/* Só ACRESCENTA o que falta — não mexe em quantidade nem em item existente
+   (ajustes manuais feitos aqui são preservados). Lê a festa fresca do servidor. */
+async function adicionarItensFaltantesGestao(festaId) {
+  const btn = document.getElementById('btn-add-faltantes-gestao');
+  if (btn) { btn.disabled = true; btn.textContent = 'Adicionando…'; }
+  try {
+    const festa = await buscarFestaPorId(festaId);
+    if (!festa) { toast('Festa não encontrada.', 'erro'); return; }
+    const chave = _chaveMatchEvento(festa.nome, festa.data);
+    const seps  = await buscarSeparacoesGestao();
+    if (seps === null) { toast('Não foi possível ler a Gestão agora. Tente de novo.', 'erro'); return; }
+    const sep = seps.find(s => _chaveMatchEvento(s.evento || s.cliente, s.data) === chave);
+    if (!sep) { toast('Folha da Gestão não encontrada para esta festa.', 'aviso'); return; }
+
+    const { faltando } = _diffFolhaGestaoFesta(festa, sep);
+    if (!faltando.length) { toast('Nada faltando — a festa já tem todos os itens.', 'sucesso'); return; }
+
+    await atualizarFesta(festaId, {
+      itens: (festa.itens || []).concat(faltando),
+      alteracoes: ARR_UNION({
+        alteradoEm:  new Date().toISOString(),
+        alteradoPor: usuarioAtual?.nome || 'Sistema',
+        campos:      faltando.map(it => ({ campo: it.nome, de: 'Faltava (folha da Gestão)', para: it.qtdNecessaria })),
+      }),
+    });
+    _sepsGestaoCacheDetalhe = { ts: 0, seps: null };
+    _autoCriarConfigsDeItensPDF(faltando);
+    toast(`${faltando.length} item(ns) adicionado(s) da folha da Gestão.`, 'sucesso');
+  } catch (e) {
+    console.error('Adicionar itens faltantes:', e);
+    toast('Erro ao adicionar itens. Tente de novo.', 'erro');
+    if (btn) { btn.disabled = false; btn.textContent = 'Tentar de novo'; }
   }
 }
 
@@ -3960,6 +4061,7 @@ function renderizarDetalhe(festa) {
     ${avancarHTML}
     ${folhaFechamentoHTML}
     ${editarHTML}
+    <div id="banner-divergencia-gestao"></div>
     ${importarItensHTML}
 
     <div class="detalhe-card">
@@ -4019,6 +4121,7 @@ function renderizarDetalhe(festa) {
   `;
 
   _renderMovEstoqueFesta(festa.id);
+  _verificarDivergenciaGestao(festa);
 }
 
 /* Festas "Agendada" sempre podem ser excluídas. Festas de teste (nome contém
@@ -5755,6 +5858,17 @@ function estoqueDoItem(nomeKey) {
   return best;
 }
 
+/* Unidade com que o estoque é exibido: a do Cadastro do item, pra mudar lá
+   refletir aqui sem precisar recontar (o est.unidade fica gravado com a que
+   valia na última contagem). Exceção: item com "unidades por embalagem" — o
+   estoque dele é contado em unidade solta e a unidade do Cadastro é a da
+   embalagem (ex: cx), então o rótulo do estoque continua o gravado. */
+function unidadeEstoqueDoItem(nomeKey, est, fallback) {
+  const cfg = buscarConfigItem(nomeKey);
+  if (cfg?.unidade && !cfg.unidadesPorEmbalagem) return cfg.unidade;
+  return est?.unidade || fallback || 'un';
+}
+
 function agregarItensFestas(festas) {
   const mapa = {};
   festas.filter(festaAtiva).forEach(f => {
@@ -5765,7 +5879,7 @@ function agregarItensFestas(festas) {
         mapa[key] = {
           nomeKey: key,
           nome:    nomeBasDisplay(item.nome),
-          unidade: item.unidade || 'un',
+          unidade: buscarConfigItem(key)?.unidade || item.unidade || 'un',
           total:     0,   /* na unidade da festa (ex: CX) — só para exibição */
           totalBase: 0,   /* convertido pra unidade solta — para comparar com o estoque */
           festas:  [],
@@ -7197,7 +7311,7 @@ function htmlEstoqueSintetico(item, est) {
   /* O estoque físico é sempre contado na unidade dele mesmo (est.unidade,
      normalmente "un") — pode ser diferente da unidade da festa (item.unidade,
      ex: "CX"). Comparar precisa ser sempre em unidade solta (totalBase). */
-  const unEst      = est?.unidade || 'un';
+  const unEst      = unidadeEstoqueDoItem(item.nomeKey, est);
   const qtdEst     = est?.qtd || 0;
   /* Grava/pede compra sob a chave onde o doc de estoque REALMENTE está, se já
      existe — evita criar um doc duplicado numa chave irmã. */
@@ -7250,7 +7364,7 @@ function htmlEstoqueSintetico(item, est) {
 }
 
 function htmlEstoqueAnalitico(item, est) {
-  const unEst      = est?.unidade || 'un';
+  const unEst      = unidadeEstoqueDoItem(item.nomeKey, est);
   const qtdEst     = est?.qtd || 0;
   const semDemanda = !item.festas.length;
   const diff       = qtdEst - item.totalBase;
