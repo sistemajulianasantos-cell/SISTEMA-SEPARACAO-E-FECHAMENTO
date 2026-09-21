@@ -410,9 +410,15 @@
             <input type="time" id="cf-hora" />
           </div>
         </div>
-        <div class="form-group">
-          <label>Local / Endereço</label>
-          <input type="text" id="cf-local" placeholder="Endereço do evento" />
+        <div class="form-row">
+          <div class="form-group">
+            <label>Local / Endereço</label>
+            <input type="text" id="cf-local" placeholder="Endereço do evento" />
+          </div>
+          <div class="form-group">
+            <label>Nº do Contrato</label>
+            <input type="text" id="cf-contrato" placeholder="Ex: 0926-037" />
+          </div>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -751,6 +757,20 @@
   <div id="tela-retorno" class="tela hidden">
     <div class="container">
       <div id="ret-info" class="card-festa-info"></div>
+
+      <div class="form-secao">
+        <div class="form-row">
+          <div class="form-group">
+            <label>Convidados na Portaria</label>
+            <input type="number" id="ret-conv-portaria" min="0" placeholder="Ex: 25" />
+          </div>
+          <div class="form-group">
+            <label>Convidados Final</label>
+            <input type="number" id="ret-conv-final" min="0" placeholder="Ex: 30" />
+          </div>
+        </div>
+      </div>
+
       <h3 class="titulo-secao">Registro de Retorno</h3>
       <div id="ret-itens"></div>
 
@@ -762,6 +782,15 @@
           Selecionar / Tirar Foto
         </div>
         <div id="preview-ret" class="grade-fotos"></div>
+      </div>
+
+      <div class="form-group">
+        <label>O evento teve hora extra?</label>
+        <select id="ret-hora-extra">
+          <option value="">— Selecionar —</option>
+          <option value="nao">Não</option>
+          <option value="sim">Sim</option>
+        </select>
       </div>
 
       <div class="form-group">
@@ -842,6 +871,10 @@
             <label>Nº de Convidados</label>
             <input type="number" id="ef-convidados" min="0" placeholder="Ex: 150" />
           </div>
+        </div>
+        <div class="form-group">
+          <label>Nº do Contrato</label>
+          <input type="text" id="ef-contrato" placeholder="Ex: 0926-037" />
         </div>
       </div>
 
@@ -1736,8 +1769,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=4"></script>
-  <script src="js/firestore.js?v=54"></script>
-  <script src="js/app.js?v=131"></script>
+  <script src="js/firestore.js?v=55"></script>
+  <script src="js/app.js?v=132"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>

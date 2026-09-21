@@ -2905,6 +2905,9 @@ function abrirRetorno(id) {
   fotosCache.retorno = [];
   document.getElementById('preview-ret').innerHTML = '';
   document.getElementById('ret-obs').value = '';
+  document.getElementById('ret-conv-portaria').value = '';
+  document.getElementById('ret-conv-final').value = '';
+  document.getElementById('ret-hora-extra').value = '';
 
   historico = [telaListaAtual()];
   mostrarTela('tela-retorno', 'Registro de Retorno');
@@ -2915,6 +2918,33 @@ function abrirRetorno(id) {
   });
 }
 
+/* "Unidades por Caixa/Embalagem" do Cadastro (ex: 1 cx de copo = 15 un) —
+   0 quando o item não tem embalagem cadastrada (já é vendido/contado solto). */
+function _fatorEmbalagemItem(nomeItem) {
+  const cfg = buscarConfigItem(normalizarNomeItem(nomeItem));
+  return Number(cfg?.unidadesPorEmbalagem) || 0;
+}
+
+/* Quebra sempre em unidade solta quando o item tem embalagem cadastrada —
+   uma caixa fechada não quebra, quem quebra é o copo avulso — senão fica
+   na mesma unidade do item (comportamento de antes, sem mudança). */
+function _unidadeQuebraItem(nomeItem, unidadeNativa) {
+  return _fatorEmbalagemItem(nomeItem) ? 'un' : (unidadeNativa || 'un');
+}
+
+/* Calcula o que retorna pro galpão, na unidade NATIVA do item (a mesma de
+   "Enviado"/"Consumido", ex: caixa). Quando o item tem fator de embalagem,
+   soma tudo em unidade solta antes de subtrair a quebra (que já vem em un)
+   e só então converte a diferença de volta pra caixa — senão "5 cx − 3 un"
+   dava conta errada. Sem fator, é a subtração direta de sempre. */
+function _calcularRetornoNativo(enviado, consumido, danificadoUn, fator) {
+  if (fator > 0) {
+    const retornoUn = (enviado * fator) - (consumido * fator) - danificadoUn;
+    return Math.max(0, retornoUn / fator);
+  }
+  return Math.max(0, enviado - consumido - danificadoUn);
+}
+
 function renderizarRetorno(festa) {
   document.getElementById('ret-info').innerHTML = htmlInfoFesta(festa) + htmlLinkConferenciaBtn(festa);
 
@@ -2922,44 +2952,59 @@ function renderizarRetorno(festa) {
     const badgeForn = htmlBadgeForn(item);
     const enviado   = item.qtdConferida || item.qtdSeparada || 0;
     const unidade   = item.unidade || 'un';
-    const consumidoInicial = item.qtdConsumida !== undefined ? item.qtdConsumida : '';
+    const fator     = _fatorEmbalagemItem(item.nome);
+    const unQuebra  = _unidadeQuebraItem(item.nome, unidade);
+    const consumidoInicial  = item.qtdConsumida !== undefined ? item.qtdConsumida : '';
     const danificadoInicial = item.qtdDanificada || 0;
-    const retornoInicial = Math.max(0, enviado - (parseFloat(consumidoInicial) || 0) - danificadoInicial);
+    const retornoInicial = _calcularRetornoNativo(enviado, parseFloat(consumidoInicial) || 0, danificadoInicial, fator);
+    const forn = item.fornecimento || extrairFornDoNome(item.nome);
+    const mostrarMarca = forn === 'cliente' || forn === 'consignado';
+    const marcaInicial = item.marca || '';
     return `
     <div class="item-row">
       <div class="item-topo">
         <div>
           <div class="item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
           ${badgeForn || ''}
-          <div class="item-sub">Enviado: <strong>${enviado}</strong> ${_escHtml(unidade)}</div>
+          <div class="item-sub">Enviado: <strong>${enviado}</strong> ${_escHtml(unidade)}${htmlConversaoUnidades(item.nome, enviado)}</div>
         </div>
       </div>
+      ${mostrarMarca ? `
+      <div class="item-entrada" style="margin-bottom:8px">
+        <label>Marca:</label>
+        <input type="text" class="qty-input" id="ret-marca-${i}"
+          value="${_escHtml(marcaInicial)}" placeholder="Ex: Hendricks" style="width:auto;flex:1" />
+      </div>` : ''}
       <div class="item-entrada" style="margin-bottom:8px">
         <label>Consumido:</label>
         <input type="number" class="qty-input" id="ret-cons-${i}"
           value="${consumidoInicial}"
-          min="0" placeholder="0" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}')" />
+          min="0" placeholder="0" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}', ${fator})" />
         <span class="item-unidade">${_escHtml(unidade)}</span>
       </div>
       <div class="item-entrada">
-        <label>Danificado:</label>
+        <label>Quebras / Danificado:</label>
         <input type="number" class="qty-input" id="ret-dan-${i}"
           value="${danificadoInicial}"
-          min="0" placeholder="0" style="width:70px" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}')" />
-        <span class="item-unidade">${_escHtml(unidade)}</span>
+          min="0" placeholder="0" style="width:70px" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}', ${fator})" />
+        <span class="item-unidade">${_escHtml(unQuebra)}</span>
       </div>
-      <div class="item-sub" id="ret-calc-${i}" style="margin-top:6px">Retorna pro galpão: <strong>${retornoInicial}</strong> ${_escHtml(unidade)}</div>
+      <div class="item-sub" id="ret-calc-${i}" style="margin-top:6px">Retorna pro galpão: <strong>${_fmtQtd(retornoInicial)}</strong> ${_escHtml(unidade)}</div>
     </div>
   `;
   }).join('');
 }
 
-function calcularRetornoItem(i, enviado, unidade) {
+function _fmtQtd(v) {
+  return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.?0+$/, '');
+}
+
+function calcularRetornoItem(i, enviado, unidade, fator) {
   const consumido  = parseFloat(document.getElementById(`ret-cons-${i}`)?.value) || 0;
   const danificado = parseFloat(document.getElementById(`ret-dan-${i}`)?.value) || 0;
-  const retorno = Math.max(0, enviado - consumido - danificado);
+  const retorno = _calcularRetornoNativo(enviado, consumido, danificado, fator || 0);
   const el = document.getElementById(`ret-calc-${i}`);
-  if (el) el.innerHTML = `Retorna pro galpão: <strong>${retorno}</strong> ${_escHtml(unidade)}`;
+  if (el) el.innerHTML = `Retorna pro galpão: <strong>${_fmtQtd(retorno)}</strong> ${_escHtml(unidade)}`;
 }
 
 async function concluirRetorno() {
@@ -2973,9 +3018,15 @@ async function concluirRetorno() {
       const enviado    = item.qtdConferida || item.qtdSeparada || 0;
       const consumido  = parseFloat(document.getElementById(`ret-cons-${i}`)?.value) || 0;
       const danificado = parseFloat(document.getElementById(`ret-dan-${i}`)?.value) || 0;
-      const retorno    = Math.max(0, enviado - consumido - danificado);
-      return { ...item, qtdConsumida: consumido, qtdDanificada: danificado, qtdRetorno: retorno };
+      const fator      = _fatorEmbalagemItem(item.nome);
+      const retorno    = _calcularRetornoNativo(enviado, consumido, danificado, fator);
+      const marcaInput = document.getElementById(`ret-marca-${i}`);
+      const marca      = marcaInput ? marcaInput.value.trim() : (item.marca || '');
+      return { ...item, qtdConsumida: consumido, qtdDanificada: danificado, qtdRetorno: retorno, marca };
     });
+
+    const convPortariaVal = parseFloat(document.getElementById('ret-conv-portaria').value);
+    const convFinalVal    = parseFloat(document.getElementById('ret-conv-final').value);
 
     let fotoUrls = [];
     if (fotosCache.retorno.filter(Boolean).length) {
@@ -2988,18 +3039,23 @@ async function concluirRetorno() {
       }
     }
 
-    await concluirEtapa(festaAtual.id, 'retorno', {
+    const patchRetorno = {
       itens,
-      obsRetorno:   document.getElementById('ret-obs').value,
-      fotosRetorno: fotoUrls,
-    });
+      obsRetorno:         document.getElementById('ret-obs').value,
+      fotosRetorno:       fotoUrls,
+      convidadosPortaria: isNaN(convPortariaVal) ? null : convPortariaVal,
+      convidadosFinal:    isNaN(convFinalVal) ? null : convFinalVal,
+      horaExtra:          document.getElementById('ret-hora-extra').value || null,
+    };
+
+    await concluirEtapa(festaAtual.id, 'retorno', patchRetorno);
 
     /* Volta pro estoque o que retornou do evento. */
     try { await _retornarEstoqueDaFesta(festaAtual, itens); }
     catch (e) { console.error('Retorno automático de estoque:', e); }
 
     toast('Retorno registrado. Festa enviada para o Galpao.', 'sucesso');
-    abrirRelatorioRetorno({ ...festaAtual, itens, fotosRetorno: fotoUrls });
+    abrirRelatorioRetorno({ ...festaAtual, ...patchRetorno });
 
   } catch (e) {
     console.error(e);
@@ -3009,39 +3065,85 @@ async function concluirRetorno() {
   }
 }
 
-/* ── RELATÓRIO SIMPLES DE RETORNO ──
-   Exibido logo após confirmar o Retorno: por item, quantidade enviada
-   (inicial) x quantidade que retornou (final), com a foto do item
-   (tirada na Conferência) logo abaixo das quantidades. */
-function abrirRelatorioRetorno(festa) {
-  pararListeners();
-  historico = [telaListaAtual()];
-  mostrarTela('tela-relatorio-retorno', 'Relatório de Retorno');
+/* ── FOLHA DE FECHAMENTO ──
+   Mesmo formato da folha de papel usada hoje na festa (via do cliente /
+   via da coordenação): cabeçalho com os dados do evento, Bebidas Cliente,
+   Bebidas Consignada e Copos e Decoração à parte, hora extra e
+   observações. Gerada a partir dos dados que a coordenação preencheu no
+   Retorno — dá pra reabrir a qualquer momento pelo Detalhe da Festa (não
+   só logo após concluir o Retorno) pra acompanhar se está tudo batendo. */
+function _categoriaNormItem(item) {
+  const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+  return normalizarNomeItem(cfg?.grupo || item.categoria || '');
+}
 
-  const itens = festa.itens || [];
-  const linhasItens = itens.map(item => {
-    const unidade = item.unidade || 'un';
-    const enviado = item.qtdConferida || item.qtdSeparada || 0;
-    const retorno = item.qtdRetorno || 0;
-    const foto    = item.fotoConferencia;
-    return `
-      <div class="item-row">
-        <div class="item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
-        <div class="item-sub">
-          Inicial: <strong>${enviado}</strong> ${_escHtml(unidade)}
-          &nbsp;→&nbsp;
-          Final: <strong>${retorno}</strong> ${_escHtml(unidade)}
-          ${item.qtdConsumida ? ` (consumido: ${item.qtdConsumida})` : ''}
-          ${item.qtdDanificada ? ` (danificado: ${item.qtdDanificada})` : ''}
-        </div>
-        ${foto ? `<div class="grade-fotos" style="margin-top:8px"><img src="${foto}" class="foto-thumb" onclick="window.open('${foto}','_blank')"></div>` : ''}
-      </div>
-    `;
-  }).join('');
+/* 'cliente' | 'consignado' | 'copos' | null (não entra na folha — itens
+   próprios da Romero, descartáveis etc. não fazem parte deste controle). */
+function _grupoFolhaFechamento(item) {
+  const catN = _categoriaNormItem(item);
+  if (catN.includes('copo') || catN.includes('decora')) return 'copos';
+  const forn = item.fornecimento || extrairFornDoNome(item.nome);
+  if (forn === 'cliente')    return 'cliente';
+  if (forn === 'consignado') return 'consignado';
+  return null;
+}
+
+function _tabelaFolha(titulo, colunas, itens, linhaFn) {
+  if (!itens.length) return '';
+  return `
+    <div class="folha-secao">
+      <h3 class="folha-secao-titulo">${_escHtml(titulo)}</h3>
+      <table class="folha-tabela">
+        <thead><tr>${colunas.map(c => `<th>${_escHtml(c)}</th>`).join('')}</tr></thead>
+        <tbody>${itens.map(linhaFn).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+function _linhaFolhaBebida(item) {
+  const enviado = item.qtdConferida || item.qtdSeparada || 0;
+  const unidade = item.unidade || 'un';
+  const temConsumo = item.qtdConsumida !== undefined;
+  return `<tr>
+    <td>${_escHtml(nomeBasDisplay(item.nome))}</td>
+    <td>${_escHtml(item.marca || '')}</td>
+    <td>${_fmtQtd(enviado)} ${_escHtml(unidade)}</td>
+    <td>${temConsumo ? `${_fmtQtd(item.qtdConsumida)} ${_escHtml(unidade)}` : '—'}</td>
+  </tr>`;
+}
+
+function _linhaFolhaCopo(item) {
+  const enviado  = item.qtdConferida || item.qtdSeparada || 0;
+  const unidade  = item.unidade || 'un';
+  const unQuebra = _unidadeQuebraItem(item.nome, unidade);
+  const quebras  = item.qtdDanificada || 0;
+  return `<tr>
+    <td>${_escHtml(nomeBasDisplay(item.nome))}</td>
+    <td>${_fmtQtd(enviado)} ${_escHtml(unidade)}${htmlConversaoUnidades(item.nome, enviado)}</td>
+    <td>${_fmtQtd(quebras)} ${_escHtml(unQuebra)}</td>
+  </tr>`;
+}
+
+function abrirRelatorioRetorno(festa, voltarParaDetalhe) {
+  pararListeners();
+  if (voltarParaDetalhe) {
+    festaAtual = festa;
+    historico.push('tela-relatorio-retorno');
+  } else {
+    historico = [telaListaAtual()];
+  }
+  mostrarTela('tela-relatorio-retorno', 'Folha de Fechamento');
+
+  const itens        = festa.itens || [];
+  const bebidasCliente    = itens.filter(it => _grupoFolhaFechamento(it) === 'cliente');
+  const bebidasConsignada = itens.filter(it => _grupoFolhaFechamento(it) === 'consignado');
+  const coposDecoracao    = itens.filter(it => _grupoFolhaFechamento(it) === 'copos');
+
+  const horaExtraTxt = festa.horaExtra === 'sim' ? 'Sim' : festa.horaExtra === 'nao' ? 'Não' : '—';
 
   const fotosRetornoHTML = (festa.fotosRetorno || []).length ? `
-    <div class="detalhe-card" style="margin-top:16px">
-      <h3>Fotos do Retorno</h3>
+    <div class="folha-secao">
+      <h3 class="folha-secao-titulo">Fotos do Retorno</h3>
       <div class="grade-fotos">${festa.fotosRetorno.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
     </div>
   ` : '';
@@ -3051,8 +3153,38 @@ function abrirRelatorioRetorno(festa) {
       <h2>${_escHtml(festa.cliente || festa.nome)}</h2>
       <div class="card-festa-meta">${_escHtml(festa.nome)}</div>
     </div>
-    ${linhasItens}
+
+    <div class="folha-header">
+      <div class="folha-header-linha"><strong>Cliente:</strong> ${_escHtml(festa.cliente || '—')}</div>
+      <div class="folha-header-linha"><strong>Data:</strong> ${festa.data ? formatarData(festa.data) : '—'}</div>
+      <div class="folha-header-linha"><strong>Evento:</strong> ${_escHtml(festa.tipoEvento || '—')}</div>
+      <div class="folha-header-linha"><strong>Contrato:</strong> ${_escHtml(festa.contrato || '—')}</div>
+      <div class="folha-header-linha"><strong>Local:</strong> ${_escHtml(festa.local || '—')}</div>
+      <div class="folha-header-linha"><strong>Hora Início:</strong> ${_escHtml(festa.hora || '—')}</div>
+      <div class="folha-header-linha"><strong>Convidados Portaria:</strong> ${festa.convidadosPortaria != null ? festa.convidadosPortaria : '—'}</div>
+      <div class="folha-header-linha"><strong>Convidados Final:</strong> ${festa.convidadosFinal != null ? festa.convidadosFinal : '—'}</div>
+    </div>
+
+    ${_tabelaFolha('Bebidas Cliente', ['Bebida', 'Marca', 'Quantidade Inicial', 'Consumo'], bebidasCliente, _linhaFolhaBebida)}
+    ${_tabelaFolha('Bebidas Consignada', ['Bebida', 'Marca', 'Quantidade Inicial', 'Consumo'], bebidasConsignada, _linhaFolhaBebida)}
+    ${_tabelaFolha('Copos e Decoração', ['Modelo', 'Quantidade Inicial', 'Quebras'], coposDecoracao, _linhaFolhaCopo)}
+
+    <div class="folha-secao">
+      <h3 class="folha-secao-titulo">O evento teve hora extra?</h3>
+      <div class="folha-texto">${horaExtraTxt}</div>
+    </div>
+
+    <div class="folha-secao">
+      <h3 class="folha-secao-titulo">Observações</h3>
+      <div class="folha-texto">${festa.obsRetorno ? _escHtml(festa.obsRetorno).replace(/\n/g, '<br>') : '—'}</div>
+    </div>
+
     ${fotosRetornoHTML}
+
+    <div class="folha-assinaturas">
+      <div class="folha-assinatura"><span>Assinatura Coordenação</span></div>
+      <div class="folha-assinatura"><span>Assinatura Cerimonial / Cliente</span></div>
+    </div>
   `;
 }
 
@@ -3084,9 +3216,8 @@ function renderizarGalpao(festa) {
           <div class="item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
           ${badgeForn || ''}
           <div class="item-sub">
-            Retornou: <strong>${item.qtdRetorno || 0}</strong>
-            ${item.qtdDanificada ? ` — Danificado: <strong>${item.qtdDanificada}</strong>` : ''}
-            ${_escHtml(item.unidade || 'un')}
+            Retornou: <strong>${_fmtQtd(item.qtdRetorno || 0)}</strong> ${_escHtml(item.unidade || 'un')}
+            ${item.qtdDanificada ? ` — Danificado: <strong>${_fmtQtd(item.qtdDanificada)} ${_escHtml(_unidadeQuebraItem(item.nome, item.unidade))}</strong>` : ''}
           </div>
         </div>
       </div>
@@ -3304,6 +3435,7 @@ async function submitCriarFesta() {
       data:        new Date(dataStr + 'T12:00:00'),
       hora:        document.getElementById('cf-hora').value,
       local:       document.getElementById('cf-local').value.trim(),
+      contrato:    document.getElementById('cf-contrato').value.trim(),
       colaborador: document.getElementById('cf-colaborador').value,
       obs:         document.getElementById('cf-obs').value.trim(),
       tipoEvento:  document.getElementById('cf-tipo-evento').value.trim(),
@@ -3740,6 +3872,12 @@ function renderizarDetalhe(festa) {
        </div>`
     : '';
 
+  const folhaFechamentoHTML = (festa.status === 'galpao' || festa.status === 'concluida')
+    ? `<div class="detalhe-acoes" style="margin-bottom:16px">
+        <button class="btn-secundario" onclick="abrirRelatorioRetorno(festaAtual, true)">Ver Folha de Fechamento</button>
+       </div>`
+    : '';
+
   const editarHTML = (festa.status === 'agendada' || festa.status === 'separando')
     ? `<div class="detalhe-acoes" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
         <button class="btn-secundario" onclick="abrirEditarFesta('${festa.id}')">Editar Detalhes / Quantidades</button>
@@ -3820,6 +3958,7 @@ function renderizarDetalhe(festa) {
     ${excluirHTML}
     ${linkConfHTML}
     ${avancarHTML}
+    ${folhaFechamentoHTML}
     ${editarHTML}
     ${importarItensHTML}
 
@@ -3828,7 +3967,7 @@ function renderizarDetalhe(festa) {
       ${itens.map(it => `
         <div class="detalhe-linha">
           <span>${_escHtml(it.nome)}</span>
-          <span>Nec: ${it.qtdNecessaria} | Sep: ${it.qtdSeparada || 0} | Conf: ${it.qtdConferida || 0} | Ret: ${it.qtdRetorno !== undefined ? it.qtdRetorno : '—'} ${_escHtml(it.unidade || 'un')}${htmlConversaoUnidades(it.nome, it.qtdNecessaria)}</span>
+          <span>Nec: ${it.qtdNecessaria} | Sep: ${it.qtdSeparada || 0} | Conf: ${it.qtdConferida || 0} | Ret: ${it.qtdRetorno !== undefined ? _fmtQtd(it.qtdRetorno) : '—'} ${_escHtml(it.unidade || 'un')}${htmlConversaoUnidades(it.nome, it.qtdNecessaria)}</span>
         </div>
       `).join('')}
     </div>
@@ -4029,6 +4168,7 @@ function renderizarEditarFesta(festa) {
   document.getElementById('ef-hora').value = festa.hora || '';
   document.getElementById('ef-tipo-evento').value = festa.tipoEvento || '';
   document.getElementById('ef-convidados').value  = festa.convidados != null ? festa.convidados : '';
+  document.getElementById('ef-contrato').value    = festa.contrato || '';
 
   /* Preencher quantidades por item (itens já na festa + itens adicionados nesta sessão).
      Se o campo já existe na tela (ex.: o listener recebeu uma atualização
@@ -4289,6 +4429,7 @@ async function salvarEdicaoFesta() {
   const novoTipo      = document.getElementById('ef-tipo-evento').value.trim();
   const novosConv     = parseFloat(document.getElementById('ef-convidados').value);
   const novosConvidados = isNaN(novosConv) ? null : novosConv;
+  const novoContrato = document.getElementById('ef-contrato').value.trim();
 
   if (!novaDataStr) return toast('Informe a data do evento.', 'erro');
 
@@ -4356,6 +4497,9 @@ async function salvarEdicaoFesta() {
   if ((festaAtual.convidados ?? null) !== novosConvidados) {
     alteracoes.push({ campo: 'Convidados', de: festaAtual.convidados ?? '—', para: novosConvidados ?? '—' });
   }
+  if ((festaAtual.contrato || '') !== novoContrato) {
+    alteracoes.push({ campo: 'Contrato', de: festaAtual.contrato || '—', para: novoContrato || '—' });
+  }
 
   if (!alteracoes.length) {
     try { await atualizarFesta(festaEditandoId, { editandoAgora: null }); } catch(_) {}
@@ -4369,7 +4513,7 @@ async function salvarEdicaoFesta() {
   try {
     await editarFestaDados(
       festaEditandoId,
-      { data: novaData, hora: novaHora, tipoEvento: novoTipo, convidados: novosConvidados, itens: itensAtuais },
+      { data: novaData, hora: novaHora, tipoEvento: novoTipo, convidados: novosConvidados, contrato: novoContrato, itens: itensAtuais },
       alteracoes,
       usuarioAtual.nome
     );
@@ -4389,7 +4533,7 @@ async function salvarEdicaoFesta() {
       todasFestasCache[idxCache] = {
         ...todasFestasCache[idxCache],
         data: novaData, hora: novaHora, tipoEvento: novoTipo,
-        convidados: novosConvidados, itens: itensAtuais,
+        convidados: novosConvidados, contrato: novoContrato, itens: itensAtuais,
       };
       renderizarProducaoCEO();
     }

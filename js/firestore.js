@@ -382,7 +382,7 @@ async function concluirEtapa(id, etapa, dados) {
 }
 
 /* Edição de data/hora/quantidades enquanto agendada ou separando */
-async function editarFestaDados(id, { data, hora, tipoEvento, convidados, itens }, alteracoes, usuarioNome) {
+async function editarFestaDados(id, { data, hora, tipoEvento, convidados, contrato, itens }, alteracoes, usuarioNome) {
   const registro = {
     alteradoEm:  new Date().toISOString(),
     alteradoPor: usuarioNome,
@@ -394,6 +394,7 @@ async function editarFestaDados(id, { data, hora, tipoEvento, convidados, itens 
     hora,
     tipoEvento,
     convidados,
+    contrato,
     itens,
     ultimaAlteracao: TS(),
     alteracoes:      ARR_UNION(registro),

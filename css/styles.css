@@ -3051,6 +3051,60 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   .no-print { display: none !important; }
 }
 
+/* Folha de Fechamento — mesmo layout da folha de papel usada na festa
+   (Bebidas Cliente / Bebidas Consignada / Copos e Decoração), gerada a
+   partir dos dados do Retorno. Fica dentro de #tela-relatorio-retorno,
+   então herda a regra de impressão acima. */
+.folha-header {
+  border: var(--borda);
+  border-radius: var(--raio);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+}
+.folha-header-linha { font-size: 13px; color: var(--cinza-700); }
+.folha-header-linha strong { color: var(--cinza-900, #111827); }
+.folha-secao { margin-bottom: 22px; }
+.folha-secao-titulo {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  color: var(--cinza-700);
+  margin-bottom: 8px;
+}
+.folha-texto { font-size: 14px; color: var(--cinza-700); white-space: pre-wrap; }
+.folha-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.folha-tabela th, .folha-tabela td {
+  border: 1px solid var(--cinza-300, #D1D5DB);
+  padding: 6px 10px;
+  text-align: left;
+}
+.folha-tabela th { background: var(--cinza-100, #F3F4F6); font-weight: 700; }
+.folha-assinaturas {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 40px;
+}
+.folha-assinatura {
+  border-top: 1px solid var(--cinza-400, #9CA3AF);
+  padding-top: 6px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--cinza-600, #4B5563);
+}
+@media (max-width: 520px) {
+  .folha-header { grid-template-columns: 1fr; }
+  .folha-assinaturas { grid-template-columns: 1fr; }
+}
+
 /* ══ CATÁLOGO (fichas de coquetéis lidas do controle-gestao-main, só consulta) ══ */
 .catalogo-filtros { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 18px; }
 .catalogo-busca {
