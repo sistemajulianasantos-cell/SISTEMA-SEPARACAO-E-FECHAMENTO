@@ -1735,6 +1735,17 @@
     </div>
   </div>
 
+  <!-- ══════════ MODAL: HISTÓRICO DE MOVIMENTAÇÃO DE UM ITEM ══════════ -->
+  <div id="modal-hist-item" class="modal-overlay hidden" onclick="fecharHistoricoItemMov()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:860px;width:96%">
+      <div class="modal-titulo">Histórico de movimentação — <span id="hist-item-titulo"></span></div>
+      <div id="hist-item-conteudo"></div>
+      <div class="modal-acoes">
+        <button class="btn-secundario" onclick="fecharHistoricoItemMov()">Fechar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Datalist compartilhada: sugestões de Tipo de Evento -->
   <datalist id="tipo-evento-datalist">
     <option value="Casamento">
@@ -1769,8 +1780,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=4"></script>
-  <script src="js/firestore.js?v=55"></script>
-  <script src="js/app.js?v=134"></script>
+  <script src="js/firestore.js?v=56"></script>
+  <script src="js/app.js?v=135"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>

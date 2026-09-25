@@ -625,6 +625,138 @@ async function lancarMovimentacaoEstoque(mov) {
   return saldoDepois;
 }
 
+/* ════════════════════════════════════════
+   EDITAR / EXCLUIR LANÇAMENTO DO LIVRO-CAIXA
+   Corrigir um lançamento antigo muda o saldo de tudo que veio DEPOIS dele,
+   até a próxima contagem (contagem é valor absoluto — "zera" a cadeia).
+   Por isso a correção é propagada como uma diferença (diff):
+     • lançamentos seguintes (não-contagem) → saldoDepois += diff;
+     • a próxima contagem → só o delta dela muda (o saldo contado não);
+     • se não houver contagem depois → o saldo atual do item += diff.
+   Excluir não apaga o doc: marca excluido=true (fica a trilha de quem
+   excluiu e quando) e some de todas as listagens.
+════════════════════════════════════════ */
+const _tsMov = r => r.contadoEm?.toMillis ? r.contadoEm.toMillis()
+  : (r.contadoEm ? new Date(r.contadoEm).getTime() : 0);
+
+/* Delta efetivo de um lançamento (registros antigos não guardavam delta) */
+function _deltaMov(r) {
+  if (r.delta != null) return Number(r.delta) || 0;
+  if ((r.tipo || 'contagem') === 'contagem') return null; /* desconhecido */
+  return (_SINAL_MOV[r.tipo] || 0) * Math.abs(Number(r.qtd) || 0);
+}
+
+async function _lancamentosDoItem(nomeKey) {
+  const snap = await db.collection('historico_contagem').where('nomeKey', '==', nomeKey).get();
+  return snap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() }))
+    .filter(r => !r.excluido)
+    .sort((a, b) => _tsMov(a) - _tsMov(b));
+}
+
+/* Aplica diff em tudo que vem a partir de "desdeMs" (exceto o próprio
+   lançamento). Retorna true se o saldo atual do item mudou. */
+async function _propagarDiffEstoque(nomeKey, desdeMs, diff, excetoId) {
+  if (!diff) return false;
+  const regs  = await _lancamentosDoItem(nomeKey);
+  const batch = db.batch();
+  let chegouEmContagem = false;
+  for (const r of regs) {
+    if (r.id === excetoId || _tsMov(r) < desdeMs) continue;
+    if ((r.tipo || 'contagem') === 'contagem') {
+      if (r.delta != null) batch.update(r.ref, { delta: (Number(r.delta) || 0) - diff });
+      chegouEmContagem = true;
+      break;
+    }
+    if (r.saldoDepois != null) batch.update(r.ref, { saldoDepois: (Number(r.saldoDepois) || 0) + diff });
+  }
+  if (!chegouEmContagem) {
+    const snap = await db.collection('estoque').where('nomeKey', '==', nomeKey).limit(1).get();
+    if (!snap.empty) {
+      const atual = Number(snap.docs[0].data().qtd) || 0;
+      batch.update(snap.docs[0].ref, { qtd: atual + diff, updatedAt: TS() });
+    }
+  }
+  await batch.commit();
+  return !chegouEmContagem;
+}
+
+/* novo = { qtd, data (Date|null — ignorado em contagem), obs } */
+async function editarMovimentacaoEstoque(id, novo, por) {
+  const ref  = db.collection('historico_contagem').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error('Lançamento não encontrado.');
+  const r    = snap.data();
+  const tipo = r.tipo || 'contagem';
+  const tsAntigo = _tsMov(r);
+  const qtdNova  = Math.abs(Number(novo.qtd) || 0);
+
+  const auditoria = {
+    editadoPor: por || '—', editadoEm: TS(),
+    edicoes: firebase.firestore.FieldValue.arrayUnion({
+      em: new Date(), por: por || '—',
+      antes: { qtd: r.qtd ?? null, contadoEm: r.contadoEm || null, obs: r.obs || '' },
+    }),
+  };
+  const patch = { qtd: qtdNova, obs: novo.obs || '', ...auditoria };
+
+  if (tipo === 'contagem') {
+    const diff = qtdNova - (Number(r.qtd) || 0);
+    patch.saldoDepois = qtdNova;
+    if (r.delta != null) patch.delta = (Number(r.delta) || 0) + diff;
+    await ref.update(patch);
+    await _propagarDiffEstoque(r.nomeKey, tsAntigo, diff, id);
+    return;
+  }
+
+  const sinal      = _SINAL_MOV[tipo] || 0;
+  const deltaVelho = _deltaMov(r);
+  const deltaNovo  = sinal * qtdNova;
+  const dataNova   = (novo.data instanceof Date && !isNaN(novo.data)) ? novo.data : null;
+  const mudouData  = dataNova && Math.abs(dataNova.getTime() - tsAntigo) > 60000;
+
+  if (!mudouData) {
+    const diff = deltaNovo - deltaVelho;
+    patch.delta = deltaNovo;
+    if (r.saldoDepois != null) patch.saldoDepois = (Number(r.saldoDepois) || 0) + diff;
+    await ref.update(patch);
+    await _propagarDiffEstoque(r.nomeKey, tsAntigo, diff, id);
+    return;
+  }
+
+  /* Mudou de data: tira da posição antiga e reinsere na nova */
+  await _propagarDiffEstoque(r.nomeKey, tsAntigo, -deltaVelho, id);
+  const novoMs = dataNova.getTime();
+  const anteriores = (await _lancamentosDoItem(r.nomeKey))
+    .filter(x => x.id !== id && _tsMov(x) < novoMs);
+  const ant = anteriores[anteriores.length - 1];
+  const saldoAntes = ant ? (ant.saldoDepois != null ? Number(ant.saldoDepois)
+                          : ((ant.tipo || 'contagem') === 'contagem' ? Number(ant.qtd) : null)) : null;
+  patch.delta       = deltaNovo;
+  patch.saldoDepois = saldoAntes != null ? saldoAntes + deltaNovo : null;
+  patch.contadoEm   = firebase.firestore.Timestamp.fromDate(dataNova);
+  patch.retroativo  = true;
+  await ref.update(patch);
+  await _propagarDiffEstoque(r.nomeKey, novoMs, deltaNovo, id);
+}
+
+async function excluirMovimentacaoEstoque(id, por) {
+  const ref  = db.collection('historico_contagem').doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) throw new Error('Lançamento não encontrado.');
+  const r = snap.data();
+  const delta = _deltaMov(r);
+  if (delta == null) throw new Error('Contagem antiga sem registro do saldo anterior — corrija editando o valor em vez de excluir.');
+  await ref.update({ excluido: true, excluidoPor: por || '—', excluidoEm: TS() });
+  await _propagarDiffEstoque(r.nomeKey, _tsMov(r), -delta, id);
+}
+
+/* Todos os lançamentos (não excluídos) de um conjunto de chaves — usado no
+   histórico por produto (várias chaves = variantes do mesmo produto). */
+async function listarMovimentacoesDoItem(nomeKeys) {
+  const listas = await Promise.all([...new Set(nomeKeys)].filter(Boolean).map(_lancamentosDoItem));
+  return listas.flat().map(({ ref, ...r }) => r).sort((a, b) => _tsMov(b) - _tsMov(a));
+}
+
 /* Lançamentos de estoque de uma festa específica (saídas de evento e retornos
    já registrados) — usado na tela de Detalhe da Festa. */
 async function listarMovimentacoesDaFesta(festaId) {
@@ -634,6 +766,7 @@ async function listarMovimentacoesDaFesta(festaId) {
     .get();
   return snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
+    .filter(r => !r.excluido)
     .sort((a, b) => {
       const ta = a.contadoEm?.toMillis ? a.contadoEm.toMillis() : 0;
       const tb = b.contadoEm?.toMillis ? b.contadoEm.toMillis() : 0;
@@ -646,7 +779,7 @@ async function listarHistoricoContagem(limite = 300) {
     .orderBy('contadoEm', 'desc')
     .limit(limite)
     .get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !r.excluido);
 }
 
 /* Atualiza apenas os itens de uma festa (sem registrar alterações no histórico) */

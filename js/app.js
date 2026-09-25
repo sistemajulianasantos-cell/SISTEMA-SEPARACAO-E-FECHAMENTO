@@ -5855,7 +5855,19 @@ function estoqueDoItem(nomeKey) {
              : (e.ultimaContagemEm && toDate(e.ultimaContagemEm)?.getTime()) || 0;
     if (ts >= bestTs) { best = e; bestTs = ts; }
   }
-  return best;
+  if (best) return best;
+  /* Último fallback: nome "parecido" (plural, ordem de palavra trocada, 1
+     letra errada) — mesmo critério do Resolver Duplicados. Evita ler/criar
+     um doc de estoque separado pro mesmo produto só por causa de como o
+     nome veio digitado/importado numa festa específica. */
+  if (nomeKey.length >= 8) {
+    const assinaturaAlvo = _assinaturaPalavras(nomeKey);
+    for (const e of Object.values(estoqueCache)) {
+      if (!e || !e.nomeKey || e.nomeKey.length < 8) continue;
+      if (_assinaturaPalavras(e.nomeKey) === assinaturaAlvo || _distNivel1(e.nomeKey, nomeKey)) return e;
+    }
+  }
+  return null;
 }
 
 /* Unidade com que o estoque é exibido: a do Cadastro do item, pra mudar lá
@@ -6123,12 +6135,16 @@ function renderizarInventario() {
       const contado  = _itemContadoRecentemente(key);
       const btnLabel = contado ? 'Atualizar' : 'Contar';
       const btnStyle = contado ? 'background:var(--cinza-600)' : '';
-      return `
-        <div class="estoque-item-card" id="inv-card-${key}" style="margin-bottom:8px">
-          <div class="estoque-item-header">
-            <div class="estoque-item-nome">${_escHtml(c.nome)}</div>
-            <div style="font-size:12px;color:var(--cinza-500)">${contado ? `<span style="color:var(--verde-700);font-weight:600">Contado</span>` : (un ? _escHtml(un) : '')}</div>
-          </div>
+      /* Item que vem em caixa/pacote/fardo (copo é o caso típico) conta em
+         DOIS campos — caixas fechadas + unidades soltas — em vez de um só.
+         Contar tudo num campo só, no rótulo "cx", é o que gerava número
+         errado: quem contava misturava caixa com unidade solta, e o estoque
+         físico do item (baixa/retorno da festa) sempre é guardado em
+         unidade solta — um campo só em "cx" nunca bate com isso. */
+      const ehEmbalagem = ['cx', 'pct', 'fd'].includes(c.unidade);
+      const fator = Number(c.unidadesPorEmbalagem) || 0;
+
+      const corpoHtml = !ehEmbalagem ? `
           <div class="estoque-body-row">
             <span class="estoque-body-label">Qtd.:</span>
             <div class="estoque-qty-wrap">
@@ -6142,11 +6158,46 @@ function renderizarInventario() {
               onclick="salvarInventarioQtd('${_esc(key)}','${_esc(c.nome)}','${_esc(un)}')">
               ${btnLabel}
             </button>
+          </div>` : (() => {
+            const cxVal = (contado && fator) ? Math.floor(qtdEst / fator) : '';
+            const unVal = (contado && fator) ? (qtdEst % fator) : '';
+            return `
+          <div class="estoque-body-row">
+            <span class="estoque-body-label">Caixas:</span>
+            <div class="estoque-qty-wrap">
+              <input type="number" class="estoque-qty-input"
+                id="inv-qty-cx-${key}"
+                ${cxVal !== '' ? `value="${cxVal}"` : ''} min="0" placeholder="0"
+              />
+              <span class="estoque-qty-un">cx${fator ? ` (= ${fator} un)` : ' — sem qtd/caixa cadastrada'}</span>
+            </div>
           </div>
+          <div class="estoque-body-row">
+            <span class="estoque-body-label">Un. soltas:</span>
+            <div class="estoque-qty-wrap">
+              <input type="number" class="estoque-qty-input"
+                id="inv-qty-un-${key}"
+                ${unVal !== '' ? `value="${unVal}"` : ''} min="0" placeholder="0"
+              />
+              <span class="estoque-qty-un">un</span>
+            </div>
+            <button class="btn-primario btn-sm" style="margin-left:8px;flex-shrink:0;${btnStyle}"
+              onclick="salvarInventarioQtdEmbalagem('${_esc(key)}','${_esc(c.nome)}')">
+              ${btnLabel}
+            </button>
+          </div>`;
+          })();
+      return `
+        <div class="estoque-item-card" id="inv-card-${key}" style="margin-bottom:8px">
+          <div class="estoque-item-header">
+            <div class="estoque-item-nome">${_escHtml(c.nome)}</div>
+            <div style="font-size:12px;color:var(--cinza-500)">${contado ? `<span style="color:var(--verde-700);font-weight:600">Contado</span>` : (ehEmbalagem ? 'cx + un' : (un ? _escHtml(un) : ''))}</div>
+          </div>
+          ${corpoHtml}
           ${contado ? `
           <div style="text-align:right;margin-top:6px">
             <button class="btn-secundario btn-sm" style="color:var(--vermelho)"
-              onclick="desfazerContagemInventario(this,'${_esc(key)}','${_esc(c.nome)}','${_esc(un)}')">
+              onclick="desfazerContagemInventario(this,'${_esc(key)}','${_esc(c.nome)}','${_esc(ehEmbalagem ? 'un' : un)}')">
               &#8617; Desfazer
             </button>
           </div>` : ''}
@@ -6552,6 +6603,60 @@ async function salvarInventarioQtd(nomeKey, nome, unidade) {
   }
 }
 
+/* Igual a salvarInventarioQtd, mas pra item que vem em caixa/pacote/fardo:
+   lê os dois campos (caixas fechadas + unidades soltas), converte pra
+   unidade solta usando "Unidades por Caixa" do Cadastro e grava SEMPRE em
+   'un' — mesma base que baixa/retorno de festa já usam (ver
+   qtdEmUnidadeBase). Se o item ainda não tem essa conversão cadastrada,
+   pergunta antes de salvar e grava a resposta no Cadastro, pra próxima
+   contagem já vir com os dois campos prontos. */
+async function salvarInventarioQtdEmbalagem(nomeKey, nome) {
+  const cxInput = document.getElementById(`inv-qty-cx-${nomeKey}`);
+  const unInput = document.getElementById(`inv-qty-un-${nomeKey}`);
+  const cxVazio = !cxInput || cxInput.value.trim() === '';
+  const unVazio = !unInput || unInput.value.trim() === '';
+  if (cxVazio && unVazio) return toast('Informe a quantidade em caixas e/ou em unidades soltas.', 'erro');
+
+  const cfg = buscarConfigItem(nomeKey);
+  let fator = Number(cfg?.unidadesPorEmbalagem) || 0;
+  const cx = cxVazio ? 0 : (parseFloat(cxInput.value) || 0);
+
+  if (!fator && cx > 0) {
+    const resp = prompt(`"${nome}" ainda não tem "Unidades por Caixa" cadastrado.\n\nQuantas unidades vêm em cada caixa fechada?`);
+    if (resp === null) return;
+    fator = parseFloat(resp.replace(',', '.'));
+    if (!fator || fator <= 0) return toast('Quantidade inválida — contagem não salva. Tente de novo.', 'erro');
+    if (!cfg || !cfg.id) return toast('Item sem cadastro — não dá pra salvar a conversão. Cadastre o item primeiro.', 'erro');
+    try {
+      await salvarItemConfigDB({ id: cfg.id, unidadesPorEmbalagem: fator });
+      const cfgAtualizado = { ...cfg, unidadesPorEmbalagem: fator };
+      itemConfigsCache[cfg.nomeKey] = cfgAtualizado;
+      const idxInv = _inventarioConfigs.findIndex(c => c.id === cfg.id);
+      if (idxInv !== -1) _inventarioConfigs[idxInv] = cfgAtualizado;
+      toast(`Cadastro atualizado: 1 caixa de "${nome}" = ${fator} un.`, 'sucesso');
+    } catch (e) {
+      console.error(e);
+      return toast('Erro ao salvar o cadastro. Tente novamente.', 'erro');
+    }
+  }
+
+  const un    = unVazio ? 0 : (parseFloat(unInput.value) || 0);
+  const total = cx * fator + un;
+  const agora = new Date();
+  try {
+    const saldo = await lancarMovimentacaoEstoque({
+      nomeKey, nome, unidade: 'un', tipo: 'contagem', qtd: total,
+      por: usuarioAtual?.nome || '—', ultimaContagemEm: agora,
+    });
+    estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome, unidade: 'un', qtd: saldo, nomeKey, ultimaContagemEm: agora };
+    toast(`${nome}: ${saldo} un (${cx} cx + ${un} soltas)`, 'sucesso');
+    renderizarInventario();
+  } catch (e) {
+    console.error(e);
+    toast('Erro ao salvar. Tente novamente.', 'erro');
+  }
+}
+
 /* Desfaz a última contagem de um item: volta o estoque pro valor da
    contagem anterior (não de entrada/produção, que guardam a diferença, não
    o total — só "contagem" guarda o total real em cada momento). Se não
@@ -6754,8 +6859,9 @@ function renderizarHistoricoContagem(registros, containerId) {
     }).join('');
     return `
       <tr>
-        <td style="padding:8px 10px;font-weight:600;font-size:13px;white-space:nowrap;border-bottom:1px solid #F3F4F6;position:sticky;left:0;background:#fff">
-          ${_escHtml(p.nome)}<br><span style="font-weight:400;font-size:11px;color:var(--cinza-500)">${_escHtml(p.unidade || 'un')}</span>
+        <td style="padding:8px 10px;font-weight:600;font-size:13px;white-space:nowrap;border-bottom:1px solid #F3F4F6;position:sticky;left:0;background:#fff;cursor:pointer"
+          onclick="abrirHistoricoItemMov('${_esc(p.chave)}','${_esc(p.nome)}')" title="Ver histórico completo">
+          <span style="text-decoration:underline;text-underline-offset:2px">${_escHtml(p.nome)}</span><br><span style="font-weight:400;font-size:11px;color:var(--cinza-500)">${_escHtml(p.unidade || 'un')} · ver histórico</span>
         </td>
         <td style="padding:8px 10px;text-align:center;font-weight:800;white-space:nowrap;border-bottom:1px solid #F3F4F6;background:#F9FAFB">${qAtual}</td>
         ${cols}
@@ -6766,6 +6872,7 @@ function renderizarHistoricoContagem(registros, containerId) {
     <div style="font-size:11px;color:var(--cinza-500);margin-bottom:8px;display:flex;flex-wrap:wrap;gap:10px">
       ${Object.values(TIPO_HISTORICO).map(t => `<span><span style="color:${t.cor};font-weight:700">${t.sinal || '·'}</span> ${_escHtml(t.label)}</span>`).join('')}
       &nbsp;·&nbsp; toque num número pra ver quem registrou e a que horas
+      &nbsp;·&nbsp; clique no nome do produto pra ver/corrigir todos os lançamentos
     </div>
     <div style="overflow-x:auto;border:1px solid #E5E7EB;border-radius:8px">
       <table style="border-collapse:collapse;width:100%;font-size:13px">
@@ -6909,6 +7016,172 @@ let _movFiltroTipo = '';
 function filtrarMovTipo(val) {
   _movFiltroTipo = val || '';
   renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
+}
+
+/* ══════════════════════════════════════════════════
+   HISTÓRICO POR PRODUTO — extrato completo de um item (a tabela por dia só
+   mostra o último lançamento de cada dia). Junta todas as variações de nome
+   do mesmo produto (mesma chave base). CEO pode corrigir ou excluir um
+   lançamento; o saldo dos lançamentos seguintes e o estoque atual são
+   recalculados em editarMovimentacaoEstoque/excluirMovimentacaoEstoque.
+══════════════════════════════════════════════════ */
+let _histItemAtual = null; /* { chave, nome, movs } */
+
+async function abrirHistoricoItemMov(chave, nome) {
+  _histItemAtual = { chave, nome, movs: [] };
+  document.getElementById('hist-item-titulo').textContent = nome;
+  document.getElementById('modal-hist-item').classList.remove('hidden');
+  await _carregarHistoricoItemMov();
+}
+
+function fecharHistoricoItemMov() {
+  document.getElementById('modal-hist-item').classList.add('hidden');
+  _histItemAtual = null;
+}
+
+async function _carregarHistoricoItemMov() {
+  const el = document.getElementById('hist-item-conteudo');
+  if (!_histItemAtual) return;
+  const { chave } = _histItemAtual;
+  el.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
+
+  const chaves = new Set([chave]);
+  _histContagemCache.forEach(r => { if (r.nomeKey && nomeBaseKey(r.nomeKey) === chave) chaves.add(r.nomeKey); });
+  Object.values(estoqueCache).forEach(e => { if (e?.nomeKey && nomeBaseKey(e.nomeKey) === chave) chaves.add(e.nomeKey); });
+
+  try {
+    _histItemAtual.movs = await listarMovimentacoesDoItem([...chaves]);
+  } catch (e) {
+    console.error('Histórico do item:', e);
+    el.innerHTML = estadoVazio('Erro ao carregar o histórico.');
+    return;
+  }
+  _renderHistoricoItemMov();
+}
+
+function _renderHistoricoItemMov(editandoId) {
+  const el = document.getElementById('hist-item-conteudo');
+  if (!_histItemAtual) return;
+  const { chave, movs } = _histItemAtual;
+  const podeEditar = souCeo();
+  const est = estoqueDoItem(chave);
+  const variacoes = [...new Set(movs.map(m => m.nomeKey))];
+
+  const cab = `
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0 10px">
+      <div style="font-size:13px">Estoque atual: <strong>${est?.qtd ?? 0} ${_escHtml(est?.unidade || 'un')}</strong>
+        · ${movs.length} lançamento(s)</div>
+      ${podeEditar ? `<button class="btn-secundario btn-sm" onclick="_histItemNovaMov()">+ Nova movimentação deste item</button>` : ''}
+    </div>
+    ${variacoes.length > 1 ? `<p style="font-size:12px;color:#B45309;margin:0 0 8px">Lançamentos gravados sob ${variacoes.length} nomes diferentes: ${variacoes.map(_escHtml).join(', ')}. Cada nome tem o seu próprio saldo.</p>` : ''}`;
+
+  if (!movs.length) {
+    el.innerHTML = cab + estadoVazio('Nenhum lançamento registrado para este item.');
+    return;
+  }
+
+  const th = t => `<th style="padding:6px 8px;text-align:left;font-size:11px;font-weight:700;color:var(--cinza-500);border-bottom:2px solid #E5E7EB;white-space:nowrap">${t}</th>`;
+  const td = (c, extra = '') => `<td style="padding:6px 8px;border-bottom:1px solid #F3F4F6;vertical-align:top;${extra}">${c}</td>`;
+
+  const linhas = movs.map(m => {
+    const tipo = m.tipo || 'contagem';
+    const info = TIPO_HISTORICO[tipo] || TIPO_HISTORICO.contagem;
+    const d    = toDate(m.contadoEm);
+
+    if (m.id === editandoId) {
+      const ehContagem = tipo === 'contagem';
+      return `<tr style="background:#FFFBEB">
+        ${td(ehContagem ? _escHtml(formatarDataHora(m.contadoEm))
+             : `<input type="date" id="hist-ed-data" value="${normalizarData(d)}" max="${normalizarData(new Date())}" style="width:130px" />`)}
+        ${td(`<span style="color:${info.cor};font-weight:700">${_escHtml(info.label)}</span>`)}
+        ${td(`<input type="number" id="hist-ed-qtd" value="${m.qtd ?? 0}" min="0" step="any" style="width:80px" />`)}
+        ${td('—')}
+        ${td(`<input type="text" id="hist-ed-obs" value="${_escHtml(m.obs || '')}" placeholder="Observação" style="width:100%;min-width:110px" />`)}
+        ${td(`<button class="btn-primario btn-sm" onclick="_histItemSalvarEdicao('${_esc(m.id)}')">Salvar</button>
+              <button class="btn-secundario btn-sm" onclick="_renderHistoricoItemMov()">Cancelar</button>`, 'white-space:nowrap')}
+      </tr>`;
+    }
+
+    const detalhe = [
+      m.festaNome ? `${_MOTIVO_LABEL[m.motivo] || 'evento'}: ${_escHtml(m.festaNome)}`
+                  : (m.motivo ? _escHtml(_MOTIVO_LABEL[m.motivo] || m.motivo) : ''),
+      m.obs ? _escHtml(m.obs) : '',
+      variacoes.length > 1 ? `<span style="color:var(--cinza-500)">${_escHtml(m.nomeKey)}</span>` : '',
+      m.retroativo ? '<span style="color:var(--cinza-500)">lançado com data retroativa</span>' : '',
+      m.editadoPor ? `<span style="color:#B45309">corrigido por ${_escHtml(m.editadoPor)}</span>` : '',
+    ].filter(Boolean).join('<br>');
+
+    return `<tr>
+      ${td(_escHtml(formatarDataHora(m.contadoEm)), 'white-space:nowrap')}
+      ${td(`<span style="color:${info.cor};font-weight:700">${_escHtml(info.label)}</span>${detalhe ? `<br><span style="font-size:11px">${detalhe}</span>` : ''}`)}
+      ${td(`<strong style="color:${info.cor}">${info.sinal}${m.qtd}</strong> ${_escHtml(m.unidade || 'un')}`, 'white-space:nowrap')}
+      ${td(m.saldoDepois != null ? String(m.saldoDepois) : '—', 'text-align:right')}
+      ${td(_escHtml(m.contadoPor || '—'))}
+      ${td(podeEditar ? `<button class="btn-secundario btn-sm" onclick="_renderHistoricoItemMov('${_esc(m.id)}')">Editar</button>
+            <button class="btn-perigo btn-sm" onclick="_histItemExcluir('${_esc(m.id)}')">Excluir</button>` : '', 'white-space:nowrap')}
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = cab + `
+    <div style="overflow-x:auto;border:1px solid #E5E7EB;border-radius:8px;max-height:60vh;overflow-y:auto">
+      <table style="border-collapse:collapse;width:100%;font-size:13px">
+        <thead><tr>${th('Data')}${th('Tipo')}${th('Qtd')}${th('Saldo após')}${th('Quem')}${th('')}</tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+    <p style="font-size:11px;color:var(--cinza-500);margin-top:8px">
+      Corrigir ou excluir um lançamento recalcula o saldo dos lançamentos seguintes até a próxima contagem.
+      Se não houver contagem depois dele, o estoque atual também é ajustado.
+    </p>`;
+}
+
+async function _depoisDeAlterarMov(msg) {
+  toast(msg, 'sucesso');
+  try { await garantirListenerEstoque(); } catch (_) {}
+  try { _histContagemCache = await listarHistoricoContagem(1500); } catch (_) {}
+  if (abaEstoqueAtual === 'historico') renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
+  await _carregarHistoricoItemMov();
+}
+
+async function _histItemSalvarEdicao(id) {
+  const m = _histItemAtual?.movs.find(x => x.id === id);
+  if (!m) return;
+  const qtdStr = document.getElementById('hist-ed-qtd')?.value ?? '';
+  const qtd = parseFloat(qtdStr);
+  if (qtdStr === '' || isNaN(qtd) || qtd < 0) return toast('Informe uma quantidade válida.', 'erro');
+  const obs = (document.getElementById('hist-ed-obs')?.value || '').trim();
+  const dataStr = document.getElementById('hist-ed-data')?.value || '';
+  const data = (dataStr && dataStr !== normalizarData(toDate(m.contadoEm))) ? new Date(dataStr + 'T12:00:00') : null;
+  if (qtd === Number(m.qtd) && obs === (m.obs || '') && !data) return _renderHistoricoItemMov();
+  try {
+    await editarMovimentacaoEstoque(id, { qtd, obs, data }, usuarioAtual?.nome || '—');
+    await _depoisDeAlterarMov('Lançamento corrigido e saldo recalculado.');
+  } catch (e) {
+    console.error('Editar lançamento:', e);
+    toast(e.message || 'Erro ao salvar a correção.', 'erro');
+  }
+}
+
+async function _histItemExcluir(id) {
+  const m = _histItemAtual?.movs.find(x => x.id === id);
+  if (!m) return;
+  const info = TIPO_HISTORICO[m.tipo || 'contagem'] || TIPO_HISTORICO.contagem;
+  if (!confirm(`Excluir o lançamento "${info.label} ${m.qtd} ${m.unidade || 'un'}" de ${formatarDataHora(m.contadoEm)}?\n\nO saldo será recalculado.`)) return;
+  try {
+    await excluirMovimentacaoEstoque(id, usuarioAtual?.nome || '—');
+    await _depoisDeAlterarMov('Lançamento excluído e saldo recalculado.');
+  } catch (e) {
+    console.error('Excluir lançamento:', e);
+    toast(e.message || 'Erro ao excluir.', 'erro');
+  }
+}
+
+async function _histItemNovaMov() {
+  const nome = _histItemAtual?.nome || '';
+  fecharHistoricoItemMov();
+  await abrirModalRegistrarMov();
+  const inp = document.querySelector('#mov-itens-lista .mov-item-nome');
+  if (inp) inp.value = nome;
 }
 
 /* ══════════════════════════════════════════════════
@@ -7078,12 +7351,30 @@ async function confirmarRegistrarMov() {
 function _movEstoqueRefsDoItem(nomeItem) {
   const keyExato = normalizarNomeItem(nomeItem);
   const keyBase  = nomeBaseKey(keyExato);
-  const cfg = itemConfigsCache[keyExato] || itemConfigsCache[keyBase] || null;
+  let cfg = itemConfigsCache[keyExato] || itemConfigsCache[keyBase] || null;
+  /* Nome do item na festa não bateu nem na chave exata nem na base (plural,
+     ordem de palavra trocada, 1 letra errada — ex.: festa importada com
+     "Copos Long Drink" e o Cadastro tem "Copo Long Drink") — mesmo critério
+     de "parecido" já usado em Resolver Duplicados. Sem isso, a baixa/retorno
+     criava uma chave de estoque NOVA pro mesmo produto em vez de mexer no
+     saldo certo, e o item "reaparecia" como se tivesse voltado do nada. */
+  if (!cfg && keyExato.length >= 8) {
+    const assinaturaAlvo = _assinaturaPalavras(keyExato);
+    for (const c of Object.values(itemConfigsCache)) {
+      const k = c.nomeKey || '';
+      if (k.length < 8) continue;
+      if (_assinaturaPalavras(k) === assinaturaAlvo || _distNivel1(k, keyExato)) { cfg = c; break; }
+    }
+  }
   const est = estoqueDoItem(cfg?.nomeKey || keyBase);
   return {
     nomeKey: est?.nomeKey || cfg?.nomeKey || keyBase,
+    /* Item com fator de caixa cadastrado sempre baixa/retorna em unidade
+       solta (é como o estoque físico dele é guardado — ver qtdEmUnidadeBase);
+       usar a unidade "nativa" do Cadastro (cx) aqui gravava "265 cx" quando
+       na real eram 265 unidades soltas, e a contagem seguinte não batia. */
+    unidade: _unidadeQuebraItem(nomeItem, cfg?.unidade || est?.unidade || 'un'),
     nome:    cfg?.nome || nomeBasDisplay(nomeItem),
-    unidade: cfg?.unidade || est?.unidade || 'un',
   };
 }
 
@@ -9946,13 +10237,11 @@ function _lcFiltrarFestas() {
    de festas). "A Comprar" considera apenas qtd ROMERO+OUTRO (itens que
    precisamos comprar). Consignado e Cliente não precisam de compra. */
 function _lcConstruirItens(festas) {
-  /* Índice estoque por chave base — agrega variantes (ex: "aperol" + "aperol_consignado" → "aperol") */
-  const estBaseIdx = {};
-  Object.values(estoqueCache).forEach(e => {
-    if (!e.nomeKey) return;
-    const baseK = nomeBaseKey(e.nomeKey);
-    estBaseIdx[baseK] = (estBaseIdx[baseK] || 0) + (e.qtd || 0);
-  });
+  /* Estoque lido pelo MESMO critério do Controle de Estoque (estoqueDoItem:
+     chave exata → chave base → variante mais recente). Antes isto SOMAVA
+     todos os docs que caíam na mesma chave base ("jameson" + "jameson
+     consignado" + ...), então um doc antigo/duplicado inflava o número aqui
+     (ex.: 130 un) enquanto o Controle de Estoque mostrava o real (11 un). */
 
   /* Busca config por chave base, com fallback para busca linear pelo base key do catálogo */
   function _lcCfg(baseKey) {
@@ -10014,7 +10303,7 @@ function _lcConstruirItens(festas) {
   });
 
   return Object.values(mapa).map(it => {
-    const estoque  = estBaseIdx[it.nomeKey] ?? 0;
+    const estoque  = estoqueDoItem(it.nomeKey)?.qtd || 0;
     const qtdComprarBase = it.qtdRomeroBase + it.qtdOutroBase; /* só o que precisamos comprar, em unidade solta */
     const aComprar = Math.max(0, qtdComprarBase - estoque);
     return { ...it, estoque, qtdComprar: it.qtdRomero + it.qtdOutro, qtdComprarBase, aComprar };
@@ -10847,7 +11136,7 @@ function exportarCSVRelatorio() {
   const linhas = [['Item','Unidade','Categoria','Solicitado','Saída','Extra','Retorno','Avarias','Aproveit%','Est.Atual','AposPend']];
   Object.entries(mapa).forEach(([key, it]) => {
     const cfg  = itemConfigsCache[key];
-    const est  = estoqueCache[key]?.qtd || 0;
+    const est  = estoqueDoItem(key)?.qtd || 0;
     const apr  = it.saida>0 ? Math.round(it.retorno/it.saida*100) : 0;
     const ext  = Math.max(0, it.saida-it.solicitado);
     linhas.push([it.nome, it.unidade, cfg?.grupo||'', it.solicitado, it.saida, ext, it.retorno, it.avarias, apr+'%', est, est-(solPend[key]||0)]);
