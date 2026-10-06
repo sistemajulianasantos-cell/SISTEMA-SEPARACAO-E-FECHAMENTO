@@ -783,6 +783,17 @@ async function listarHistoricoContagem(limite = 300) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !r.excluido);
 }
 
+/* Lançamentos do livro-caixa a partir de uma data (aba Movimentações) — por
+   período em vez de "últimos N", senão uma semana com 2–3 festas (cada uma
+   gera ~50 saídas + ~50 retornos) já empurrava a contagem anterior pra fora. */
+async function listarHistoricoDesde(desde) {
+  const snap = await db.collection('historico_contagem')
+    .where('contadoEm', '>=', firebase.firestore.Timestamp.fromDate(desde))
+    .orderBy('contadoEm', 'desc')
+    .get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => !r.excluido);
+}
+
 /* Atualiza apenas os itens de uma festa (sem registrar alterações no histórico) */
 async function buscarTodasFestas() {
   const snap = await db.collection('festas').get();

@@ -7079,14 +7079,7 @@ function trocarAbaEstoque(aba, btn) {
     if (elConteudo)  elConteudo.classList.add('hidden');
     if (elHistorico) {
       elHistorico.classList.remove('hidden');
-      elHistorico.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
-      listarHistoricoContagem(1500).then(registros => {
-        _histContagemCache = registros;
-        renderizarHistoricoContagem(registros, 'estoque-historico');
-      }).catch(e => {
-        console.error(e);
-        elHistorico.innerHTML = estadoVazio('Erro ao carregar histórico.');
-      });
+      _carregarMovimentacoes();
     }
   } else if (aba === 'valor') {
     if (elConteudo)  elConteudo.classList.remove('hidden');
@@ -7104,7 +7097,7 @@ function trocarAbaEstoque(aba, btn) {
 
 function _reRenderEstoqueAtual() {
   if (abaEstoqueAtual === 'historico') {
-    renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
+    renderizarMovimentacoes();
   } else {
     renderizarEstoque(todasFestasCache, estoqueCache);
   }
@@ -7128,7 +7121,335 @@ function ordenarEstoque(val) {
 let _movFiltroTipo = '';
 function filtrarMovTipo(val) {
   _movFiltroTipo = val || '';
-  renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
+  renderizarMovimentacoes();
+}
+
+/* ══════════════════════════════════════════════════
+   MOVIMENTAÇÕES — visões sobre o livro-caixa (historico_contagem):
+   • conciliacao: entre as duas últimas contagens de cada produto, quanto
+     DEVERIA ter (contagem anterior + entradas/retornos − saídas) x quanto
+     foi CONTADO → divergência. Só lê os lançamentos, não altera nada.
+   • dia: todo lançamento agrupado por dia.
+   • festa: o que saiu, voltou e foi consumido em cada festa.
+   • grade: a tabela produto x dia de sempre (renderizarHistoricoContagem).
+══════════════════════════════════════════════════ */
+let _movVisao    = 'conciliacao';
+let _movPeriodo  = 30;     /* dias */
+let _movSoDiverg = false;
+
+function trocarVisaoMov(val) {
+  _movVisao = val || 'conciliacao';
+  renderizarMovimentacoes();
+}
+
+function trocarPeriodoMov(val) {
+  _movPeriodo = Number(val) || 30;
+  _carregarMovimentacoes();
+}
+
+function alternarSoDivergMov(chk) {
+  _movSoDiverg = !!chk.checked;
+  renderizarMovimentacoes();
+}
+
+async function _carregarMovimentacoes() {
+  const el = document.getElementById('estoque-historico');
+  if (!el) return;
+  el.innerHTML = '<div class="estado-vazio"><p>Carregando...</p></div>';
+  const desde = new Date();
+  desde.setHours(0, 0, 0, 0);
+  desde.setDate(desde.getDate() - _movPeriodo);
+  try {
+    _histContagemCache = await listarHistoricoDesde(desde);
+    renderizarMovimentacoes();
+  } catch (e) {
+    console.error('Movimentações:', e);
+    el.innerHTML = estadoVazio('Erro ao carregar as movimentações.');
+  }
+}
+
+function renderizarMovimentacoes() {
+  const selVisao = document.getElementById('estoque-mov-visao');
+  if (selVisao && selVisao.value !== _movVisao) selVisao.value = _movVisao;
+  /* Filtro de tipo só faz sentido nas visões que listam lançamento a lançamento */
+  const usaTipo = _movVisao === 'dia' || _movVisao === 'grade';
+  document.querySelectorAll('.mov-filtro-tipo').forEach(e => e.classList.toggle('hidden', !usaTipo));
+
+  if (_movVisao === 'dia')         return _renderMovPorDia(_histContagemCache);
+  if (_movVisao === 'festa')       return _renderMovPorFesta(_histContagemCache);
+  if (_movVisao === 'grade')       return renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
+  return _renderMovConciliacao(_histContagemCache);
+}
+
+const _movData   = r => (r.contadoEm?.toDate ? r.contadoEm.toDate() : new Date(r.contadoEm));
+const _movDiaKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const _movDiaBR  = d => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+const _movChave  = r => nomeBaseKey(r.nomeKey || normalizarNomeItem(r.nome || '')) || (r.nome || '');
+const _movQtd    = v => _fmtQtd(Math.round((Number(v) || 0) * 100) / 100);
+
+/* Mesmos filtros de busca/categoria do resto da tela de Estoque */
+function _movPassaFiltroProduto(chave, nome) {
+  const busca = (_buscaEstoque || '').toLowerCase().trim();
+  if (busca && !(nome || '').toLowerCase().includes(busca)) return false;
+  if (_estoqueFiltroCategoria && buscarConfigItem(chave)?.grupo !== _estoqueFiltroCategoria) return false;
+  return true;
+}
+
+/* Texto de "por quê" de um lançamento: festa, motivo ou observação */
+function _movContexto(r) {
+  if (r.festaNome) return `${_MOTIVO_LABEL[r.motivo] || r.motivo || 'evento'}: ${r.festaNome}`;
+  if (r.motivo)    return `${_MOTIVO_LABEL[r.motivo] || r.motivo}${r.obs ? ': ' + r.obs : ''}`;
+  return r.obs || '';
+}
+
+/* Reproduz o livro-caixa em ordem cronológica, por produto (chave base).
+   Cada contagem "fecha" o período anterior: o esperado é o saldo corrido
+   desde a contagem anterior; contado − esperado = divergência. Duas
+   contagens do mesmo produto no mesmo dia contam como uma só (a última
+   vale — é correção de quem contou, não divergência). Lançamentos antes
+   da 1ª contagem do período são ignorados (não há base pra comparar). */
+function _calcularConciliacao(registros) {
+  const asc = [...registros].sort((a, b) => _movData(a) - _movData(b));
+  const porProd = {};
+  for (const r of asc) {
+    const d = _movData(r);
+    if (isNaN(d)) continue;
+    const chave = _movChave(r);
+    if (!chave) continue;
+    const p = porProd[chave] || (porProd[chave] = {
+      chave, nome: r.nome || chave, unidade: r.unidade || 'un',
+      saldo: null, ultima: null, entradas: 0, saidas: 0, semBase: 0,
+    });
+    const tipo = r.tipo || 'contagem';
+    const q    = Number(r.qtd) || 0;
+
+    if (tipo === 'contagem') {
+      const u = p.ultima;
+      if (u && _movDiaKey(u.data) === _movDiaKey(d)) {
+        if (u.esperado !== null) u.esperado += (p.saldo - u.contado);
+        u.entradas += p.entradas;
+        u.saidas   += p.saidas;
+        u.contado   = q;
+        u.data      = d;
+        u.por       = r.contadoPor;
+      } else {
+        p.ultima = {
+          data: d, contado: q, por: r.contadoPor,
+          anterior: u ? { data: u.data, qtd: u.contado } : null,
+          esperado: p.saldo, entradas: p.entradas, saidas: p.saidas,
+        };
+      }
+      p.saldo = q; p.entradas = 0; p.saidas = 0;
+    } else {
+      const s = _SINAL_MOV[tipo] || 0;
+      if (p.saldo === null) { p.semBase++; continue; }
+      p.saldo += s * q;
+      if (s > 0) p.entradas += q;
+      else if (s < 0) p.saidas += q;
+    }
+  }
+  return Object.values(porProd);
+}
+
+function _renderMovConciliacao(registros) {
+  const el = document.getElementById('estoque-historico');
+  const todos = _calcularConciliacao(registros).filter(p => _movPassaFiltroProduto(p.chave, p.nome));
+  const comContagem = todos.filter(p => p.ultima);
+  const semContagem = todos.filter(p => !p.ultima && p.semBase);
+
+  const div = p => (p.ultima && p.ultima.esperado !== null) ? p.ultima.contado - p.ultima.esperado : null;
+  const arred = v => Math.round(v * 100) / 100;
+  const comDiv = comContagem.filter(p => { const v = div(p); return v !== null && arred(v) !== 0; });
+
+  let lista = _movSoDiverg ? comDiv : comContagem;
+  lista = [...lista].sort((a, b) =>
+    Math.abs(div(b) || 0) - Math.abs(div(a) || 0) || a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  const th = (t, al = 'center') => `<th style="padding:8px 10px;text-align:${al};font-size:11px;font-weight:700;color:var(--cinza-500);white-space:nowrap;border-bottom:2px solid #E5E7EB">${t}</th>`;
+  const td = (c, extra = '') => `<td style="padding:8px 10px;text-align:center;white-space:nowrap;border-bottom:1px solid #F3F4F6;${extra}">${c}</td>`;
+
+  const linhas = lista.map(p => {
+    const u  = p.ultima;
+    const un = _escHtml(p.unidade || 'un');
+    const v  = div(p);
+    let divHtml;
+    if (v === null)           divHtml = `<span style="color:var(--cinza-500);font-weight:400">1ª contagem no período</span>`;
+    else if (arred(v) === 0)  divHtml = `<span style="color:#047857">bateu</span>`;
+    else if (v < 0)           divHtml = `<span style="color:#B91C1C">faltam ${_movQtd(-v)}</span>`;
+    else                      divHtml = `<span style="color:#B45309">sobram ${_movQtd(v)}</span>`;
+    const desde = (p.entradas || p.saidas)
+      ? `${p.saidas ? `−${_movQtd(p.saidas)}` : ''}${p.saidas && p.entradas ? ' ' : ''}${p.entradas ? `+${_movQtd(p.entradas)}` : ''} → <strong>${_movQtd(p.saldo)}</strong>`
+      : `<span style="color:var(--cinza-500)">sem movimento</span>`;
+    return `<tr>
+      <td style="padding:8px 10px;font-weight:600;font-size:13px;white-space:nowrap;border-bottom:1px solid #F3F4F6;position:sticky;left:0;background:#fff;cursor:pointer"
+        onclick="abrirHistoricoItemMov('${_esc(p.chave)}','${_esc(p.nome)}')" title="Ver todos os lançamentos">
+        <span style="text-decoration:underline;text-underline-offset:2px">${_escHtml(p.nome)}</span><br><span style="font-weight:400;font-size:11px;color:var(--cinza-500)">${un}</span>
+      </td>
+      ${td(u.anterior ? `${_movQtd(u.anterior.qtd)}<br><span style="font-size:11px;color:var(--cinza-500)">${_movDiaBR(u.anterior.data)}</span>` : '—')}
+      ${td(u.saidas ? `<span style="color:#B45309">−${_movQtd(u.saidas)}</span>` : '—')}
+      ${td(u.entradas ? `<span style="color:#1D4ED8">+${_movQtd(u.entradas)}</span>` : '—')}
+      ${td(u.esperado !== null ? `<strong>${_movQtd(u.esperado)}</strong>` : '—', 'background:#F9FAFB')}
+      ${td(`<strong>${_movQtd(u.contado)}</strong><br><span style="font-size:11px;color:var(--cinza-500)">${_movDiaBR(u.data)}${u.por ? ' · ' + _escHtml(u.por) : ''}</span>`)}
+      ${td(divHtml, 'font-weight:700')}
+      ${td(desde, 'font-size:12px')}
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `
+    <p style="font-size:12px;color:var(--cinza-600);margin:0 0 8px">
+      Compara as duas últimas contagens de cada produto no período:
+      <strong>contagem anterior − saídas + entradas/retornos = deveria ter</strong>, e o que foi contado depois.
+      Nada aqui altera o estoque.
+    </p>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:8px;font-size:13px">
+      <span><strong>${comDiv.length}</strong> produto(s) com divergência na última contagem</span>
+      <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
+        <input type="checkbox" ${_movSoDiverg ? 'checked' : ''} onchange="alternarSoDivergMov(this)" /> Só com divergência
+      </label>
+    </div>
+    ${lista.length ? `
+      <div style="overflow-x:auto;border:1px solid #E5E7EB;border-radius:8px">
+        <table style="border-collapse:collapse;width:100%;font-size:13px">
+          <thead><tr>
+            <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--cinza-500);white-space:nowrap;border-bottom:2px solid #E5E7EB;position:sticky;left:0;background:#fff">Produto</th>
+            ${th('Contagem anterior')}${th('Saídas')}${th('Entradas')}${th('Deveria ter')}${th('Contado')}${th('Divergência')}${th('Desde então → deveria ter hoje')}
+          </tr></thead>
+          <tbody>${linhas}</tbody>
+        </table>
+      </div>` : estadoVazio(_movSoDiverg ? 'Nenhuma divergência no período.' : 'Nenhuma contagem no período.')}
+    ${semContagem.length ? `
+      <p style="font-size:12px;color:var(--cinza-500);margin-top:8px">
+        ${semContagem.length} produto(s) tiveram movimentação mas nenhuma contagem no período — sem base pra comparar:
+        ${semContagem.slice(0, 15).map(p => _escHtml(p.nome)).join(', ')}${semContagem.length > 15 ? '…' : ''}
+      </p>` : ''}
+  `;
+}
+
+function _renderMovPorDia(registros) {
+  const el = document.getElementById('estoque-historico');
+  const regs = registros.filter(r => {
+    const tipo = r.tipo || 'contagem';
+    if (_movFiltroTipo ? tipo !== _movFiltroTipo : tipo === 'contagem') return false;
+    return _movPassaFiltroProduto(_movChave(r), r.nome || r.nomeKey);
+  });
+  if (!regs.length) {
+    el.innerHTML = estadoVazio('Nenhuma movimentação no período.');
+    return;
+  }
+
+  const porDia = {};
+  regs.forEach(r => {
+    const d = _movData(r);
+    if (isNaN(d)) return;
+    const k = _movDiaKey(d);
+    (porDia[k] || (porDia[k] = { data: d, regs: [] })).regs.push(r);
+  });
+  const SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+
+  el.innerHTML = `
+    <p style="font-size:12px;color:var(--cinza-600);margin:0 0 8px">
+      ${_movFiltroTipo ? '' : 'Todas as entradas e saídas do período, dia a dia (contagens ficam de fora — escolha "Contagem" em Tipo pra vê-las).'}
+      Clique no produto pra ver o extrato completo dele.
+    </p>
+    ${Object.keys(porDia).sort().reverse().map(k => {
+      const { data, regs: doDia } = porDia[k];
+      doDia.sort((a, b) => _movContexto(a).localeCompare(_movContexto(b), 'pt-BR')
+        || (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+      return `
+        <details class="detalhe-card" style="padding:10px 12px;margin-bottom:8px" ${k === Object.keys(porDia).sort().reverse()[0] ? 'open' : ''}>
+          <summary style="cursor:pointer;font-weight:700">${_movDiaBR(data)} (${SEMANA[data.getDay()]}) · ${doDia.length} lançamento(s)</summary>
+          <div style="overflow-x:auto;margin-top:8px">
+            <table style="border-collapse:collapse;width:100%;font-size:13px">
+              <tbody>
+                ${doDia.map(r => {
+                  const info = TIPO_HISTORICO[r.tipo] || TIPO_HISTORICO.contagem;
+                  const ctx  = _movContexto(r);
+                  return `<tr>
+                    <td style="padding:6px 8px;border-bottom:1px solid #F3F4F6;cursor:pointer" onclick="abrirHistoricoItemMov('${_esc(_movChave(r))}','${_esc(r.nome || r.nomeKey)}')">${_escHtml(r.nome || r.nomeKey)}</td>
+                    <td style="padding:6px 8px;border-bottom:1px solid #F3F4F6;white-space:nowrap;font-weight:700;color:${info.cor}">${info.sinal}${_movQtd(r.qtd)} ${_escHtml(r.unidade || 'un')}</td>
+                    <td style="padding:6px 8px;border-bottom:1px solid #F3F4F6;font-size:12px"><span style="color:${info.cor}">${_escHtml(info.label)}</span>${ctx ? ` · ${_escHtml(ctx)}` : ''}</td>
+                    <td style="padding:6px 8px;border-bottom:1px solid #F3F4F6;font-size:12px;color:var(--cinza-500);white-space:nowrap">${_escHtml(r.contadoPor || '—')}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </details>`;
+    }).join('')}
+  `;
+}
+
+function _renderMovPorFesta(registros) {
+  const el = document.getElementById('estoque-historico');
+  const festasPorId = {};
+  (todasFestasCache || []).forEach(f => { festasPorId[f.id] = f; });
+
+  /* grupos: festa → produto → { saiu, voltou } ; saídas avulsas → por motivo */
+  const grupos = {};
+  registros.forEach(r => {
+    const tipo = r.tipo || 'contagem';
+    const s = _SINAL_MOV[tipo] || 0;
+    if (!s) return;
+    if (!r.festaId && s > 0) return;   /* entrada/produção sem festa não é consumo */
+    const chave = _movChave(r);
+    if (!_movPassaFiltroProduto(chave, r.nome || r.nomeKey)) return;
+    const d = _movData(r);
+    const gk = r.festaId ? `f:${r.festaId}` : `m:${r.motivo || 'outros'}`;
+    const g = grupos[gk] || (grupos[gk] = {
+      festaId: r.festaId || null,
+      titulo: r.festaId ? (r.festaNome || festasPorId[r.festaId]?.nome || 'Festa')
+                        : `Saídas avulsas — ${_MOTIVO_LABEL[r.motivo] || r.motivo || 'sem motivo'}`,
+      data: d, itens: {},
+    });
+    if (d < g.data) g.data = d;
+    const it = g.itens[chave] || (g.itens[chave] = { chave, nome: r.nome || r.nomeKey, unidade: r.unidade || 'un', saiu: 0, voltou: 0 });
+    if (s < 0) it.saiu += Number(r.qtd) || 0;
+    else       it.voltou += Number(r.qtd) || 0;
+  });
+
+  const lista = Object.values(grupos).sort((a, b) => b.data - a.data);
+  if (!lista.length) {
+    el.innerHTML = estadoVazio('Nenhuma saída de festa no período.');
+    return;
+  }
+
+  el.innerHTML = `
+    <p style="font-size:12px;color:var(--cinza-600);margin:0 0 8px">
+      Por festa: o que saiu na conferência, o que voltou no retorno e o consumo (saiu − voltou).
+      Festa que começou antes do período pode aparecer incompleta — aumente o período se precisar.
+    </p>
+    ${lista.map(g => {
+      const festa = g.festaId ? festasPorId[g.festaId] : null;
+      const dataFesta = festa?.data ? toDate(festa.data) : g.data;
+      const aguardando = g.festaId && !(festa ? festa.estoqueRetornado : Object.values(g.itens).some(i => i.voltou));
+      const itens = Object.values(g.itens).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      return `
+        <details class="detalhe-card" style="padding:10px 12px;margin-bottom:8px">
+          <summary style="cursor:pointer">
+            <strong>${_escHtml(g.titulo)}</strong>
+            <span style="font-size:12px;color:var(--cinza-500)"> · ${isNaN(dataFesta) ? '' : _movDiaBR(dataFesta)} · ${itens.length} item(ns)${aguardando ? ' · aguardando retorno' : ''}</span>
+          </summary>
+          <div style="overflow-x:auto;margin-top:8px">
+            <table style="border-collapse:collapse;width:100%;font-size:13px">
+              <thead><tr>
+                <th style="padding:6px 8px;text-align:left;font-size:11px;color:var(--cinza-500);border-bottom:2px solid #E5E7EB">Produto</th>
+                <th style="padding:6px 8px;text-align:right;font-size:11px;color:var(--cinza-500);border-bottom:2px solid #E5E7EB">Saiu</th>
+                ${g.festaId ? `<th style="padding:6px 8px;text-align:right;font-size:11px;color:var(--cinza-500);border-bottom:2px solid #E5E7EB">Voltou</th>
+                <th style="padding:6px 8px;text-align:right;font-size:11px;color:var(--cinza-500);border-bottom:2px solid #E5E7EB">Consumo</th>` : ''}
+              </tr></thead>
+              <tbody>
+                ${itens.map(i => `<tr>
+                  <td style="padding:6px 8px;border-bottom:1px solid #F3F4F6;cursor:pointer" onclick="abrirHistoricoItemMov('${_esc(i.chave)}','${_esc(i.nome)}')">${_escHtml(i.nome)} <span style="font-size:11px;color:var(--cinza-500)">${_escHtml(i.unidade)}</span></td>
+                  <td style="padding:6px 8px;border-bottom:1px solid #F3F4F6;text-align:right">${_movQtd(i.saiu)}</td>
+                  ${g.festaId ? `<td style="padding:6px 8px;border-bottom:1px solid #F3F4F6;text-align:right">${aguardando ? '—' : _movQtd(i.voltou)}</td>
+                  <td style="padding:6px 8px;border-bottom:1px solid #F3F4F6;text-align:right;font-weight:700">${aguardando ? '—' : _movQtd(Math.max(0, i.saiu - i.voltou))}</td>` : ''}
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </details>`;
+    }).join('')}
+  `;
 }
 
 /* ══════════════════════════════════════════════════
@@ -7196,9 +7517,21 @@ function _renderHistoricoItemMov(editandoId) {
   const th = t => `<th style="padding:6px 8px;text-align:left;font-size:11px;font-weight:700;color:var(--cinza-500);border-bottom:2px solid #E5E7EB;white-space:nowrap">${t}</th>`;
   const td = (c, extra = '') => `<td style="padding:6px 8px;border-bottom:1px solid #F3F4F6;vertical-align:top;${extra}">${c}</td>`;
 
-  const linhas = movs.map(m => {
+  const linhas = movs.map((m, idx) => {
     const tipo = m.tipo || 'contagem';
     const info = TIPO_HISTORICO[tipo] || TIPO_HISTORICO.contagem;
+    /* Contagem: o saldo antes dela é o que DEVERIA ter (contagem anterior ±
+       movimentos). Só mostra se houve contagem antes — na 1ª não há base. */
+    let conferenciaContagem = '';
+    if (tipo === 'contagem' && m.delta != null && m.saldoDepois != null
+        && movs.slice(idx + 1).some(x => (x.tipo || 'contagem') === 'contagem')) {
+      const esperado = Math.round((m.saldoDepois - m.delta) * 100) / 100;
+      const dif = Math.round(m.delta * 100) / 100;
+      conferenciaContagem = `deveria ter ${_movQtd(esperado)} → ` + (dif === 0
+        ? '<span style="color:#047857;font-weight:700">bateu</span>'
+        : dif < 0 ? `<span style="color:#B91C1C;font-weight:700">faltam ${_movQtd(-dif)}</span>`
+                  : `<span style="color:#B45309;font-weight:700">sobram ${_movQtd(dif)}</span>`);
+    }
     const d    = toDate(m.contadoEm);
 
     if (m.id === editandoId) {
@@ -7222,6 +7555,7 @@ function _renderHistoricoItemMov(editandoId) {
       variacoes.length > 1 ? `<span style="color:var(--cinza-500)">${_escHtml(m.nomeKey)}</span>` : '',
       m.retroativo ? '<span style="color:var(--cinza-500)">lançado com data retroativa</span>' : '',
       m.editadoPor ? `<span style="color:#B45309">corrigido por ${_escHtml(m.editadoPor)}</span>` : '',
+      conferenciaContagem,
     ].filter(Boolean).join('<br>');
 
     return `<tr>
@@ -7251,8 +7585,7 @@ function _renderHistoricoItemMov(editandoId) {
 async function _depoisDeAlterarMov(msg) {
   toast(msg, 'sucesso');
   try { await garantirListenerEstoque(); } catch (_) {}
-  try { _histContagemCache = await listarHistoricoContagem(1500); } catch (_) {}
-  if (abaEstoqueAtual === 'historico') renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
+  if (abaEstoqueAtual === 'historico') await _carregarMovimentacoes();
   await _carregarHistoricoItemMov();
 }
 
@@ -7443,10 +7776,7 @@ async function confirmarRegistrarMov() {
     toast(`${ok} movimentação(ões) registrada(s).${naoAchados.length ? ' Itens fora do Cadastro: ' + naoAchados.join(', ') : ''}`, ok === linhas.length ? 'sucesso' : 'aviso');
     fecharModalRegistrarMov();
     if (abaEstoqueAtual === 'historico') {
-      try {
-        _histContagemCache = await listarHistoricoContagem(1500);
-        renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
-      } catch (_) {}
+      await _carregarMovimentacoes();
     } else {
       renderizarEstoque(todasFestasCache, estoqueCache);
     }

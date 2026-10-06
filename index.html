@@ -1312,8 +1312,22 @@
         <button class="tab"       data-aba="historico" onclick="trocarAbaEstoque('historico',this)">Movimentações</button>
       </div>
       <div id="estoque-mov-filtros" class="est-filtros-row hidden">
-        <span class="est-filtros-label">Tipo</span>
-        <select id="estoque-mov-tipo" class="est-filtros-select" onchange="filtrarMovTipo(this.value)">
+        <span class="est-filtros-label">Visão</span>
+        <select id="estoque-mov-visao" class="est-filtros-select" onchange="trocarVisaoMov(this.value)">
+          <option value="conciliacao">Conferência do estoque</option>
+          <option value="dia">Por dia</option>
+          <option value="festa">Por festa</option>
+          <option value="grade">Tabela por dia</option>
+        </select>
+        <span class="est-filtros-label">Período</span>
+        <select id="estoque-mov-periodo" class="est-filtros-select" onchange="trocarPeriodoMov(this.value)">
+          <option value="7">Últimos 7 dias</option>
+          <option value="30" selected>Últimos 30 dias</option>
+          <option value="60">Últimos 60 dias</option>
+          <option value="90">Últimos 90 dias</option>
+        </select>
+        <span class="est-filtros-label mov-filtro-tipo">Tipo</span>
+        <select id="estoque-mov-tipo" class="est-filtros-select mov-filtro-tipo" onchange="filtrarMovTipo(this.value)">
           <option value="">Todos</option>
           <option value="entrada">Entrada</option>
           <option value="saida">Saída</option>
@@ -1780,8 +1794,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=4"></script>
-  <script src="js/firestore.js?v=57"></script>
-  <script src="js/app.js?v=136"></script>
+  <script src="js/firestore.js?v=58"></script>
+  <script src="js/app.js?v=137"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>
