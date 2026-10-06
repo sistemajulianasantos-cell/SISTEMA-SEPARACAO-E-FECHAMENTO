@@ -2520,15 +2520,31 @@ function htmlCardConfItem(item, ri, conferido) {
     </div>
   ` : '';
 
-  const confVal  = item.qtdConferida;
-  const sepVal   = item.qtdSeparada || 0;
-  const msgInicial = confVal !== undefined
-    ? (confVal > sepVal
-        ? `<span class="msg-item msg-alerta">Quantidade acima do separado</span>`
-        : confVal < sepVal
-          ? `<span class="msg-item msg-erro">Quantidade abaixo do separado</span>`
+  /* Contagem cega: só o CEO vê se a quantidade bate com o separado. O
+     coordenador não recebe retorno nenhum enquanto digita (senão dava pra ir
+     chutando até acertar); a comparação só acontece ao confirmar a
+     conferência, e os itens divergentes voltam UMA vez para recontagem. */
+  const ceo        = souCeo();
+  const confVal    = item.qtdConferida;
+  const sepVal     = item.qtdSeparada || 0;
+  const emRecontagem     = (festaAtual?.itens || []).some(it => it.recontar);
+  const recontarPendente = !!item.recontar && item.recontagem === undefined;
+  /* Na fase de recontagem só os itens a recontar ficam editáveis; recontado, trava */
+  const travado = !ceo && emRecontagem && !recontarPendente;
+  const msgInicial = ceo
+    ? ((confVal !== undefined && confVal !== null)
+        ? (confVal > sepVal
+            ? `<span class="msg-item msg-alerta">Quantidade acima do separado</span>`
+            : confVal < sepVal
+              ? `<span class="msg-item msg-erro">Quantidade abaixo do separado</span>`
+              : '')
+        : '')
+      + (item.contagem1 !== undefined
+          ? `<div class="item-sub">1ª contagem: <strong>${item.contagem1}</strong>${item.recontagem !== undefined ? ` · Recontagem: <strong>${item.recontagem}</strong>` : ' · aguardando recontagem'}</div>`
           : '')
-    : '';
+    : (recontarPendente
+        ? `<span class="msg-item msg-alerta">Recontar este item — conte de novo com atenção, esta é a contagem final</span>`
+        : '');
 
   return `
     <div class="item-row">
@@ -2549,17 +2565,19 @@ function htmlCardConfItem(item, ri, conferido) {
       <div class="item-entrada">
         <label>Quantidade conferida:</label>
         <input type="number" class="qty-input" id="conf-qty-${ri}"
-          value="${confVal !== undefined ? confVal : ''}"
-          min="0" placeholder="0"
-          oninput="checarConf(${ri}, ${sepVal})"
+          value="${confVal !== undefined && confVal !== null ? confVal : ''}"
+          min="0" placeholder="0"${travado ? ' disabled' : ''}
+          ${ceo ? `oninput="checarConf(${ri}, ${sepVal})"` : ''}
           onchange="salvarQtdConf(${ri})" />
         <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
       </div>
       <div id="conf-msg-${ri}">${msgInicial}</div>
       ${fotoAreaHtml}
-      ${conferido
-        ? `<button class="btn-desfazer" onclick="reabrirItemConf(${ri})">↺ Reabrir</button>`
-        : `<button class="btn-confirmar btn-sm" onclick="marcarItemConferido(${ri})">Marcar como Conferido</button>`}
+      ${travado
+        ? `<div class="item-sub">Contagem registrada</div>`
+        : conferido
+          ? `<button class="btn-desfazer" onclick="reabrirItemConf(${ri})">↺ Reabrir</button>`
+          : `<button class="btn-confirmar btn-sm" onclick="marcarItemConferido(${ri})">Marcar como Conferido</button>`}
     </div>
   `;
 }
@@ -2601,6 +2619,14 @@ function renderizarConferencia(festa) {
     </div>
   `;
 
+  const qtdRecontar = visiveis.filter(({ item }) => item.recontar && item.recontagem === undefined).length;
+  const avisoRecontagemHtml = (!souCeo() && qtdRecontar)
+    ? `<div class="alerta-divergencia" style="margin-bottom:12px">
+        <strong>${qtdRecontar} item(ns) precisam ser recontados</strong>
+        <div>Conte novamente os itens da aba "A Conferir". Esta é a contagem final — depois de marcar, não dá mais para alterar.</div>
+       </div>`
+    : '';
+
   const pendentesHtml = pendentes.length
     ? pendentes.map(({ item, ri }) => htmlCardConfItem(item, ri, false)).join('')
     : estadoVazio('Nenhum item pendente de conferência.');
@@ -2610,6 +2636,7 @@ function renderizarConferencia(festa) {
     : estadoVazio('Nenhum item conferido ainda.');
 
   document.getElementById('conf-itens').innerHTML = `
+    ${avisoRecontagemHtml}
     ${buscaHtml}
     ${tabsHtml}
     <div id="conf-lista-aconferir" class="${abaConfAtual === 'aconferir' ? '' : 'hidden'}">${pendentesHtml}</div>
@@ -2663,9 +2690,19 @@ async function salvarQtdConf(idx) {
 /* Confirma a conferência do item — move-o de "A Conferir" para "Conferido" */
 async function marcarItemConferido(idx) {
   if (!festaAtual) return;
-  const val = parseFloat(document.getElementById(`conf-qty-${idx}`)?.value) || 0;
+  const item  = festaAtual.itens?.[idx];
+  const bruto = document.getElementById(`conf-qty-${idx}`)?.value;
+  const val   = parseFloat(bruto) || 0;
+  const patch = { qtdConferida: val, conferidoEm: new Date(), conferidoPor: usuarioAtual?.nome || '' };
+  /* Recontagem: chance única, grava a 2ª contagem separada da 1ª */
+  if (item?.recontar && item.recontagem === undefined) {
+    if (!bruto) { toast('Digite a quantidade recontada.', 'aviso'); return; }
+    if (!souCeo() && !confirm(`Confirmar recontagem de "${nomeBasDisplay(item.nome)}": ${val} ${item.unidade || 'un'}?\n\nEsta é a contagem final e não poderá ser alterada.`)) return;
+    patch.recontagem  = val;
+    patch.recontadoEm = new Date();
+  }
   try {
-    await persistirItemFesta(idx, { qtdConferida: val, conferidoEm: new Date() });
+    await persistirItemFesta(idx, patch);
   } catch (e) {
     console.error('Erro ao marcar item como conferido:', e);
     toast('Não foi possível confirmar a conferência. Verifique a conexão.', 'erro');
@@ -2810,6 +2847,56 @@ async function concluirConferencia() {
     toast(`Aviso: foto pendente em: ${semFoto.map(i => i.nome).join(', ')}. Liberando mesmo assim.`, 'aviso');
   }
 
+  const confereCoord = (item) => {
+    const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+    return !(cfg && cfg.conferirCoord === false);
+  };
+  const qtdDom = (i) => parseFloat(document.getElementById(`conf-qty-${i}`)?.value) || 0;
+
+  /* Contagem cega (coordenador): na 1ª confirmação, os itens que não batem com
+     o separado voltam para recontagem — sem dizer se ficou acima ou abaixo.
+     Na 2ª confirmação a festa é liberada com o que foi recontado, e as duas
+     contagens ficam registradas para o admin. O CEO não passa por isso. */
+  if (!souCeo()) {
+    const itensAtuais = festaAtual.itens || [];
+    if (itensAtuais.some(it => it.recontar)) {
+      const faltam = itensAtuais.filter(it => it.recontar && it.recontagem === undefined);
+      if (faltam.length) {
+        toast(`Falta recontar: ${faltam.map(it => nomeBasDisplay(it.nome)).join(', ')}.`, 'aviso');
+        trocarAbaConf('aconferir', document.querySelector('#conf-tabs .tab'));
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+    } else {
+      const divergentes = itensAtuais
+        .map((it, i) => i)
+        .filter(i => confereCoord(itensAtuais[i]) && qtdDom(i) !== (itensAtuais[i].qtdSeparada || 0));
+      if (divergentes.length) {
+        btn.disabled = true;
+        try {
+          const itens = itensAtuais.map((it, i) => {
+            if (!confereCoord(it)) return it;
+            const val = qtdDom(i);
+            return divergentes.includes(i)
+              ? { ...it, contagem1: val, qtdConferida: null, recontar: true, conferidoEm: undefined }
+              : { ...it, qtdConferida: val };
+          });
+          festaAtual = { ...festaAtual, itens };
+          await atualizarFesta(festaAtual.id, { itens });
+          abaConfAtual = 'aconferir';
+          renderizarConferencia(festaAtual);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+          toast(`${divergentes.length} item(ns) precisam ser recontados antes de liberar a festa.`, 'aviso');
+        } catch (e) {
+          console.error(e);
+          toast('Erro ao salvar. Tente novamente.', 'erro');
+        }
+        btn.disabled = false;
+        return;
+      }
+    }
+  }
+
   btn.disabled    = true;
   btn.textContent = 'Salvando...';
 
@@ -2855,7 +2942,19 @@ async function concluirConferencia() {
         if (cfg && cfg.conferirCoord === false) return false;
         return it.qtdConferida !== (it.qtdSeparada || 0);
       })
-      .map(it => ({ item: it.nome, separado: it.qtdSeparada || 0, conferido: it.qtdConferida }));
+      .map(it => ({
+        item: it.nome, separado: it.qtdSeparada || 0, conferido: it.qtdConferida,
+        ...(it.contagem1 !== undefined ? { contagem1: it.contagem1 } : {}),
+      }));
+
+    /* Toda recontagem fica registrada — inclusive as que "acertaram" na 2ª vez,
+       que é justamente o caso que o admin precisa olhar */
+    const recontagens = itens
+      .filter(it => it.contagem1 !== undefined)
+      .map(it => ({
+        item: it.nome, separado: it.qtdSeparada || 0,
+        contagem1: it.contagem1, recontagem: it.recontagem !== undefined ? it.recontagem : it.qtdConferida,
+      }));
 
     let fotoUrls = [];
     if (fotosCache.conferencia.filter(Boolean).length) {
@@ -2875,6 +2974,7 @@ async function concluirConferencia() {
     await concluirEtapa(festaAtual.id, 'conferencia', {
       itens,
       divergencias,
+      recontagens,
       obsConferencia:   document.getElementById('conf-obs').value,
       fotosConferencia: fotoUrls,
       coordenador:      usuarioAtual.nome,
@@ -4080,7 +4180,20 @@ function renderizarDetalhe(festa) {
         ${divs.map(d => `
           <div class="detalhe-linha">
             <span>${_escHtml(d.item)}</span>
-            <span>Separado: ${d.separado} / Conferido: ${d.conferido}</span>
+            <span>Separado: ${d.separado} / Conferido: ${d.conferido}${d.contagem1 !== undefined ? ` (1ª contagem: ${d.contagem1})` : ''}</span>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+
+    ${(festa.recontagens || []).length ? `
+      <div class="detalhe-card" style="border-left:3px solid var(--amarelo)">
+        <h3 style="color:var(--amarelo)">Recontagens na Conferencia (${festa.recontagens.length})</h3>
+        <p style="font-size:12px;color:var(--cinza-600);margin-bottom:8px">Itens que divergiram na 1ª contagem do coordenador e foram recontados. Atenção aos que só bateram na recontagem.</p>
+        ${festa.recontagens.map(r => `
+          <div class="detalhe-linha">
+            <span>${_escHtml(r.item)}${r.recontagem === r.separado ? ' <strong>(bateu na recontagem)</strong>' : ''}</span>
+            <span>Separado: ${r.separado} / 1ª: ${r.contagem1} / Recontagem: ${r.recontagem}</span>
           </div>
         `).join('')}
       </div>

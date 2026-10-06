@@ -341,6 +341,7 @@ async function resetarParaAgendada(id, itens) {
     fotosRetorno:       DEL(),
     fotosGalpao:        DEL(),
     divergencias:       DEL(),
+    recontagens:        DEL(),
     divergenciasGalpao: DEL(),
     ultimaAlteracao:    DEL(),
   });
