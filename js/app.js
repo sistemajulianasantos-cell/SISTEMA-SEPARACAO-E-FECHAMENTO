@@ -2980,11 +2980,6 @@ async function concluirConferencia() {
       coordenador:      usuarioAtual.nome,
     });
 
-    /* Baixa automática do estoque: o que foi conferido saiu do galpão pra
-       este evento. Não trava a conclusão se falhar. */
-    try { await _baixarEstoqueDaFesta({ ...festaAtual, estoqueBaixado: festaAtual.estoqueBaixado }, itens); }
-    catch (e) { console.error('Baixa automática de estoque:', e); }
-
     const msg = divergencias.length
       ? `Conferencia concluida com ${divergencias.length} divergencia(s). Festa liberada.`
       : 'Conferencia concluida sem divergencias. Festa liberada.';
@@ -3149,10 +3144,6 @@ async function concluirRetorno() {
     };
 
     await concluirEtapa(festaAtual.id, 'retorno', patchRetorno);
-
-    /* Volta pro estoque o que retornou do evento. */
-    try { await _retornarEstoqueDaFesta(festaAtual, itens); }
-    catch (e) { console.error('Retorno automático de estoque:', e); }
 
     toast('Retorno registrado. Festa enviada para o Galpao.', 'sucesso');
     abrirRelatorioRetorno({ ...festaAtual, ...patchRetorno });
@@ -7785,85 +7776,10 @@ async function confirmarRegistrarMov() {
   }
 }
 
-/* ── Baixa/retorno automáticos de estoque no fluxo da festa ──
-   Roda ao concluir a Conferência (saída) e o Retorno (volta). Guarda flags
-   na festa (estoqueBaixado / estoqueRetornado) pra nunca lançar 2×. Quantidade
-   sempre convertida pra unidade solta (o estoque é contado assim). Enquanto
-   a equipe não usar conferência/retorno, isso simplesmente não dispara — a
-   baixa é feita na mão pela tela "Registrar movimentação". */
-function _movEstoqueRefsDoItem(nomeItem) {
-  const keyExato = normalizarNomeItem(nomeItem);
-  const keyBase  = nomeBaseKey(keyExato);
-  let cfg = itemConfigsCache[keyExato] || itemConfigsCache[keyBase] || null;
-  /* Nome do item na festa não bateu nem na chave exata nem na base (plural,
-     ordem de palavra trocada, 1 letra errada — ex.: festa importada com
-     "Copos Long Drink" e o Cadastro tem "Copo Long Drink") — mesmo critério
-     de "parecido" já usado em Resolver Duplicados. Sem isso, a baixa/retorno
-     criava uma chave de estoque NOVA pro mesmo produto em vez de mexer no
-     saldo certo, e o item "reaparecia" como se tivesse voltado do nada. */
-  if (!cfg && keyExato.length >= 8) {
-    const assinaturaAlvo = _assinaturaPalavras(keyExato);
-    for (const c of Object.values(itemConfigsCache)) {
-      const k = c.nomeKey || '';
-      if (k.length < 8) continue;
-      if (_assinaturaPalavras(k) === assinaturaAlvo || _distNivel1(k, keyExato)) { cfg = c; break; }
-    }
-  }
-  const est = estoqueDoItem(cfg?.nomeKey || keyBase);
-  return {
-    nomeKey: est?.nomeKey || cfg?.nomeKey || keyBase,
-    /* Item com fator de caixa cadastrado sempre baixa/retorna em unidade
-       solta (é como o estoque físico dele é guardado — ver qtdEmUnidadeBase);
-       usar a unidade "nativa" do Cadastro (cx) aqui gravava "265 cx" quando
-       na real eram 265 unidades soltas, e a contagem seguinte não batia. */
-    unidade: _unidadeQuebraItem(nomeItem, cfg?.unidade || est?.unidade || 'un'),
-    nome:    cfg?.nome || nomeBasDisplay(nomeItem),
-  };
-}
-
-async function _baixarEstoqueDaFesta(festa, itens) {
-  if (!festa || !festa.id) return 0;
-  try { const f = await buscarFestaPorId(festa.id); if (f && f.estoqueBaixado) return 0; } catch (_) {}
-  if (festa.estoqueBaixado) return 0;
-  let n = 0;
-  for (const item of (itens || [])) {
-    const q = qtdEmUnidadeBase(item.nome, item.qtdConferida ?? item.qtdSeparada ?? 0);
-    if (!(q > 0)) continue;
-    const ref = _movEstoqueRefsDoItem(item.nome);
-    try {
-      await lancarMovimentacaoEstoque({
-        ...ref, tipo: 'saida', motivo: 'evento', qtd: q,
-        festaId: festa.id, festaNome: festa.nome,
-        por: usuarioAtual?.nome || '—',
-      });
-      n++;
-    } catch (e) { console.error('Baixa de estoque —', item.nome, e); }
-  }
-  try { await atualizarFesta(festa.id, { estoqueBaixado: true }); } catch (_) {}
-  return n;
-}
-
-async function _retornarEstoqueDaFesta(festa, itens) {
-  if (!festa || !festa.id) return 0;
-  try { const f = await buscarFestaPorId(festa.id); if (f && f.estoqueRetornado) return 0; } catch (_) {}
-  if (festa.estoqueRetornado) return 0;
-  let n = 0;
-  for (const item of (itens || [])) {
-    const q = qtdEmUnidadeBase(item.nome, item.qtdRetorno || 0);
-    if (!(q > 0)) continue;
-    const ref = _movEstoqueRefsDoItem(item.nome);
-    try {
-      await lancarMovimentacaoEstoque({
-        ...ref, tipo: 'retorno', motivo: 'evento', qtd: q,
-        festaId: festa.id, festaNome: festa.nome,
-        por: usuarioAtual?.nome || '—',
-      });
-      n++;
-    } catch (e) { console.error('Retorno de estoque —', item.nome, e); }
-  }
-  try { await atualizarFesta(festa.id, { estoqueRetornado: true }); } catch (_) {}
-  return n;
-}
+/* Conferência e Retorno da festa NÃO mexem no estoque: ele só muda por
+   contagem, entrada, produção ou pela tela "Registrar movimentação". (Até a
+   v137 havia baixa/retorno automáticos aqui; foram removidos porque
+   descontavam de novo o que a contagem já refletia e deixavam saldo negativo.) */
 
 /* Lançamentos de estoque já feitos pra esta festa — mostrado no Detalhe. */
 async function _renderMovEstoqueFesta(festaId) {
