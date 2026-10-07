@@ -2729,12 +2729,20 @@ async function salvarQtdConf(idx) {
 async function marcarItemConferido(idx) {
   if (!festaAtual) return;
   const item  = festaAtual.itens?.[idx];
-  const bruto = document.getElementById(`conf-qty-${idx}`)?.value;
+  const input = document.getElementById(`conf-qty-${idx}`);
+  const bruto = (input?.value || '').trim();
+  /* Campo vazio não vira "0 conferido" — um toque sem querer no botão
+     mandava o item pra Conferido com 0 (Juliana, 10-07). Zero de verdade:
+     digitar 0. */
+  if (bruto === '') {
+    toast('Digite a quantidade conferida antes de marcar (se não tem nenhum, digite 0).', 'aviso');
+    input?.focus();
+    return;
+  }
   const val   = parseFloat(bruto) || 0;
   const patch = { qtdConferida: val, conferidoEm: new Date(), conferidoPor: usuarioAtual?.nome || '' };
   /* Recontagem: chance única, grava a 2ª contagem separada da 1ª */
   if (item?.recontar && item.recontagem === undefined) {
-    if (!bruto) { toast('Digite a quantidade recontada.', 'aviso'); return; }
     if (!souCeo() && !confirm(`Confirmar recontagem de "${nomeBasDisplay(item.nome)}": ${val} ${item.unidade || 'un'}?\n\nEsta é a contagem final e não poderá ser alterada.`)) return;
     patch.recontagem  = val;
     patch.recontadoEm = new Date();
