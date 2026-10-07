@@ -2508,8 +2508,10 @@ async function abrirConferencia(id) {
   historico = [telaListaAtual()];
   mostrarTela('tela-conferencia', 'Conferência de Chegada');
 
-  /* Carregar configs se necessário (para saber quais itens exigem foto) */
-  if (!Object.keys(itemConfigsCache).length) {
+  /* Recarrega o Cadastro sempre (quais itens exigem foto / ficam fora da
+     conferência) — com cache de sessão, desligar "Conferir" no Cadastro só
+     valia depois de sair e entrar de novo. */
+  {
     try {
       const [cfgs, cats] = await Promise.all([listarItemConfigs(), listarCategorias()]);
       itemConfigsCache = {};
@@ -2533,7 +2535,7 @@ function _fotoItemConf(festa, item, idx) {
 }
 
 function htmlCardConfItem(item, ri, conferido) {
-  const cfg       = buscarConfigItem(normalizarNomeItem(item.nome));
+  const cfg       = buscarConfigItemPorNome(item.nome);
   const exigeFoto = !!cfg?.exigeFoto;
   const fotoSalva = _fotoItemConf(festaAtual, item, ri);
   const pendente  = fotoSalva === 'pendente';
@@ -2631,7 +2633,7 @@ function renderizarConferencia(festa) {
      antes o CEO via todos e o Bar Back aparecia na conferência dela mesmo
      desligado (Juliana, 10-07). A conclusão já trata esses itens
      (qtdConferida = qtdSeparada). */
-  const foraDaConf = item => buscarConfigItem(normalizarNomeItem(item.nome))?.conferirCoord === false;
+  const foraDaConf = item => buscarConfigItemPorNome(item.nome)?.conferirCoord === false;
   const ocultos = (festa.itens || []).filter(foraDaConf);
   const visiveis = (festa.itens || []).filter(item => !foraDaConf(item))
     .map((item) => ({ item, ri: (festa.itens || []).indexOf(item) }));
@@ -2906,7 +2908,7 @@ function checarConf(i, separado) {
 function atualizarBoxDivConf() {
   const itens = festaAtual?.itens || [];
   const divs  = itens.map((item, i) => {
-    const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+    const cfg = buscarConfigItemPorNome(item.nome);
     if (cfg && cfg.conferirCoord === false) return null;
     const val = parseFloat(document.getElementById(`conf-qty-${i}`)?.value) || 0;
     const sep = item.qtdSeparada || 0;
@@ -2933,7 +2935,7 @@ async function concluirConferencia() {
   /* Foto obrigatória por item: avisa mas não bloqueia a liberação da festa
      (bloqueio temporariamente desativado — TODO: revisar este processo). */
   const semFoto = (festaAtual.itens || []).filter((item, i) => {
-    const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+    const cfg = buscarConfigItemPorNome(item.nome);
     if (cfg && cfg.conferirCoord === false) return false;
     return cfg?.exigeFoto && !fotosCache.confItens[i] && !_fotoItemConf(festaAtual, item, i);
   });
@@ -2942,7 +2944,7 @@ async function concluirConferencia() {
   }
 
   const confereCoord = (item) => {
-    const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+    const cfg = buscarConfigItemPorNome(item.nome);
     return !(cfg && cfg.conferirCoord === false);
   };
   const qtdDom = (i) => parseFloat(document.getElementById(`conf-qty-${i}`)?.value) || 0;
@@ -3001,7 +3003,7 @@ async function concluirConferencia() {
     const falhasFoto = [];
     let fotosNaFila = 0;
     const itens = await Promise.all((festaAtual.itens || []).map(async (item, i) => {
-      const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+      const cfg = buscarConfigItemPorNome(item.nome);
       if (cfg && cfg.conferirCoord === false) {
         return { ...item, qtdConferida: item.qtdSeparada || 0 };
       }
@@ -3025,7 +3027,7 @@ async function concluirConferencia() {
     /* Se algum item obrigatório continua sem foto após a tentativa, avisa mas
        não bloqueia (bloqueio temporariamente desativado — TODO: revisar). */
     const aindaSemFoto = itens.filter((item) => {
-      const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+      const cfg = buscarConfigItemPorNome(item.nome);
       if (cfg && cfg.conferirCoord === false) return false;
       return cfg?.exigeFoto && !_fotoItemConf(festaAtual, item, itens.indexOf(item));
     });
@@ -3035,7 +3037,7 @@ async function concluirConferencia() {
 
     const divergencias = itens
       .filter(it => {
-        const cfg = buscarConfigItem(normalizarNomeItem(it.nome));
+        const cfg = buscarConfigItemPorNome(it.nome);
         if (cfg && cfg.conferirCoord === false) return false;
         return it.qtdConferida !== (it.qtdSeparada || 0);
       })
@@ -5987,6 +5989,28 @@ function extrairFornDoNome(nome) {
 /* Busca config do item por nomeKey; com fallback para nome base (variante) */
 function buscarConfigItem(nomeKey) {
   return itemConfigsCache[nomeKey] || itemConfigsCache[nomeBaseKey(nomeKey)] || null;
+}
+
+/* Cadastro do item a partir do NOME que veio na festa: chave exata/base,
+   nome do Cadastro normalizado, e por último "parecido" (plural, ordem de
+   palavra trocada, 1 letra errada — mesmo critério do Resolver Duplicados).
+   Usado na conferência: sem isso, "Bar Backs" na festa não achava o
+   "Bar Back" do Cadastro e o item aparecia mesmo desligado. */
+function buscarConfigItemPorNome(nomeItem) {
+  const key = normalizarNomeItem(nomeItem);
+  if (!key) return null;
+  const direto = buscarConfigItem(key);
+  if (direto) return direto;
+  const todos = Object.values(itemConfigsCache);
+  const porNome = todos.find(c => normalizarNomeItem(c.nome) === key);
+  if (porNome) return porNome;
+  if (key.length < 6) return null;
+  const assin = _assinaturaPalavras(key);
+  return todos.find(c => {
+    const k = c.nomeKey || normalizarNomeItem(c.nome);
+    return k.length >= 6 && (_assinaturaPalavras(k) === assin || _distNivel1(k, key)
+      || _assinaturaPalavras(nomeBaseKey(k)) === _assinaturaPalavras(nomeBaseKey(key)));
+  }) || null;
 }
 
 /* Se o item tem "unidades por embalagem" cadastrado (ex: 1 caixa de copo =

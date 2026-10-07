@@ -453,8 +453,12 @@ async function deletarFichaTecnicaDB(id) {
 ════════════════════════════════════════ */
 
 async function listarItemConfigs() {
-  const snap = await db.collection('item_config').orderBy('grupo').get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  /* Ordena aqui, não no banco: orderBy('grupo') no Firestore some com todo
+     doc SEM o campo grupo (item sem categoria) — e aí a conferência não
+     achava o cadastro do item e mostrava até item desligado (Bar Back). */
+  const snap = await db.collection('item_config').get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => String(a.grupo || '').localeCompare(String(b.grupo || ''), 'pt-BR'));
 }
 
 /* Devolve SEMPRE o id do doc gravado (novo ou existente) — quem chama precisa
