@@ -780,6 +780,32 @@ function renderizarInicio(papel) {
     </div>
   `;
   renderizarDashboardInicio();
+  if (papel === 'ceo') _ajustarFestasNoEstoqueAuto();
+}
+
+/* Festa não mexe no saldo (v139). Lançamentos de festa antigos que ainda
+   descontam, ou de festas já excluídas, são acertados sozinhos ao abrir o
+   início do CEO — uma vez por sessão (pedido da Juliana em 10-07: não
+   queria depender de achar o botão em Movimentações). */
+let _ajusteFestasEstoqueFeito = false;
+async function _ajustarFestasNoEstoqueAuto() {
+  if (_ajusteFestasEstoqueFeito) return;
+  _ajusteFestasEstoqueFeito = true;
+  try {
+    const por = (usuarioAtual?.nome || '—') + ' (ajuste automático)';
+    const tirados = await tirarMovsFestaDoSaldo(por);
+    let excluidos = 0;
+    for (const r of await listarMovsDeFestasExcluidas()) {
+      try { await excluirMovimentacaoEstoque(r.id, por + ' — festa excluída'); excluidos++; }
+      catch (e) { console.error('Ajuste automático —', r.nome, e); }
+    }
+    if (tirados || excluidos) {
+      toast(`Estoque acertado: ${tirados + excluidos} lançamento(s) de festa deixaram de mexer no saldo.`, 'sucesso');
+    }
+  } catch (e) {
+    console.error('Ajuste automático de festas no estoque:', e);
+    _ajusteFestasEstoqueFeito = false;
+  }
 }
 
 /* Dashboard da tela inicial do CEO: tiras de números + produção da semana
