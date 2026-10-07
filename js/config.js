@@ -19,6 +19,100 @@ const db = firebase.firestore();
 
 db.settings({ ignoreUndefinedProperties: true });
 
+/* ════════════════════════════════════════════════════════════
+   FUNCIONAR SEM INTERNET (pedido da Juliana em 10-07)
+   1) Cache local do Firestore: o que já foi lido fica no aparelho e toda
+      gravação entra numa fila local que sobe sozinha quando a conexão
+      volta (inclusive se o app for fechado e reaberto).
+   2) Sem internet, a promise de uma gravação só resolve quando o servidor
+      confirmar — e o app inteiro faz "await" nelas, então a tela travava.
+      As gravações abaixo passam a liberar a tela logo (o dado já está na
+      fila local); se o servidor recusar depois, avisa.
+   3) Leitura com .get() sem internet esperava ~10s antes de cair pro
+      cache; agora vai direto pro cache quando está offline.
+   ════════════════════════════════════════════════════════════ */
+db.enablePersistence({ synchronizeTabs: true })
+  .catch(e => console.warn('Cache offline do Firestore indisponível:', e.code || e));
+
+(function () {
+  const fs = firebase.firestore;
+  const ESPERA_ESCRITA_MS = 4000;
+  const ESPERA_LEITURA_MS = 6000;
+  const semRede = () => navigator.onLine === false;
+  const dormir  = ms => new Promise(r => setTimeout(r, ms));
+
+  function naoTravar(p) {
+    let liberado = false;
+    p.catch(e => {
+      if (!liberado) return;  /* erro antes de liberar: quem chamou já recebe */
+      console.error('Gravação recusada pelo servidor:', e);
+      if (typeof toast === 'function') toast('Uma alteração não foi aceita pelo servidor: ' + (e.code || e.message || e), 'erro');
+    });
+    return Promise.race([p, dormir(semRede() ? 0 : ESPERA_ESCRITA_MS).then(() => { liberado = true; })]);
+  }
+
+  ['set', 'update', 'delete'].forEach(m => {
+    const orig = fs.DocumentReference.prototype[m];
+    fs.DocumentReference.prototype[m] = function (...args) { return naoTravar(orig.apply(this, args)); };
+  });
+  const origCommit = fs.WriteBatch.prototype.commit;
+  fs.WriteBatch.prototype.commit = function () { return naoTravar(origCommit.call(this)); };
+  /* add() = doc() com id gerado no aparelho + set(): devolve a referência
+     mesmo offline (o original só devolvia depois do servidor confirmar) */
+  fs.CollectionReference.prototype.add = function (dados) {
+    const ref = this.doc();
+    return ref.set(dados).then(() => ref);
+  };
+
+  function lerSemTravar(orig) {
+    return function (opts) {
+      if (opts && opts.source) return orig.call(this, opts);
+      const doCache = () => orig.call(this, { source: 'cache' });
+      if (semRede()) return doCache().catch(() => orig.call(this));
+      const servidor = orig.call(this).catch(e => {
+        if (e && e.code === 'unavailable') return doCache();
+        throw e;
+      });
+      return Promise.race([servidor, dormir(ESPERA_LEITURA_MS).then(() => doCache().catch(() => servidor))]);
+    };
+  }
+  fs.Query.prototype.get             = lerSemTravar(fs.Query.prototype.get);
+  fs.DocumentReference.prototype.get = lerSemTravar(fs.DocumentReference.prototype.get);
+})();
+
+/* Aviso fixo enquanto estiver sem internet + confirmação quando a fila
+   local terminar de subir. */
+(function () {
+  function atualizarAvisoRede() {
+    let el = document.getElementById('aviso-offline');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'aviso-offline';
+      el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:9999;padding:8px 16px;'
+        + 'background:#B45309;color:#fff;font-size:13px;font-weight:600;text-align:center;display:none';
+      el.textContent = 'Sem internet — pode continuar usando. As alterações ficam salvas neste aparelho e sobem quando a conexão voltar.';
+      document.body.appendChild(el);
+    }
+    el.style.display = navigator.onLine ? 'none' : 'block';
+  }
+  window.addEventListener('offline', atualizarAvisoRede);
+  window.addEventListener('online', () => {
+    atualizarAvisoRede();
+    db.waitForPendingWrites()
+      .then(() => { if (typeof toast === 'function') toast('Internet voltou — tudo que foi feito offline já foi enviado.', 'sucesso'); })
+      .catch(() => {});
+  });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', atualizarAvisoRede);
+  else atualizarAvisoRede();
+})();
+
+/* Guarda os arquivos do app no aparelho pra abrir sem internet (sw.js) */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn('Service worker não registrado:', e));
+  });
+}
+
 /* Sessão anônima inicial: usada SOMENTE para (a) a checagem de "existe
    algum usuário cadastrado?" na tela de setup e (b) localizar, durante o
    login, uma conta antiga ainda não migrada para o Firebase Authentication
