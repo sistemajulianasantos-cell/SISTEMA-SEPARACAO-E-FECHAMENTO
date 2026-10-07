@@ -7363,10 +7363,25 @@ function _renderMovConciliacao(registros) {
   const arred = v => Math.round(v * 100) / 100;
   const comDiv = comContagem.filter(p => { const v = div(p); return v !== null && arred(v) !== 0; });
 
-  let lista = _movSoDiverg ? comDiv : comContagem;
+  /* Item só produzido/movimentado, sem contagem no período, também entra na
+     tabela (antes ficava num texto sem clique e não dava pra ver quem lançou) */
+  let lista = _movSoDiverg ? comDiv : [...comContagem, ...semContagem];
   lista = [...lista].sort((a, b) => _movSoDiverg
     ? Math.abs(div(b) || 0) - Math.abs(div(a) || 0) || a.nome.localeCompare(b.nome, 'pt-BR')
     : a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  /* Último lançamento de cada produto — mostra quem lançou sem abrir nada */
+  const ultimoLanc = {};
+  registros.forEach(r => {
+    const k = _movChave(r);
+    if (k && (!ultimoLanc[k] || _movData(r) > _movData(ultimoLanc[k]))) ultimoLanc[k] = r;
+  });
+  const htmlUltimo = chave => {
+    const r = ultimoLanc[chave];
+    if (!r) return '';
+    const info = TIPO_HISTORICO[r.tipo || 'contagem'] || TIPO_HISTORICO.contagem;
+    return `<br><span style="font-weight:400;font-size:11px;color:var(--cinza-600)">último: <span style="color:${info.cor}">${_escHtml(info.label)} ${info.sinal}${_movQtd(r.qtd)}</span> · <strong>${_escHtml(r.contadoPor || '—')}</strong> em ${_movDiaBR(_movData(r))}</span>`;
+  };
 
   /* 4 colunas que cabem na tela sem rolar pro lado (pedido da Juliana em
      10-07: a tabela larga escondia o "deveria ter"). */
@@ -7377,6 +7392,21 @@ function _renderMovConciliacao(registros) {
     const u  = p.ultima;
     const un = _escHtml(p.unidade || 'un');
     const v  = div(p);
+    const celProduto = `
+      <td style="padding:8px 10px;font-weight:600;font-size:13px;vertical-align:top;border-bottom:1px solid #F3F4F6;cursor:pointer"
+        onclick="abrirHistoricoItemMov('${_esc(p.chave)}','${_esc(p.nome)}')" title="Ver todos os lançamentos">
+        <span style="text-decoration:underline;text-underline-offset:2px">${_escHtml(p.nome)}</span>
+        <span style="font-weight:400;font-size:11px;color:var(--cinza-500)">${un}</span>${htmlUltimo(p.chave)}${
+        !buscarConfigItem(p.chave) ? `<br><span style="font-size:11px;font-weight:700;color:#B91C1C">fora do Cadastro — clique pra juntar</span>` : ''}
+      </td>`;
+    if (!u) {
+      return `<tr>${celProduto}
+        ${td('<span style="font-size:12px;color:var(--cinza-500)">sem contagem no período</span>')}
+        ${td('<span style="font-size:12px;color:var(--cinza-500)">clique no produto pra ver os lançamentos</span>')}
+        ${td(`<strong style="font-size:15px">${_movQtd(estoqueDoItem(p.chave)?.qtd)}</strong>`)}
+        ${td('—', 'background:#F9FAFB')}
+      </tr>`;
+    }
     let divHtml = '';
     if (v !== null) {
       divHtml = arred(v) === 0
@@ -7387,14 +7417,7 @@ function _renderMovConciliacao(registros) {
       ? [p.saidas ? `<span style="color:#B45309">saiu ${_movQtd(p.saidas)}</span>` : '',
          p.entradas ? `<span style="color:#1D4ED8">entrou ${_movQtd(p.entradas)}</span>` : ''].filter(Boolean).join('<br>')
       : `<span style="color:var(--cinza-500)">nada</span>`;
-    const foraCadastro = !buscarConfigItem(p.chave)
-      ? `<br><span style="font-size:11px;font-weight:700;color:#B91C1C">fora do Cadastro — clique pra juntar</span>` : '';
-    return `<tr>
-      <td style="padding:8px 10px;font-weight:600;font-size:13px;vertical-align:top;border-bottom:1px solid #F3F4F6;cursor:pointer"
-        onclick="abrirHistoricoItemMov('${_esc(p.chave)}','${_esc(p.nome)}')" title="Ver todos os lançamentos">
-        <span style="text-decoration:underline;text-underline-offset:2px">${_escHtml(p.nome)}</span>
-        <span style="font-weight:400;font-size:11px;color:var(--cinza-500)">${un}</span>${foraCadastro}
-      </td>
+    return `<tr>${celProduto}
       ${td(`<strong>${_movQtd(u.contado)}</strong> <span style="font-size:11px;color:var(--cinza-500)">em ${_movDiaBR(u.data)}</span>${divHtml ? `<br><span style="font-size:11px">${divHtml}</span>` : ''}`)}
       ${td(desde, 'font-size:12px')}
       ${td(`<strong style="font-size:15px">${_movQtd(estoqueDoItem(p.chave)?.qtd)}</strong>`)}
@@ -7423,12 +7446,7 @@ function _renderMovConciliacao(registros) {
           </tr></thead>
           <tbody>${linhas}</tbody>
         </table>
-      </div>` : estadoVazio(_movSoDiverg ? 'Nenhuma divergência no período.' : 'Nenhuma contagem no período.')}
-    ${semContagem.length ? `
-      <p style="font-size:12px;color:var(--cinza-500);margin-top:8px">
-        ${semContagem.length} produto(s) tiveram movimentação mas nenhuma contagem no período — sem base pra comparar:
-        ${semContagem.slice(0, 15).map(p => _escHtml(p.nome)).join(', ')}${semContagem.length > 15 ? '…' : ''}
-      </p>` : ''}
+      </div>` : estadoVazio(_movSoDiverg ? 'Nenhuma divergência no período.' : 'Nenhuma movimentação no período.')}
   `;
 }
 
@@ -8273,7 +8291,7 @@ function htmlEstoqueSintetico(item, est) {
   return `
     <div class="estoque-item-card">
       <div class="estoque-item-header">
-        <div class="estoque-item-nome">${_escHtml(item.nome)}</div>
+        <div class="estoque-item-nome">${_escHtml(item.nome)} <a href="#" style="font-size:11px;font-weight:400;color:var(--cinza-600);text-decoration:underline" onclick="event.preventDefault(); abrirHistoricoItemMov('${_esc(nomeBaseKey(est?.nomeKey || item.nomeKey))}','${_esc(item.nome)}')">ver quem lançou</a></div>
         <div class="estoque-item-total">${semDemanda
           ? '<span style="color:var(--cinza-500)">Sem festa ativa</span>'
           : `Necessário: <strong>${item.total}</strong> ${_escHtml(item.unidade)}${htmlConversaoUnidades(item.nome, item.total)}`}</div>
