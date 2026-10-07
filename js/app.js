@@ -7225,6 +7225,7 @@ function renderizarMovimentacoes() {
   const usaTipo = _movVisao === 'dia' || _movVisao === 'grade';
   document.querySelectorAll('.mov-filtro-tipo').forEach(e => e.classList.toggle('hidden', !usaTipo));
 
+  if (_movVisao === 'saldo')       return _renderMovSaldoHistorico();
   if (_movVisao === 'dia')         _renderMovPorDia(_histContagemCache);
   else if (_movVisao === 'festa')  _renderMovPorFesta(_histContagemCache);
   else if (_movVisao === 'grade')  renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
@@ -7251,6 +7252,77 @@ function renderizarMovimentacoes() {
   if (avisos.length) {
     document.getElementById('estoque-historico')?.insertAdjacentHTML('afterbegin', avisos.join(''));
   }
+}
+
+/* Saldo gravado x saldo recalculado pelo histórico (conferirSaldosPeloHistorico) */
+let _saldoHistDif = [];
+async function _renderMovSaldoHistorico() {
+  const el = document.getElementById('estoque-historico');
+  if (!el) return;
+  el.innerHTML = '<div class="estado-vazio"><p>Recalculando o saldo de cada produto pelo histórico...</p></div>';
+  try {
+    _saldoHistDif = await conferirSaldosPeloHistorico();
+  } catch (e) {
+    console.error('Saldo x histórico:', e);
+    el.innerHTML = estadoVazio('Erro ao recalcular. Tente de novo.');
+    return;
+  }
+  const lista = _saldoHistDif.filter(p => _movPassaFiltroProduto(nomeBaseKey(p.nomeKey), p.nome));
+  const th = (t, al = 'center') => `<th style="padding:8px 10px;text-align:${al};font-size:11px;font-weight:700;color:var(--cinza-500);border-bottom:2px solid #E5E7EB">${t}</th>`;
+  const td = (c, extra = '') => `<td style="padding:8px 10px;text-align:center;vertical-align:top;border-bottom:1px solid #F3F4F6;${extra}">${c}</td>`;
+  const podeEditar = souCeo();
+
+  el.innerHTML = `
+    <p style="font-size:12px;color:var(--cinza-600);margin:0 0 8px">
+      Para cada produto, refaz a conta só com o histórico (última contagem + entradas/produção − saídas; festa não conta)
+      e mostra onde o estoque gravado <strong>não bate</strong>. Item sem nenhuma contagem no histórico parte de 0 —
+      se ele foi contado antes do histórico existir, o valor do histórico pode estar errado: na dúvida, reconte.
+    </p>
+    ${!lista.length ? estadoVazio('Todos os saldos batem com o histórico.') : `
+      ${podeEditar ? `<div style="margin-bottom:8px"><button class="btn-primario btn-sm" onclick="_saldoHistAplicar(null, this)">Usar o valor do histórico em todos (${lista.length})</button></div>` : ''}
+      <div style="border:1px solid #E5E7EB;border-radius:8px">
+        <table style="border-collapse:collapse;width:100%;font-size:13px">
+          <thead><tr>${th('Produto', 'left')}${th('Estoque agora')}${th('Pelo histórico')}${th('')}</tr></thead>
+          <tbody>${lista.map(p => `<tr>
+            <td style="padding:8px 10px;font-weight:600;vertical-align:top;border-bottom:1px solid #F3F4F6;cursor:pointer"
+              onclick="abrirHistoricoItemMov('${_esc(nomeBaseKey(p.nomeKey))}','${_esc(p.nome)}')" title="Ver todos os lançamentos">
+              <span style="text-decoration:underline;text-underline-offset:2px">${_escHtml(p.nome)}</span>
+              <span style="font-weight:400;font-size:11px;color:var(--cinza-500)">${_escHtml(p.unidade)}</span>
+              ${p.temContagem ? '' : '<br><span style="font-weight:400;font-size:11px;color:#B45309">nunca contado no histórico</span>'}
+            </td>
+            ${td(`<strong>${_movQtd(p.atual)}</strong>`)}
+            ${td(`<strong>${_movQtd(p.calculado)}</strong>`, 'background:#F9FAFB')}
+            ${td(podeEditar ? `<button class="btn-secundario btn-sm" onclick="_saldoHistAplicar('${_esc(p.nomeKey)}', this)">Usar ${_movQtd(p.calculado)}</button>` : '')}
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`}
+  `;
+}
+
+async function _saldoHistAplicar(nomeKey, btn) {
+  const alvo = nomeKey ? _saldoHistDif.filter(p => p.nomeKey === nomeKey)
+                       : _saldoHistDif.filter(p => _movPassaFiltroProduto(nomeBaseKey(p.nomeKey), p.nome));
+  if (!alvo.length) return;
+  const msg = alvo.length === 1
+    ? `"${alvo[0].nome}": trocar o estoque de ${_movQtd(alvo[0].atual)} para ${_movQtd(alvo[0].calculado)}?`
+    : `Trocar o estoque de ${alvo.length} produtos pelo valor do histórico?`;
+  if (!confirm(msg)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Ajustando…'; }
+  let ok = 0;
+  for (const p of alvo) {
+    try {
+      await lancarMovimentacaoEstoque({
+        nomeKey: p.nomeKey, nome: p.nome, unidade: p.unidade, tipo: 'contagem', qtd: p.calculado,
+        obs: `ajuste: saldo recalculado pelo histórico (era ${_movQtd(p.atual)})`,
+        ultimaContagemEm: p.ultimaContagemEm || new Date(0),
+        por: usuarioAtual?.nome || '—',
+      });
+      ok++;
+    } catch (e) { console.error('Ajuste pelo histórico —', p.nome, e); }
+  }
+  toast(`${ok} produto(s) ajustado(s) pelo histórico.`, ok === alvo.length ? 'sucesso' : 'aviso');
+  try { await garantirListenerEstoque(); } catch (_) {}
+  _renderMovSaldoHistorico();
 }
 
 async function confirmarExcluirMovsFestasExcluidas(btn) {

@@ -941,6 +941,41 @@ async function listarHistoricoContagem(limite = 300) {
 /* Lançamentos do livro-caixa a partir de uma data (aba Movimentações) — por
    período em vez de "últimos N", senão uma semana com 2–3 festas (cada uma
    gera ~50 saídas + ~50 retornos) já empurrava a contagem anterior pra fora. */
+/* Recalcula o saldo de cada item só pelo histórico, em ordem de data:
+   contagem = valor absoluto; entrada/saída/produção somam; informativo
+   (festa) e excluído não contam. Devolve os itens cujo saldo gravado não
+   bate — ex.: lançamento de festa devolvido 2× ao saldo na v141 (acerto
+   automático + botão ao mesmo tempo), ou saldo gravado antes do histórico. */
+async function conferirSaldosPeloHistorico() {
+  const [hist, est] = await Promise.all([
+    db.collection('historico_contagem').get(),
+    db.collection('estoque').get(),
+  ]);
+  const porKey = {};
+  hist.docs.forEach(d => {
+    const r = d.data();
+    if (r.excluido || !r.nomeKey) return;
+    (porKey[r.nomeKey] = porKey[r.nomeKey] || []).push(r);
+  });
+  const out = [];
+  est.docs.forEach(d => {
+    const e = d.data();
+    const regs = (porKey[e.nomeKey] || []).sort((a, b) => _tsMov(a) - _tsMov(b));
+    let saldo = 0, temContagem = false;
+    for (const r of regs) {
+      if ((r.tipo || 'contagem') === 'contagem') { saldo = Number(r.qtd) || 0; temContagem = true; }
+      else if (!r.informativo) saldo += (_SINAL_MOV[r.tipo] || 0) * Math.abs(Number(r.qtd) || 0);
+    }
+    saldo = Math.round(saldo * 1000) / 1000;
+    const atual = Number(e.qtd) || 0;
+    if (Math.abs(atual - saldo) > 0.001) {
+      out.push({ nomeKey: e.nomeKey, nome: e.nome || e.nomeKey, unidade: e.unidade || 'un',
+        atual, calculado: saldo, temContagem, nLanc: regs.length, ultimaContagemEm: e.ultimaContagemEm || null });
+    }
+  });
+  return out.sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+}
+
 async function listarHistoricoDesde(desde) {
   const snap = await db.collection('historico_contagem')
     .where('contadoEm', '>=', firebase.firestore.Timestamp.fromDate(desde))
