@@ -851,8 +851,13 @@ function renderizarDashboardInicio() {
    "por festa", não por mínimo. */
 function _itensFaltandoParaFestas() {
   const festasRelevantes = todasFestasCache.filter(f => f.status === 'agendada' || f.status === 'separando');
+  /* Item de produção não é compra — ele aparece só em Produção da Semana
+     (pedido da Juliana em 10-07: os dois cards repetiam o mesmo item). */
   return agregarItensFestas(festasRelevantes)
-    .filter(item => deveExibirNaListaCompras(buscarConfigItem(item.nomeKey)))
+    .filter(item => {
+      const cfg = buscarConfigItem(item.nomeKey);
+      return cfg?.eProducao !== true && deveExibirNaListaCompras(cfg);
+    })
     .map(item => {
       const est     = estoqueDoItem(item.nomeKey);
       const qtdEst  = est?.qtd || 0;
@@ -914,23 +919,29 @@ function renderizarDashProducaoSemana(festasSemana, itens) {
      item com estoque de sobra (ex.: Mix Aurora: precisa 6, tem 13) parecer
      "faltando" só por pedir menos que outro item da lista (ver feedback da
      Juliana em 09-16). */
+  /* Pendentes (estoque não cobre) em cima, em vermelho; os que já estão
+     cobertos descem e ficam verdes (pedido da Juliana em 10-07). */
+  const linhas = itens.map(item => {
+    const est    = estoqueDoItem(item.nomeKey);
+    const qtdEst = est?.qtd || 0;
+    return {
+      item, qtdEst,
+      unEst: unidadeEstoqueDoItem(item.nomeKey, est, item.unidade),
+      pct:   item.totalBase > 0 ? Math.min(100, Math.round((qtdEst / item.totalBase) * 100)) : 100,
+      falta: qtdEst < item.totalBase,
+    };
+  }).sort((a, b) => (b.falta - a.falta) || (a.pct - b.pct));
+
   el.innerHTML = header
     + `<div class="dash-card-scroll">`
-    + itens.map(item => {
-        const est    = estoqueDoItem(item.nomeKey);
-        const unEst  = unidadeEstoqueDoItem(item.nomeKey, est, item.unidade);
-        const qtdEst = est?.qtd || 0;
-        const pct    = item.totalBase > 0 ? Math.min(100, Math.round((qtdEst / item.totalBase) * 100)) : 100;
-        const falta  = qtdEst < item.totalBase;
-        return `
+    + linhas.map(({ item, qtdEst, unEst, pct, falta }) => `
         <div class="dash-bar-row">
           <div class="dash-bar-cabecalho">
             <span class="dash-bar-nome">${_escHtml(nomeBasDisplay(item.nome))}</span>
             <span class="dash-bar-val">${qtdEst} ${unEst} / ${item.total} ${item.unidade}</span>
           </div>
-          <div class="dash-bar-track"><div class="dash-bar-fill${falta ? ' alerta' : ''}" style="width:${Math.max(4, pct)}%"></div></div>
-        </div>`;
-      }).join('')
+          <div class="dash-bar-track"><div class="dash-bar-fill ${falta ? 'alerta' : 'ok'}" style="width:${Math.max(4, pct)}%"></div></div>
+        </div>`).join('')
     + `</div>`;
 }
 
