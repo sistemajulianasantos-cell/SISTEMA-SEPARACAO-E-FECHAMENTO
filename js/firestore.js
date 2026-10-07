@@ -669,6 +669,18 @@ async function contarMovsFestaNoSaldo() {
   return (await _movsFestaNoSaldo()).length;
 }
 
+/* Lançamentos de festas que já foram excluídas (ex.: festa de teste apagada
+   antes da v139, quando a exclusão ainda não levava os lançamentos junto). */
+async function listarMovsDeFestasExcluidas() {
+  const [hist, festas] = await Promise.all([
+    db.collection('historico_contagem').where('motivo', '==', 'evento').get(),
+    db.collection('festas').get(),
+  ]);
+  const existentes = new Set(festas.docs.map(d => d.id));
+  return hist.docs.map(d => ({ id: d.id, ...d.data() }))
+    .filter(r => !r.excluido && r.festaId && !existentes.has(r.festaId));
+}
+
 async function tirarMovsFestaDoSaldo(por) {
   const regs = await _movsFestaNoSaldo();
   for (const r of regs) {
@@ -735,6 +747,42 @@ async function _propagarDiffEstoque(nomeKey, desdeMs, diff, excetoId) {
   }
   await batch.commit();
   return !chegouEmContagem;
+}
+
+/* Junta um nome de estoque que não está no Cadastro (ex.: "agua_com_gas",
+   criado por contagem/festa com o nome escrito diferente) no item certo do
+   Cadastro: os lançamentos passam pro nomeKey do destino (o antigo fica em
+   nomeKeyAntigo), o doc de estoque do nome errado é apagado e o saldo do
+   destino fica com o valor que a pessoa escolheu (só gera lançamento se
+   mudar). destino = { nomeKey, nome, unidade } */
+async function juntarNomeEstoque(origemKey, destino, qtdFinal, por) {
+  if (!origemKey || !destino?.nomeKey || origemKey === destino.nomeKey) throw new Error('Junção inválida.');
+  const hist = await db.collection('historico_contagem').where('nomeKey', '==', origemKey).get();
+  for (let i = 0; i < hist.docs.length; i += 400) {
+    const batch = db.batch();
+    hist.docs.slice(i, i + 400).forEach(d => batch.update(d.ref, {
+      nomeKey: destino.nomeKey, nome: destino.nome, nomeKeyAntigo: origemKey,
+    }));
+    await batch.commit();
+  }
+
+  const estOrig = await db.collection('estoque').where('nomeKey', '==', origemKey).get();
+  const batchDel = db.batch();
+  estOrig.docs.forEach(d => batchDel.delete(d.ref));
+  await batchDel.commit();
+
+  const estDest = await db.collection('estoque').where('nomeKey', '==', destino.nomeKey).limit(1).get();
+  const atual   = estDest.empty ? null : estDest.docs[0].data();
+  if (!atual || Number(atual.qtd) !== Number(qtdFinal)) {
+    await lancarMovimentacaoEstoque({
+      nomeKey: destino.nomeKey, nome: destino.nome, unidade: destino.unidade || atual?.unidade || 'un',
+      tipo: 'contagem', qtd: Number(qtdFinal) || 0,
+      obs: `junção de nomes: "${origemKey}" virou este item`,
+      ultimaContagemEm: atual?.ultimaContagemEm || null,
+      por,
+    });
+  }
+  return hist.docs.length;
 }
 
 /* novo = { qtd, data (Date|null — ignorado em contagem), obs } */

@@ -4259,6 +4259,14 @@ async function confirmarExcluirFesta(id, nome, status) {
 
     await deletarFesta(id);
 
+    /* Lançamentos de estoque da festa saem junto (senão festa de teste
+       excluída continuava pesando no "deveria ter" das Movimentações). */
+    try {
+      for (const m of await listarMovimentacoesDaFesta(id)) {
+        await excluirMovimentacaoEstoque(m.id, (usuarioAtual?.nome || '—') + ' (festa excluída)');
+      }
+    } catch (e) { console.error('Excluir lançamentos da festa:', e); }
+
     let removidos = 0;
     try { removidos = await _removerConfigsAutoSemUso(itensDaFesta, id); } catch (e) { console.error(e); }
 
@@ -7137,6 +7145,7 @@ let _movVisao    = 'conciliacao';
 let _movPeriodo  = 30;     /* dias */
 let _movSoDiverg = false;
 let _movFestaNoSaldo = 0;   /* lançamentos de festa antigos que ainda mexem no saldo */
+let _movFestasExcluidas = [];  /* lançamentos de festas já apagadas */
 
 function trocarVisaoMov(val) {
   _movVisao = val || 'conciliacao';
@@ -7163,6 +7172,7 @@ async function _carregarMovimentacoes() {
   try {
     _histContagemCache = await listarHistoricoDesde(desde);
     _movFestaNoSaldo = souCeo() ? await contarMovsFestaNoSaldo().catch(() => 0) : 0;
+    _movFestasExcluidas = souCeo() ? await listarMovsDeFestasExcluidas().catch(() => []) : [];
     renderizarMovimentacoes();
   } catch (e) {
     console.error('Movimentações:', e);
@@ -7182,15 +7192,42 @@ function renderizarMovimentacoes() {
   else if (_movVisao === 'grade')  renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
   else                             _renderMovConciliacao(_histContagemCache);
 
-  if (_movFestaNoSaldo > 0) {
-    document.getElementById('estoque-historico')?.insertAdjacentHTML('afterbegin', `
+  const avisos = [];
+  if (_movFestaNoSaldo > 0) avisos.push(`
       <div class="detalhe-card" style="padding:10px 12px;margin-bottom:10px;border-left:4px solid #B91C1C">
         <strong>${_movFestaNoSaldo} lançamento(s) de festa ainda estão descontando do estoque.</strong>
         <p style="font-size:12px;margin:4px 0 8px">Festa não mexe mais no saldo — só aparece aqui pra mostrar a diferença.
           Esses são de antes da mudança. Tirar do saldo volta o estoque pra contagem (o registro continua no histórico).</p>
         <button class="btn-primario btn-sm" onclick="confirmarTirarMovsFestaDoSaldo(this)">Tirar festas do saldo</button>
       </div>`);
+  if (_movFestasExcluidas.length) {
+    const nomes = [...new Set(_movFestasExcluidas.map(r => r.festaNome || 'sem nome'))];
+    avisos.push(`
+      <div class="detalhe-card" style="padding:10px 12px;margin-bottom:10px;border-left:4px solid #B45309">
+        <strong>${_movFestasExcluidas.length} lançamento(s) são de festas que já foram excluídas</strong>
+        <p style="font-size:12px;margin:4px 0 8px">${nomes.slice(0, 12).map(_escHtml).join(', ')}${nomes.length > 12 ? '…' : ''}.
+          Eles ainda entram no "deveria ter". Excluir tira eles daqui (e do saldo, se ainda estiverem nele).</p>
+        <button class="btn-primario btn-sm" onclick="confirmarExcluirMovsFestasExcluidas(this)">Excluir lançamentos dessas festas</button>
+      </div>`);
   }
+  if (avisos.length) {
+    document.getElementById('estoque-historico')?.insertAdjacentHTML('afterbegin', avisos.join(''));
+  }
+}
+
+async function confirmarExcluirMovsFestasExcluidas(btn) {
+  const regs = _movFestasExcluidas;
+  if (!regs.length) return;
+  if (!confirm(`Excluir ${regs.length} lançamento(s) de festas que já foram apagadas?`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Excluindo…'; }
+  let ok = 0;
+  for (const r of regs) {
+    try { await excluirMovimentacaoEstoque(r.id, (usuarioAtual?.nome || '—') + ' (festa excluída)'); ok++; }
+    catch (e) { console.error('Excluir lançamento de festa excluída:', r.nome, e); }
+  }
+  toast(`${ok} lançamento(s) excluído(s).`, ok === regs.length ? 'sucesso' : 'aviso');
+  try { await garantirListenerEstoque(); } catch (_) {}
+  await _carregarMovimentacoes();
 }
 
 async function confirmarTirarMovsFestaDoSaldo(btn) {
@@ -7289,44 +7326,48 @@ function _renderMovConciliacao(registros) {
   const comDiv = comContagem.filter(p => { const v = div(p); return v !== null && arred(v) !== 0; });
 
   let lista = _movSoDiverg ? comDiv : comContagem;
-  lista = [...lista].sort((a, b) =>
-    Math.abs(div(b) || 0) - Math.abs(div(a) || 0) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  lista = [...lista].sort((a, b) => _movSoDiverg
+    ? Math.abs(div(b) || 0) - Math.abs(div(a) || 0) || a.nome.localeCompare(b.nome, 'pt-BR')
+    : a.nome.localeCompare(b.nome, 'pt-BR'));
 
-  const th = (t, al = 'center') => `<th style="padding:8px 10px;text-align:${al};font-size:11px;font-weight:700;color:var(--cinza-500);white-space:nowrap;border-bottom:2px solid #E5E7EB">${t}</th>`;
-  const td = (c, extra = '') => `<td style="padding:8px 10px;text-align:center;white-space:nowrap;border-bottom:1px solid #F3F4F6;${extra}">${c}</td>`;
+  /* 4 colunas que cabem na tela sem rolar pro lado (pedido da Juliana em
+     10-07: a tabela larga escondia o "deveria ter"). */
+  const th = (t, al = 'center') => `<th style="padding:8px 10px;text-align:${al};font-size:11px;font-weight:700;color:var(--cinza-500);border-bottom:2px solid #E5E7EB">${t}</th>`;
+  const td = (c, extra = '') => `<td style="padding:8px 10px;text-align:center;vertical-align:top;border-bottom:1px solid #F3F4F6;${extra}">${c}</td>`;
 
   const linhas = lista.map(p => {
     const u  = p.ultima;
     const un = _escHtml(p.unidade || 'un');
     const v  = div(p);
-    let divHtml;
-    if (v === null)           divHtml = `<span style="color:var(--cinza-500);font-weight:400">1ª contagem no período</span>`;
-    else if (arred(v) === 0)  divHtml = `<span style="color:#047857">bateu</span>`;
-    else if (v < 0)           divHtml = `<span style="color:#B91C1C">faltam ${_movQtd(-v)}</span>`;
-    else                      divHtml = `<span style="color:#B45309">sobram ${_movQtd(v)}</span>`;
+    let divHtml = '';
+    if (v !== null) {
+      divHtml = arred(v) === 0
+        ? `<span style="color:#047857">bateu com o esperado</span>`
+        : `<span style="color:${v < 0 ? '#B91C1C' : '#B45309'}">${v < 0 ? 'faltaram' : 'sobraram'} ${_movQtd(Math.abs(v))}</span> <span style="color:var(--cinza-500)">(esperado ${_movQtd(u.esperado)})</span>`;
+    }
     const desde = (p.entradas || p.saidas)
-      ? `${p.saidas ? `−${_movQtd(p.saidas)}` : ''}${p.saidas && p.entradas ? ' ' : ''}${p.entradas ? `+${_movQtd(p.entradas)}` : ''} → <strong>${_movQtd(p.saldo)}</strong>`
-      : `<span style="color:var(--cinza-500)">sem movimento</span>`;
+      ? [p.saidas ? `<span style="color:#B45309">saiu ${_movQtd(p.saidas)}</span>` : '',
+         p.entradas ? `<span style="color:#1D4ED8">entrou ${_movQtd(p.entradas)}</span>` : ''].filter(Boolean).join('<br>')
+      : `<span style="color:var(--cinza-500)">nada</span>`;
+    const foraCadastro = !buscarConfigItem(p.chave)
+      ? `<br><span style="font-size:11px;font-weight:700;color:#B91C1C">fora do Cadastro — clique pra juntar</span>` : '';
     return `<tr>
-      <td style="padding:8px 10px;font-weight:600;font-size:13px;white-space:nowrap;border-bottom:1px solid #F3F4F6;position:sticky;left:0;background:#fff;cursor:pointer"
+      <td style="padding:8px 10px;font-weight:600;font-size:13px;vertical-align:top;border-bottom:1px solid #F3F4F6;cursor:pointer"
         onclick="abrirHistoricoItemMov('${_esc(p.chave)}','${_esc(p.nome)}')" title="Ver todos os lançamentos">
-        <span style="text-decoration:underline;text-underline-offset:2px">${_escHtml(p.nome)}</span><br><span style="font-weight:400;font-size:11px;color:var(--cinza-500)">${un}</span>
+        <span style="text-decoration:underline;text-underline-offset:2px">${_escHtml(p.nome)}</span>
+        <span style="font-weight:400;font-size:11px;color:var(--cinza-500)">${un}</span>${foraCadastro}
       </td>
-      ${td(u.anterior ? `${_movQtd(u.anterior.qtd)}<br><span style="font-size:11px;color:var(--cinza-500)">${_movDiaBR(u.anterior.data)}</span>` : '—')}
-      ${td(u.saidas ? `<span style="color:#B45309">−${_movQtd(u.saidas)}</span>` : '—')}
-      ${td(u.entradas ? `<span style="color:#1D4ED8">+${_movQtd(u.entradas)}</span>` : '—')}
-      ${td(u.esperado !== null ? `<strong>${_movQtd(u.esperado)}</strong>` : '—', 'background:#F9FAFB')}
-      ${td(`<strong>${_movQtd(u.contado)}</strong><br><span style="font-size:11px;color:var(--cinza-500)">${_movDiaBR(u.data)}${u.por ? ' · ' + _escHtml(u.por) : ''}</span>`)}
-      ${td(divHtml, 'font-weight:700')}
+      ${td(`<strong>${_movQtd(u.contado)}</strong> <span style="font-size:11px;color:var(--cinza-500)">em ${_movDiaBR(u.data)}</span>${divHtml ? `<br><span style="font-size:11px">${divHtml}</span>` : ''}`)}
       ${td(desde, 'font-size:12px')}
+      ${td(`<strong style="font-size:15px">${_movQtd(p.saldo)}</strong>`, 'background:#F9FAFB')}
     </tr>`;
   }).join('');
 
   el.innerHTML = `
     <p style="font-size:12px;color:var(--cinza-600);margin:0 0 8px">
-      Compara as duas últimas contagens de cada produto no período:
-      <strong>contagem anterior − saídas + entradas/retornos = deveria ter</strong>, e o que foi contado depois.
-      Nada aqui altera o estoque.
+      <strong>Deveria ter agora = última contagem − o que saiu (festas, perdas, produção) + o que entrou.</strong>
+      Festa não mexe no estoque — aparece aqui só pra você comparar na próxima contagem.
+      Clique no produto pra ver todos os lançamentos.
     </p>
     <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:8px;font-size:13px">
       <span><strong>${comDiv.length}</strong> produto(s) com divergência na última contagem</span>
@@ -7335,11 +7376,10 @@ function _renderMovConciliacao(registros) {
       </label>
     </div>
     ${lista.length ? `
-      <div style="overflow-x:auto;border:1px solid #E5E7EB;border-radius:8px">
+      <div style="border:1px solid #E5E7EB;border-radius:8px">
         <table style="border-collapse:collapse;width:100%;font-size:13px">
           <thead><tr>
-            <th style="padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--cinza-500);white-space:nowrap;border-bottom:2px solid #E5E7EB;position:sticky;left:0;background:#fff">Produto</th>
-            ${th('Contagem anterior')}${th('Saídas')}${th('Entradas')}${th('Deveria ter')}${th('Contado')}${th('Divergência')}${th('Desde então → deveria ter hoje')}
+            ${th('Produto', 'left')}${th('Última contagem')}${th('Depois da contagem')}${th('Deveria ter agora')}
           </tr></thead>
           <tbody>${linhas}</tbody>
         </table>
@@ -7534,7 +7574,8 @@ function _renderHistoricoItemMov(editandoId) {
         · ${movs.length} lançamento(s)</div>
       ${podeEditar ? `<button class="btn-secundario btn-sm" onclick="_histItemNovaMov()">+ Nova movimentação deste item</button>` : ''}
     </div>
-    ${variacoes.length > 1 ? `<p style="font-size:12px;color:#B45309;margin:0 0 8px">Lançamentos gravados sob ${variacoes.length} nomes diferentes: ${variacoes.map(_escHtml).join(', ')}. Cada nome tem o seu próprio saldo.</p>` : ''}`;
+    ${variacoes.length > 1 ? `<p style="font-size:12px;color:#B45309;margin:0 0 8px">Lançamentos gravados sob ${variacoes.length} nomes diferentes: ${variacoes.map(_escHtml).join(', ')}. Cada nome tem o seu próprio saldo.</p>` : ''}
+    ${podeEditar ? _htmlJuntarForaCadastro([...new Set([chave, ...variacoes])]) : ''}`;
 
   if (!movs.length) {
     el.innerHTML = cab + estadoVazio('Nenhum lançamento registrado para este item.');
@@ -7640,6 +7681,96 @@ async function _histItemSalvarEdicao(id) {
   } catch (e) {
     console.error('Editar lançamento:', e);
     toast(e.message || 'Erro ao salvar a correção.', 'erro');
+  }
+}
+
+/* ── Juntar nome fora do Cadastro ──
+   Contagem/festa com o nome escrito diferente (ex.: "Água com gás") cria um
+   estoque separado do item do Cadastro ("AGUA COM GAS - 500ML"). Aqui a
+   pessoa diz qual item do Cadastro é o mesmo produto e qual saldo vale. */
+function _sugestoesCadastroPara(origemKey) {
+  const base = nomeBaseKey(origemKey);
+  const assin = _assinaturaPalavras(base);
+  const pal = base.split('_').filter(Boolean);
+  const score = c => {
+    const k = nomeBaseKey(c.nomeKey || '');
+    if (!k) return 0;
+    if (k.startsWith(base + '_') || base.startsWith(k + '_')) return 3;
+    if (_assinaturaPalavras(k) === assin || (k.length >= 8 && _distNivel1(k, base))) return 3;
+    const pk = new Set(k.split('_'));
+    return pal.filter(p => p.length > 2 && pk.has(p)).length >= 2 ? 1 : 0;
+  };
+  return Object.values(itemConfigsCache)
+    .filter(c => c.nomeKey && c.nomeKey !== origemKey)
+    .map(c => ({ c, s: score(c) }))
+    .sort((a, b) => b.s - a.s || (a.c.nome || '').localeCompare(b.c.nome || '', 'pt-BR'));
+}
+
+function _htmlJuntarForaCadastro(chaves) {
+  const orfas = chaves.filter(k => k && !buscarConfigItem(k) && (estoqueCache[k] || _histItemAtual?.movs.some(m => m.nomeKey === k)));
+  return orfas.map(k => {
+    const est = estoqueCache[k];
+    const sug = _sugestoesCadastroPara(k);
+    const temSug = sug[0]?.s > 0;
+    const opts = sug.map(({ c, s }, i) =>
+      `<option value="${_escHtml(c.nomeKey)}" ${temSug && i === 0 ? 'selected' : ''}>${s > 0 ? '★ ' : ''}${_escHtml(c.nome)}</option>`).join('');
+    const id = 'junt-' + k.replace(/[^a-z0-9]/gi, '_');
+    return `
+      <div class="detalhe-card" style="padding:10px 12px;margin-bottom:10px;border-left:4px solid #B91C1C;font-size:13px">
+        <strong>"${_escHtml(est?.nome || k)}" não está no Cadastro</strong> — estoque deste nome: <strong>${_movQtd(est?.qtd)} ${_escHtml(est?.unidade || 'un')}</strong>.
+        <div style="margin:8px 0">É o mesmo produto que:
+          <select id="${id}-dest" onchange="_juntarAtualizarDestino('${_esc(k)}','${id}')" style="max-width:100%">
+            ${temSug ? '' : '<option value="">Escolha o item do Cadastro…</option>'}${opts}
+          </select>
+        </div>
+        <div style="margin-bottom:8px">Qual estoque está certo?
+          <label style="display:block;margin-top:4px"><input type="radio" name="${id}-qtd" value="origem" /> o deste nome: ${_movQtd(est?.qtd)}</label>
+          <label style="display:block"><input type="radio" name="${id}-qtd" value="destino" checked /> o do item do Cadastro: <span id="${id}-qtd-dest">${_juntarQtdDestinoTxt(temSug ? sug[0].c.nomeKey : '')}</span></label>
+          <label style="display:block"><input type="radio" name="${id}-qtd" value="soma" /> somar os dois</label>
+        </div>
+        <button class="btn-primario btn-sm" onclick="_juntarNomeFora('${_esc(k)}','${id}', this)">Juntar</button>
+        <span style="font-size:11px;color:var(--cinza-500)">Os lançamentos deste nome passam pro item do Cadastro e este nome some do estoque.</span>
+      </div>`;
+  }).join('');
+}
+
+function _juntarQtdDestinoTxt(destKey) {
+  if (!destKey) return '—';
+  const est = estoqueCache[destKey];
+  return est ? `${_movQtd(est.qtd)} ${_escHtml(est.unidade || 'un')}` : '0 (sem estoque ainda)';
+}
+
+function _juntarAtualizarDestino(origemKey, id) {
+  const destKey = document.getElementById(id + '-dest')?.value || '';
+  const el = document.getElementById(id + '-qtd-dest');
+  if (el) el.innerHTML = _juntarQtdDestinoTxt(destKey);
+}
+
+async function _juntarNomeFora(origemKey, id, btn) {
+  const destKey = document.getElementById(id + '-dest')?.value || '';
+  if (!destKey) return toast('Escolha o item do Cadastro.', 'erro');
+  const cfg = itemConfigsCache[destKey];
+  if (!cfg) return toast('Item do Cadastro não encontrado.', 'erro');
+  const modo = document.querySelector(`input[name="${id}-qtd"]:checked`)?.value || 'destino';
+  const qOrig = Number(estoqueCache[origemKey]?.qtd) || 0;
+  const qDest = Number(estoqueCache[destKey]?.qtd) || 0;
+  const qtdFinal = modo === 'origem' ? qOrig : modo === 'soma' ? qOrig + qDest : qDest;
+  const nomeOrig = estoqueCache[origemKey]?.nome || origemKey;
+  if (!confirm(`Juntar "${nomeOrig}" em "${cfg.nome}"?\n\nO estoque de "${cfg.nome}" fica ${_movQtd(qtdFinal)}.`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Juntando…'; }
+  try {
+    await juntarNomeEstoque(origemKey, {
+      nomeKey: destKey, nome: cfg.nome,
+      unidade: estoqueCache[destKey]?.unidade || cfg.unidade || 'un',
+    }, qtdFinal, usuarioAtual?.nome || '—');
+    toast(`"${nomeOrig}" juntado em "${cfg.nome}".`, 'sucesso');
+    fecharHistoricoItemMov();
+    try { await garantirListenerEstoque(); } catch (_) {}
+    await _carregarMovimentacoes();
+  } catch (e) {
+    console.error('Juntar nome:', e);
+    toast(e.message || 'Erro ao juntar.', 'erro');
+    if (btn) { btn.disabled = false; btn.textContent = 'Juntar'; }
   }
 }
 
