@@ -2339,23 +2339,15 @@ async function concluirSeparacao() {
   if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
 
   try {
-    let fotoUrls = [];
-    if (fotosCache.separacao.filter(Boolean).length) {
-      try {
-        toast('Enviando fotos...', 'info');
-        fotoUrls = await uploadFotos(fotosCache.separacao, festaAtual.id, 'separacao');
-      } catch (e) {
-        console.error('Erro ao enviar fotos da separação:', e);
-        toast('Não foi possível enviar as fotos, mas a separação será salva.', 'aviso');
-      }
-    }
+    const fotos = await _fotosEtapa(fotosCache.separacao, 'separacao', 'fotosSeparacao');
 
     await concluirEtapa(festaAtual.id, 'separacao', {
       itens,
       obsSeparacao:   document.getElementById('sep-obs').value,
-      fotosSeparacao: fotoUrls,
+      ...fotos.patch,
       colaborador:    usuarioAtual.nome,
     });
+    if (fotos.naFila) toast(`${fotos.naFila} foto(s) ficaram guardadas no aparelho e sobem quando tiver internet.`, 'aviso');
 
     window._tabSep = 'pendente';
     toast('Separacao finalizada. Festa enviada para Conferencia.', 'sucesso');
@@ -2532,22 +2524,32 @@ async function abrirConferencia(id) {
   });
 }
 
+/* Foto do item na conferência: item.fotoConferencia (enviada na hora) ou
+   festa.fotosItensConf[chave] (veio da fila de fotos offline — 'pendente'
+   enquanto está guardada no aparelho esperando internet). */
+const _chaveFotoItem = (item, idx) => normalizarNomeItem(item?.nome) || `item_${idx}`;
+function _fotoItemConf(festa, item, idx) {
+  return item?.fotoConferencia || festa?.fotosItensConf?.[_chaveFotoItem(item, idx)] || null;
+}
+
 function htmlCardConfItem(item, ri, conferido) {
   const cfg       = buscarConfigItem(normalizarNomeItem(item.nome));
   const exigeFoto = !!cfg?.exigeFoto;
-  const temFoto   = !!(fotosCache.confItens[ri] || item.fotoConferencia);
+  const fotoSalva = _fotoItemConf(festaAtual, item, ri);
+  const pendente  = fotoSalva === 'pendente';
+  const temFoto   = !!(fotosCache.confItens[ri] || fotoSalva);
   const fotoAreaHtml = exigeFoto ? `
     <div class="item-foto-area${temFoto ? ' ok' : ''}" id="conf-foto-area-${ri}">
       <div class="item-foto-preview">
-        ${item.fotoConferencia
-          ? `<img src="${item.fotoConferencia}" alt="foto">`
-          : fotosCache.confItens[ri]
-            ? `<img src="${URL.createObjectURL(fotosCache.confItens[ri])}" alt="foto">`
+        ${fotosCache.confItens[ri]
+          ? `<img src="${URL.createObjectURL(fotosCache.confItens[ri])}" alt="foto">`
+          : fotoSalva && !pendente
+            ? `<img src="${fotoSalva}" alt="foto">`
             : `<div class="item-foto-placeholder"></div>`}
       </div>
       <div class="item-foto-label">
-        <div class="item-foto-label-titulo${temFoto ? ' ok' : ''}">${temFoto ? 'Foto anexada' : 'Foto obrigatória'}</div>
-        <div class="item-foto-label-desc">${temFoto ? 'Toque para trocar' : 'Este item exige registro fotográfico'}</div>
+        <div class="item-foto-label-titulo${temFoto ? ' ok' : ''}">${pendente ? 'Foto salva no aparelho' : temFoto ? 'Foto anexada' : 'Foto obrigatória'}</div>
+        <div class="item-foto-label-desc">${pendente ? 'Envia sozinha quando tiver internet' : temFoto ? 'Toque para trocar' : 'Este item exige registro fotográfico'}</div>
       </div>
       <input type="file" id="conf-foto-input-${ri}" accept="image/*" capture="environment" style="display:none"
         onchange="onFotoItemConf(${ri}, this)" />
@@ -2625,13 +2627,14 @@ function renderizarConferencia(festa) {
 
   const buscaConf = document.getElementById('busca-conf-input')?.value || '';
 
-  const visiveis = (festa.itens || []).filter((item) => {
-    /* CEO vê todos os itens da festa; demais perfis só os configurados
-       para aparecer na conferência (descartáveis/decoração ficam ocultos) */
-    if (souCeo()) return true;
-    const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
-    return !cfg || cfg.conferirCoord !== false;
-  }).map((item) => ({ item, ri: (festa.itens || []).indexOf(item) }));
+  /* Item com "Conferir" desligado no Cadastro não aparece pra ninguém —
+     antes o CEO via todos e o Bar Back aparecia na conferência dela mesmo
+     desligado (Juliana, 10-07). A conclusão já trata esses itens
+     (qtdConferida = qtdSeparada). */
+  const foraDaConf = item => buscarConfigItem(normalizarNomeItem(item.nome))?.conferirCoord === false;
+  const ocultos = (festa.itens || []).filter(foraDaConf);
+  const visiveis = (festa.itens || []).filter(item => !foraDaConf(item))
+    .map((item) => ({ item, ri: (festa.itens || []).indexOf(item) }));
 
   /* Item só é considerado "conferido" depois que o coordenador de fato salva uma
      quantidade (marcado por conferidoEm); qtdConferida sozinha não serve porque
@@ -2673,8 +2676,13 @@ function renderizarConferencia(festa) {
     ? conferidos.map(({ item, ri }) => htmlCardConfItem(item, ri, true)).join('')
     : estadoVazio('Nenhum item conferido ainda.');
 
+  const avisoOcultosHtml = (souCeo() && ocultos.length)
+    ? `<p style="font-size:12px;color:var(--cinza-500);margin:0 0 8px">Fora da conferência (desligado no Cadastro): ${ocultos.map(it => _escHtml(nomeBasDisplay(it.nome))).join(', ')}</p>`
+    : '';
+
   document.getElementById('conf-itens').innerHTML = `
     ${avisoRecontagemHtml}
+    ${avisoOcultosHtml}
     ${buscaHtml}
     ${tabsHtml}
     <div id="conf-lista-aconferir" class="${abaConfAtual === 'aconferir' ? '' : 'hidden'}">${pendentesHtml}</div>
@@ -2788,6 +2796,7 @@ async function onFotoItemConf(idx, input) {
   btn.textContent = 'Enviando...';
 
   try {
+    if (navigator.onLine === false) throw new Error('offline');
     const urls = await uploadFotos([file], festaAtual.id, `conf_item_${idx}`);
     await persistirItemFesta(idx, { fotoConferencia: urls[0] });
     fotosCache.confItens[idx] = null; /* já persistida, não precisa reenviar no final */
@@ -2795,15 +2804,54 @@ async function onFotoItemConf(idx, input) {
     desc.textContent   = 'Toque para trocar';
     btn.textContent   = 'OK';
   } catch (e) {
-    console.error('Erro ao enviar foto do item:', e);
-    toast('Falha ao enviar a foto. Tente novamente.', 'erro');
-    titulo.className  = 'item-foto-label-titulo';
-    titulo.textContent = 'Foto obrigatória';
-    desc.textContent   = 'Falha no envio — toque para tentar novamente';
-    area.classList.remove('ok');
-    btn.className = 'btn-foto-item';
-    btn.textContent = 'Anexar';
+    /* Sem internet / falha de envio: a foto fica guardada no aparelho e sobe
+       sozinha depois — nunca é descartada. */
+    console.warn('Foto do item vai pra fila:', e);
+    try {
+      await _guardarFotoItemConf(idx, file);
+      titulo.textContent = 'Foto salva no aparelho';
+      desc.textContent   = 'Envia sozinha quando tiver internet';
+      btn.textContent    = 'OK';
+    } catch (e2) {
+      console.error('Erro ao guardar foto do item:', e2);
+      toast('Não foi possível guardar a foto. Tente novamente.', 'erro');
+      titulo.className   = 'item-foto-label-titulo';
+      titulo.textContent = 'Foto obrigatória';
+      desc.textContent   = 'Falha ao salvar — toque para tentar novamente';
+      area.classList.remove('ok');
+      btn.className   = 'btn-foto-item';
+      btn.textContent = 'Anexar';
+    }
   }
+}
+
+/* Fotos gerais de uma etapa (separação/conferência/retorno/galpão): envia o
+   que der, o resto vai pra fila de fotos. arrayUnion (não sobrescreve) pra a
+   foto que subir depois pela fila somar com as enviadas agora, em qualquer
+   ordem. */
+async function _fotosEtapa(files, pasta, campo) {
+  if (!files.filter(Boolean).length) return { patch: {}, urls: [], naFila: 0 };
+  try {
+    toast('Enviando fotos...', 'info');
+    const { urls, naFila } = await enviarFotosOuGuardar(files, festaAtual.id, pasta, campo);
+    return { patch: urls.length ? { [campo]: firebase.firestore.FieldValue.arrayUnion(...urls) } : {}, urls, naFila };
+  } catch (e) {
+    console.error(`Fotos (${pasta}):`, e);
+    toast('Não foi possível enviar nem guardar as fotos. O resto foi salvo — tire as fotos de novo.', 'erro');
+    return { patch: {}, urls: [], naFila: 0 };
+  }
+}
+
+/* Marca a foto do item como pendente na festa (todos veem "salva no
+   aparelho") e põe o arquivo na fila de fotos. Nessa ordem: a fila só
+   grava a URL depois, então ela nunca é sobrescrita pelo "pendente". */
+async function _guardarFotoItemConf(idx, file) {
+  const item  = festaAtual.itens?.[idx];
+  const chave = _chaveFotoItem(item, idx);
+  festaAtual = { ...festaAtual, fotosItensConf: { ...(festaAtual.fotosItensConf || {}), [chave]: 'pendente' } };
+  await atualizarFesta(festaAtual.id, { [`fotosItensConf.${chave}`]: 'pendente' });
+  await guardarFotoNaFila(file, festaAtual.id, `conf_item_${idx}`, { tipo: 'item', chave });
+  fotosCache.confItens[idx] = null; /* já está na fila, não reenviar no final */
 }
 
 /* Edição rápida de nome de item (coordenador e separador) */
@@ -2887,7 +2935,7 @@ async function concluirConferencia() {
   const semFoto = (festaAtual.itens || []).filter((item, i) => {
     const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
     if (cfg && cfg.conferirCoord === false) return false;
-    return cfg?.exigeFoto && !fotosCache.confItens[i] && !item.fotoConferencia;
+    return cfg?.exigeFoto && !fotosCache.confItens[i] && !_fotoItemConf(festaAtual, item, i);
   });
   if (semFoto.length) {
     toast(`Aviso: foto pendente em: ${semFoto.map(i => i.nome).join(', ')}. Liberando mesmo assim.`, 'aviso');
@@ -2951,6 +2999,7 @@ async function concluirConferencia() {
        Cada foto é enviada isoladamente — se uma falhar, as demais e o resto da
        conferência (quantidades, etc.) não são perdidos. */
     const falhasFoto = [];
+    let fotosNaFila = 0;
     const itens = await Promise.all((festaAtual.itens || []).map(async (item, i) => {
       const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
       if (cfg && cfg.conferirCoord === false) {
@@ -2961,11 +3010,13 @@ async function concluirConferencia() {
       let fotoConferencia = item.fotoConferencia || null;
       if (fotoFile) {
         try {
+          if (navigator.onLine === false) throw new Error('offline');
           const urls = await uploadFotos([fotoFile], festaAtual.id, `conf_item_${i}`);
           fotoConferencia = urls[0] || fotoConferencia;
         } catch (e) {
-          console.error(`Erro ao enviar foto do item "${item.nome}":`, e);
-          falhasFoto.push(item.nome);
+          console.warn(`Foto do item "${item.nome}" vai pra fila:`, e);
+          try { await _guardarFotoItemConf(i, fotoFile); fotosNaFila++; }
+          catch (e2) { console.error(e2); falhasFoto.push(item.nome); }
         }
       }
       return { ...item, qtdConferida, ...(fotoConferencia ? { fotoConferencia } : {}) };
@@ -2976,7 +3027,7 @@ async function concluirConferencia() {
     const aindaSemFoto = itens.filter((item) => {
       const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
       if (cfg && cfg.conferirCoord === false) return false;
-      return cfg?.exigeFoto && !item.fotoConferencia;
+      return cfg?.exigeFoto && !_fotoItemConf(festaAtual, item, itens.indexOf(item));
     });
     if (aindaSemFoto.length) {
       toast(`Aviso: falha ao enviar foto de: ${aindaSemFoto.map(i => i.nome).join(', ')}. Liberando mesmo assim.`, 'aviso');
@@ -3002,19 +3053,11 @@ async function concluirConferencia() {
         contagem1: it.contagem1, recontagem: it.recontagem !== undefined ? it.recontagem : it.qtdConferida,
       }));
 
-    let fotoUrls = [];
-    if (fotosCache.conferencia.filter(Boolean).length) {
-      try {
-        toast('Enviando fotos gerais...', 'info');
-        fotoUrls = await uploadFotos(fotosCache.conferencia, festaAtual.id, 'conferencia');
-      } catch (e) {
-        console.error('Erro ao enviar fotos gerais:', e);
-        toast('Não foi possível enviar as fotos gerais, mas a conferência será salva.', 'aviso');
-      }
-    }
+    const fotosGerais = await _fotosEtapa(fotosCache.conferencia, 'conferencia', 'fotosConferencia');
+    fotosNaFila += fotosGerais.naFila;
 
     if (falhasFoto.length) {
-      toast(`Aviso: não foi possível enviar a foto de "${falhasFoto.join(', ')}", mas o restante da conferência foi salvo.`, 'aviso');
+      toast(`Aviso: não foi possível guardar a foto de "${falhasFoto.join(', ')}", mas o restante da conferência foi salvo.`, 'aviso');
     }
 
     await concluirEtapa(festaAtual.id, 'conferencia', {
@@ -3022,9 +3065,10 @@ async function concluirConferencia() {
       divergencias,
       recontagens,
       obsConferencia:   document.getElementById('conf-obs').value,
-      fotosConferencia: fotoUrls,
+      ...fotosGerais.patch,
       coordenador:      usuarioAtual.nome,
     });
+    if (fotosNaFila) toast(`${fotosNaFila} foto(s) ficaram guardadas no aparelho e sobem quando tiver internet.`, 'aviso');
 
     /* Registra no histórico o que saiu pra festa (informativo — não mexe no
        saldo). Não trava a conclusão se falhar. */
@@ -3174,21 +3218,13 @@ async function concluirRetorno() {
     const convPortariaVal = parseFloat(document.getElementById('ret-conv-portaria').value);
     const convFinalVal    = parseFloat(document.getElementById('ret-conv-final').value);
 
-    let fotoUrls = [];
-    if (fotosCache.retorno.filter(Boolean).length) {
-      try {
-        toast('Enviando fotos...', 'info');
-        fotoUrls = await uploadFotos(fotosCache.retorno, festaAtual.id, 'retorno');
-      } catch (e) {
-        console.error('Erro ao enviar fotos do retorno:', e);
-        toast('Não foi possível enviar as fotos, mas o retorno será salvo.', 'aviso');
-      }
-    }
+    const fotos = await _fotosEtapa(fotosCache.retorno, 'retorno', 'fotosRetorno');
+    if (fotos.naFila) toast(`${fotos.naFila} foto(s) ficaram guardadas no aparelho e sobem quando tiver internet.`, 'aviso');
 
     const patchRetorno = {
       itens,
       obsRetorno:         document.getElementById('ret-obs').value,
-      fotosRetorno:       fotoUrls,
+      ...fotos.patch,
       convidadosPortaria: isNaN(convPortariaVal) ? null : convPortariaVal,
       convidadosFinal:    isNaN(convFinalVal) ? null : convFinalVal,
       horaExtra:          document.getElementById('ret-hora-extra').value || null,
@@ -3201,7 +3237,7 @@ async function concluirRetorno() {
     catch (e) { console.error('Registro de retorno da festa:', e); }
 
     toast('Retorno registrado. Festa enviada para o Galpao.', 'sucesso');
-    abrirRelatorioRetorno({ ...festaAtual, ...patchRetorno });
+    abrirRelatorioRetorno({ ...festaAtual, ...patchRetorno, fotosRetorno: [...(festaAtual.fotosRetorno || []), ...fotos.urls] });
 
   } catch (e) {
     console.error(e);
@@ -3429,23 +3465,15 @@ async function concluirGalpao() {
       .filter(it => it.qtdGalpao !== (it.qtdRetorno || 0))
       .map(it => ({ item: it.nome, retorno: it.qtdRetorno || 0, galpao: it.qtdGalpao }));
 
-    let fotoUrls = [];
-    if (fotosCache.galpao.filter(Boolean).length) {
-      try {
-        toast('Enviando fotos...', 'info');
-        fotoUrls = await uploadFotos(fotosCache.galpao, festaAtual.id, 'galpao');
-      } catch (e) {
-        console.error('Erro ao enviar fotos do galpão:', e);
-        toast('Não foi possível enviar as fotos, mas o registro será salvo.', 'aviso');
-      }
-    }
+    const fotos = await _fotosEtapa(fotosCache.galpao, 'galpao', 'fotosGalpao');
 
     await concluirEtapa(festaAtual.id, 'galpao', {
       itens,
       divergenciasGalpao,
       obsGalpao:   document.getElementById('gal-obs').value,
-      fotosGalpao: fotoUrls,
+      ...fotos.patch,
     });
+    if (fotos.naFila) toast(`${fotos.naFila} foto(s) ficaram guardadas no aparelho e sobem quando tiver internet.`, 'aviso');
 
     toast('Festa concluida e arquivada.', 'sucesso');
     setTimeout(() => irParaPrincipal(), 1800);
@@ -4275,6 +4303,18 @@ function renderizarDetalhe(festa) {
       <div class="detalhe-card"><h3>Fotos do Retorno</h3>
         <div class="grade-fotos">${festa.fotosRetorno.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
       </div>` : ''}
+
+    ${(() => {
+      const fotosItens = (festa.itens || [])
+        .map((it, i) => ({ nome: nomeBasDisplay(it.nome), url: _fotoItemConf(festa, it, i) }))
+        .filter(f => f.url);
+      return fotosItens.length ? `
+      <div class="detalhe-card"><h3>Fotos dos itens (conferência)</h3>
+        ${fotosItens.map(f => f.url === 'pendente'
+          ? `<div class="detalhe-linha"><span>${_escHtml(f.nome)}</span><span style="color:#B45309">foto salva no aparelho de quem conferiu — ainda não enviada</span></div>`
+          : `<div class="detalhe-linha"><span>${_escHtml(f.nome)}</span><img src="${f.url}" class="foto-thumb" onclick="window.open('${f.url}','_blank')"></div>`).join('')}
+      </div>` : '';
+    })()}
 
     <div id="detalhe-mov-estoque"></div>
   `;

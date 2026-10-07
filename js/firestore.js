@@ -1069,24 +1069,160 @@ async function buscarFotoInsumoGestao(insumoId) { return _buscarFotoGestao('insu
    CLOUDINARY — fotos
 ════════════════════════════════════════ */
 
-async function uploadFotos(files, festaId, tipo) {
-  const validos = files.filter(Boolean);
-  const urls = [];
-  for (const file of validos) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-    formData.append('folder', `festas/${festaId}/${tipo}`);
+async function _uploadCloudinary(file, festaId, tipo) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  formData.append('folder', `festas/${festaId}/${tipo}`);
 
-    const resp = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
-      method: 'POST',
-      body: formData,
-    });
-    const data = await resp.json();
-    if (!resp.ok || !data.secure_url) {
-      throw new Error(data.error?.message || 'Falha no upload da foto');
-    }
-    urls.push(data.secure_url);
+  const resp = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  const data = await resp.json();
+  if (!resp.ok || !data.secure_url) {
+    throw new Error(data.error?.message || 'Falha no upload da foto');
   }
+  return data.secure_url;
+}
+
+async function uploadFotos(files, festaId, tipo) {
+  const urls = [];
+  for (const file of files.filter(Boolean)) urls.push(await _uploadCloudinary(file, festaId, tipo));
   return urls;
+}
+
+/* ════════════════════════════════════════
+   FILA DE FOTOS (funciona sem internet)
+   Foto que não sobe na hora (sem internet, rede ruim) fica guardada no
+   aparelho (IndexedDB — sobrevive a fechar o app) e é enviada sozinha
+   quando a conexão volta. Fotos são o registro mais importante da festa
+   (Juliana, 10-07): nunca descartar uma foto por falha de envio.
+
+   destino:
+     { tipo: 'lista', campo }  → festa[campo] recebe a URL (arrayUnion)
+     { tipo: 'item',  chave }  → festa.fotosItensConf[chave] = URL
+       (campo próprio, fora do array itens, pra o envio atrasado nunca
+       sobrescrever quantidades gravadas nesse meio-tempo)
+════════════════════════════════════════ */
+const _FILA_FOTOS_DB = 'rc-fila-fotos';
+
+function _abrirFilaFotos() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(_FILA_FOTOS_DB, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('fotos', { keyPath: 'id', autoIncrement: true });
+    r.onsuccess = () => res(r.result);
+    r.onerror   = () => rej(r.error);
+  });
+}
+
+async function _filaFotos(modo, fn) {
+  const banco = await _abrirFilaFotos();
+  return new Promise((res, rej) => {
+    const tx  = banco.transaction('fotos', modo);
+    const req = fn(tx.objectStore('fotos'));
+    let out;
+    if (req) req.onsuccess = () => { out = req.result; };
+    tx.oncomplete = () => { banco.close(); res(out); };
+    tx.onerror    = () => { banco.close(); rej(tx.error); };
+    tx.onabort    = () => { banco.close(); rej(tx.error); };
+  });
+}
+
+async function guardarFotoNaFila(file, festaId, pasta, destino) {
+  try { navigator.storage?.persist?.(); } catch (_) {}
+  const dados = await file.arrayBuffer();
+  await _filaFotos('readwrite', st => st.add({
+    dados, tipoArquivo: file.type || 'image/jpeg', nomeArquivo: file.name || 'foto.jpg',
+    festaId, pasta, destino, criadoEm: Date.now(), url: null,
+  }));
+  _avisoFilaFotos();
+}
+
+const listarFilaFotos = () => _filaFotos('readonly', st => st.getAll());
+
+async function _aplicarFotoEnviada(f) {
+  const ref = db.collection('festas').doc(f.festaId);
+  if (f.destino.tipo === 'item') {
+    return ref.update({ [`fotosItensConf.${f.destino.chave}`]: f.url });
+  }
+  return ref.update({ [f.destino.campo]: firebase.firestore.FieldValue.arrayUnion(f.url) });
+}
+
+let _enviandoFila = null;
+function processarFilaFotos() {
+  if (!_enviandoFila) _enviandoFila = _processarFilaFotos().finally(() => { _enviandoFila = null; });
+  return _enviandoFila;
+}
+
+async function _processarFilaFotos() {
+  if (navigator.onLine === false) return 0;
+  const auth = firebase.auth().currentUser;
+  if (!auth || auth.isAnonymous) return 0;
+  const fila = await listarFilaFotos();
+  if (!fila.length) { _avisoFilaFotos(0); return 0; }
+  /* O que foi gravado offline (ex.: a conclusão da etapa) sobe antes da foto */
+  await Promise.race([db.waitForPendingWrites(), new Promise(r => setTimeout(r, 20000))]);
+  let enviadas = 0;
+  for (const f of fila) {
+    try {
+      if (!f.url) {
+        f.url = await _uploadCloudinary(new Blob([f.dados], { type: f.tipoArquivo }), f.festaId, f.pasta);
+        await _filaFotos('readwrite', st => st.put(f));   /* não reenvia se gravar falhar */
+      }
+      await _aplicarFotoEnviada(f);
+      await _filaFotos('readwrite', st => st.delete(f.id));
+      enviadas++;
+    } catch (e) {
+      if (e && e.code === 'not-found') {   /* festa excluída: não há onde pôr a foto */
+        await _filaFotos('readwrite', st => st.delete(f.id));
+        continue;
+      }
+      console.warn('Foto ainda não enviada (tenta de novo depois):', e);
+      if (navigator.onLine === false) break;
+    }
+  }
+  await _avisoFilaFotos();
+  if (enviadas && typeof toast === 'function') toast(`${enviadas} foto(s) que estavam no aparelho foram enviadas.`, 'sucesso');
+  return enviadas;
+}
+
+/* Aviso fixo com quantas fotos estão guardadas aguardando envio */
+async function _avisoFilaFotos(qtd) {
+  try {
+    if (qtd === undefined) qtd = (await listarFilaFotos()).length;
+    let el = document.getElementById('aviso-fila-fotos');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'aviso-fila-fotos';
+      el.style.cssText = 'position:fixed;right:12px;bottom:44px;z-index:9999;padding:8px 12px;border-radius:8px;'
+        + 'background:#1D4ED8;color:#fff;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.2);display:none;cursor:pointer';
+      el.title = 'Tentar enviar agora';
+      el.onclick = () => processarFilaFotos();
+      document.body.appendChild(el);
+    }
+    el.textContent = `${qtd} foto(s) guardada(s) no aparelho — envia quando tiver internet`;
+    el.style.display = qtd ? 'block' : 'none';
+  } catch (_) {}
+}
+
+window.addEventListener('online', () => setTimeout(processarFilaFotos, 3000));
+setInterval(() => { processarFilaFotos().catch(() => {}); }, 30000);
+window.addEventListener('load', () => setTimeout(() => processarFilaFotos().catch(() => {}), 5000));
+
+/* Envia as fotos de uma etapa; as que não subirem vão pra fila, com destino
+   no campo da festa. Devolve as URLs enviadas agora e quantas ficaram na fila. */
+async function enviarFotosOuGuardar(files, festaId, pasta, campo) {
+  const urls = [];
+  let naFila = 0;
+  for (const file of files.filter(Boolean)) {
+    try {
+      if (navigator.onLine === false) throw new Error('offline');
+      urls.push(await _uploadCloudinary(file, festaId, pasta));
+    } catch (_) {
+      await guardarFotoNaFila(file, festaId, pasta, { tipo: 'lista', campo });
+      naFila++;
+    }
+  }
+  return { urls, naFila };
 }
