@@ -626,6 +626,62 @@ async function lancarMovimentacaoEstoque(mov) {
   return saldoDepois;
 }
 
+/* Saída/retorno de FESTA: fica só no histórico (informativo) — entra no
+   "deveria ter" das Movimentações pra mostrar a diferença na próxima
+   contagem, mas NÃO mexe no saldo do estoque. Quem manda no saldo é a
+   contagem (pedido da Juliana em 10-07: festas de teste estavam deixando o
+   estoque real negativo). */
+async function registrarMovInformativaEstoque(mov) {
+  if (!mov.nomeKey) throw new Error('registrarMovInformativaEstoque: nomeKey obrigatório');
+  const dataLanc = (mov.data instanceof Date && !isNaN(mov.data))
+    ? firebase.firestore.Timestamp.fromDate(mov.data)
+    : TS();
+  const lanc = {
+    nomeKey: mov.nomeKey, nome: mov.nome || mov.nomeKey, unidade: mov.unidade || 'un',
+    tipo:   mov.tipo,
+    motivo: mov.motivo || '',
+    qtd:    Math.abs(Number(mov.qtd) || 0),
+    delta:  0,
+    informativo: true,
+    contadoPor: mov.por || '—',
+    contadoEm:  dataLanc,
+    ...(mov.data instanceof Date && !isNaN(mov.data) ? { retroativo: true, registradoEm: TS() } : {}),
+  };
+  if (mov.festaId)   lanc.festaId   = mov.festaId;
+  if (mov.festaNome) lanc.festaNome = mov.festaNome;
+  if (mov.obs)       lanc.obs       = mov.obs;
+  await db.collection('historico_contagem').add(lanc);
+}
+
+/* Lançamento de festa que ainda desconta/soma no saldo (feito antes da v139) */
+const movFestaMexeNoSaldo = r => !r.excluido && !r.informativo && !!r.festaId
+  && (r.tipo === 'saida' || r.tipo === 'retorno');
+
+/* Converte os lançamentos de festa antigos em informativos: desfaz o efeito
+   deles no saldo (mesma propagação da exclusão — para na próxima contagem)
+   e mantém o registro no histórico. Retorna quantos foram convertidos. */
+async function _movsFestaNoSaldo() {
+  const snap = await db.collection('historico_contagem').where('motivo', '==', 'evento').get();
+  return snap.docs.map(d => ({ id: d.id, ref: d.ref, ...d.data() })).filter(movFestaMexeNoSaldo);
+}
+
+async function contarMovsFestaNoSaldo() {
+  return (await _movsFestaNoSaldo()).length;
+}
+
+async function tirarMovsFestaDoSaldo(por) {
+  const regs = await _movsFestaNoSaldo();
+  for (const r of regs) {
+    const delta = _deltaMov(r) || 0;
+    await r.ref.update({
+      informativo: true, delta: 0, saldoDepois: null,
+      deltaOriginal: delta, tiradoDoSaldoPor: por || '—', tiradoDoSaldoEm: TS(),
+    });
+    await _propagarDiffEstoque(r.nomeKey, _tsMov(r), -delta, r.id);
+  }
+  return regs.length;
+}
+
 /* ════════════════════════════════════════
    EDITAR / EXCLUIR LANÇAMENTO DO LIVRO-CAIXA
    Corrigir um lançamento antigo muda o saldo de tudo que veio DEPOIS dele,
@@ -699,6 +755,17 @@ async function editarMovimentacaoEstoque(id, novo, por) {
     }),
   };
   const patch = { qtd: qtdNova, obs: novo.obs || '', ...auditoria };
+
+  /* Informativo (festa) não mexe no saldo: corrige só o registro */
+  if (r.informativo) {
+    const dataNova = (novo.data instanceof Date && !isNaN(novo.data)) ? novo.data : null;
+    if (dataNova && Math.abs(dataNova.getTime() - tsAntigo) > 60000) {
+      patch.contadoEm  = firebase.firestore.Timestamp.fromDate(dataNova);
+      patch.retroativo = true;
+    }
+    await ref.update(patch);
+    return;
+  }
 
   if (tipo === 'contagem') {
     const diff = qtdNova - (Number(r.qtd) || 0);

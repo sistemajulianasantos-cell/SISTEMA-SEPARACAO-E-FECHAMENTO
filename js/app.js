@@ -2980,6 +2980,11 @@ async function concluirConferencia() {
       coordenador:      usuarioAtual.nome,
     });
 
+    /* Registra no histórico o que saiu pra festa (informativo — não mexe no
+       saldo). Não trava a conclusão se falhar. */
+    try { await _baixarEstoqueDaFesta({ ...festaAtual, estoqueBaixado: festaAtual.estoqueBaixado }, itens); }
+    catch (e) { console.error('Registro de saída da festa:', e); }
+
     const msg = divergencias.length
       ? `Conferencia concluida com ${divergencias.length} divergencia(s). Festa liberada.`
       : 'Conferencia concluida sem divergencias. Festa liberada.';
@@ -3144,6 +3149,10 @@ async function concluirRetorno() {
     };
 
     await concluirEtapa(festaAtual.id, 'retorno', patchRetorno);
+
+    /* Registra no histórico o que voltou da festa (informativo). */
+    try { await _retornarEstoqueDaFesta(festaAtual, itens); }
+    catch (e) { console.error('Registro de retorno da festa:', e); }
 
     toast('Retorno registrado. Festa enviada para o Galpao.', 'sucesso');
     abrirRelatorioRetorno({ ...festaAtual, ...patchRetorno });
@@ -7127,6 +7136,7 @@ function filtrarMovTipo(val) {
 let _movVisao    = 'conciliacao';
 let _movPeriodo  = 30;     /* dias */
 let _movSoDiverg = false;
+let _movFestaNoSaldo = 0;   /* lançamentos de festa antigos que ainda mexem no saldo */
 
 function trocarVisaoMov(val) {
   _movVisao = val || 'conciliacao';
@@ -7152,6 +7162,7 @@ async function _carregarMovimentacoes() {
   desde.setDate(desde.getDate() - _movPeriodo);
   try {
     _histContagemCache = await listarHistoricoDesde(desde);
+    _movFestaNoSaldo = souCeo() ? await contarMovsFestaNoSaldo().catch(() => 0) : 0;
     renderizarMovimentacoes();
   } catch (e) {
     console.error('Movimentações:', e);
@@ -7166,10 +7177,35 @@ function renderizarMovimentacoes() {
   const usaTipo = _movVisao === 'dia' || _movVisao === 'grade';
   document.querySelectorAll('.mov-filtro-tipo').forEach(e => e.classList.toggle('hidden', !usaTipo));
 
-  if (_movVisao === 'dia')         return _renderMovPorDia(_histContagemCache);
-  if (_movVisao === 'festa')       return _renderMovPorFesta(_histContagemCache);
-  if (_movVisao === 'grade')       return renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
-  return _renderMovConciliacao(_histContagemCache);
+  if (_movVisao === 'dia')         _renderMovPorDia(_histContagemCache);
+  else if (_movVisao === 'festa')  _renderMovPorFesta(_histContagemCache);
+  else if (_movVisao === 'grade')  renderizarHistoricoContagem(_histContagemCache, 'estoque-historico');
+  else                             _renderMovConciliacao(_histContagemCache);
+
+  if (_movFestaNoSaldo > 0) {
+    document.getElementById('estoque-historico')?.insertAdjacentHTML('afterbegin', `
+      <div class="detalhe-card" style="padding:10px 12px;margin-bottom:10px;border-left:4px solid #B91C1C">
+        <strong>${_movFestaNoSaldo} lançamento(s) de festa ainda estão descontando do estoque.</strong>
+        <p style="font-size:12px;margin:4px 0 8px">Festa não mexe mais no saldo — só aparece aqui pra mostrar a diferença.
+          Esses são de antes da mudança. Tirar do saldo volta o estoque pra contagem (o registro continua no histórico).</p>
+        <button class="btn-primario btn-sm" onclick="confirmarTirarMovsFestaDoSaldo(this)">Tirar festas do saldo</button>
+      </div>`);
+  }
+}
+
+async function confirmarTirarMovsFestaDoSaldo(btn) {
+  if (!confirm(`Tirar ${_movFestaNoSaldo} lançamento(s) de festa do saldo do estoque?\n\nO estoque volta pro que foi contado. Os lançamentos continuam no histórico como informativos.`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Ajustando…'; }
+  try {
+    const n = await tirarMovsFestaDoSaldo(usuarioAtual?.nome || '—');
+    toast(`${n} lançamento(s) de festa tirados do saldo.`, 'sucesso');
+    try { await garantirListenerEstoque(); } catch (_) {}
+    await _carregarMovimentacoes();
+  } catch (e) {
+    console.error('Tirar festas do saldo:', e);
+    toast('Erro ao ajustar. Tente de novo — o que já foi feito fica salvo.', 'erro');
+    if (btn) { btn.disabled = false; btn.textContent = 'Tirar festas do saldo'; }
+  }
 }
 
 const _movData   = r => (r.contadoEm?.toDate ? r.contadoEm.toDate() : new Date(r.contadoEm));
@@ -7516,8 +7552,15 @@ function _renderHistoricoItemMov(editandoId) {
     let conferenciaContagem = '';
     if (tipo === 'contagem' && m.delta != null && m.saldoDepois != null
         && movs.slice(idx + 1).some(x => (x.tipo || 'contagem') === 'contagem')) {
-      const esperado = Math.round((m.saldoDepois - m.delta) * 100) / 100;
-      const dif = Math.round(m.delta * 100) / 100;
+      /* Saídas/retornos de festa (informativos) não mexeram no saldo, mas
+         entram no que deveria ter — é a diferença que eles mostram. */
+      let infoFesta = 0;
+      for (const x of movs.slice(idx + 1)) {
+        if ((x.tipo || 'contagem') === 'contagem') break;
+        if (x.informativo) infoFesta += (_SINAL_MOV[x.tipo] || 0) * (Number(x.qtd) || 0);
+      }
+      const esperado = Math.round((m.saldoDepois - m.delta + infoFesta) * 100) / 100;
+      const dif = Math.round((m.saldoDepois - esperado) * 100) / 100;
       conferenciaContagem = `deveria ter ${_movQtd(esperado)} → ` + (dif === 0
         ? '<span style="color:#047857;font-weight:700">bateu</span>'
         : dif < 0 ? `<span style="color:#B91C1C;font-weight:700">faltam ${_movQtd(-dif)}</span>`
@@ -7544,6 +7587,7 @@ function _renderHistoricoItemMov(editandoId) {
                   : (m.motivo ? _escHtml(_MOTIVO_LABEL[m.motivo] || m.motivo) : ''),
       m.obs ? _escHtml(m.obs) : '',
       variacoes.length > 1 ? `<span style="color:var(--cinza-500)">${_escHtml(m.nomeKey)}</span>` : '',
+      m.informativo ? '<span style="color:var(--cinza-500)">festa: só informativo, não mexe no saldo</span>' : '',
       m.retroativo ? '<span style="color:var(--cinza-500)">lançado com data retroativa</span>' : '',
       m.editadoPor ? `<span style="color:#B45309">corrigido por ${_escHtml(m.editadoPor)}</span>` : '',
       conferenciaContagem,
@@ -7744,7 +7788,7 @@ async function confirmarRegistrarMov() {
     const unidade  = c ? (c.unidade || estoqueDoItem(nomeKey)?.unidade || 'un') : (estoqueDoItem(nomeKey)?.unidade || 'un');
     if (!c) naoAchados.push(l.nome);
     try {
-      const saldo = await lancarMovimentacaoEstoque({
+      const mov = {
         nomeKey, nome: nomeReal, unidade,
         tipo: cfg.tipo, motivo: cfg.motivo,
         qtd: l.qtd,
@@ -7753,8 +7797,15 @@ async function confirmarRegistrarMov() {
         obs: obs || undefined,
         data: dataMov || undefined,
         por: usuarioAtual?.nome || '—',
-      });
-      estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome: nomeReal, unidade, qtd: saldo, nomeKey };
+      };
+      /* Saída pra festa é informativa (não mexe no saldo) — ver
+         registrarMovInformativaEstoque. */
+      if (festaId) {
+        await registrarMovInformativaEstoque(mov);
+      } else {
+        const saldo = await lancarMovimentacaoEstoque(mov);
+        estoqueCache[nomeKey] = { ...(estoqueCache[nomeKey] || {}), nome: nomeReal, unidade, qtd: saldo, nomeKey };
+      }
       ok++;
     } catch (e) {
       console.error('Registrar movimentação:', e);
@@ -7776,10 +7827,87 @@ async function confirmarRegistrarMov() {
   }
 }
 
-/* Conferência e Retorno da festa NÃO mexem no estoque: ele só muda por
-   contagem, entrada, produção ou pela tela "Registrar movimentação". (Até a
-   v137 havia baixa/retorno automáticos aqui; foram removidos porque
-   descontavam de novo o que a contagem já refletia e deixavam saldo negativo.) */
+/* ── Saída/retorno de festa no histórico de estoque ──
+   Roda ao concluir a Conferência (saída) e o Retorno (volta). É só
+   INFORMATIVO: entra no "deveria ter" das Movimentações pra mostrar a
+   diferença na próxima contagem, mas não mexe no saldo — o saldo real é o
+   da contagem (até a v137 descontava de verdade e deixava estoque negativo
+   com festa de teste). Guarda flags na festa (estoqueBaixado /
+   estoqueRetornado) pra nunca lançar 2×. Quantidade sempre convertida pra
+   unidade solta (o estoque é contado assim). */
+function _movEstoqueRefsDoItem(nomeItem) {
+  const keyExato = normalizarNomeItem(nomeItem);
+  const keyBase  = nomeBaseKey(keyExato);
+  let cfg = itemConfigsCache[keyExato] || itemConfigsCache[keyBase] || null;
+  /* Nome do item na festa não bateu nem na chave exata nem na base (plural,
+     ordem de palavra trocada, 1 letra errada — ex.: festa importada com
+     "Copos Long Drink" e o Cadastro tem "Copo Long Drink") — mesmo critério
+     de "parecido" já usado em Resolver Duplicados. Sem isso, a baixa/retorno
+     criava uma chave de estoque NOVA pro mesmo produto em vez de mexer no
+     saldo certo, e o item "reaparecia" como se tivesse voltado do nada. */
+  if (!cfg && keyExato.length >= 8) {
+    const assinaturaAlvo = _assinaturaPalavras(keyExato);
+    for (const c of Object.values(itemConfigsCache)) {
+      const k = c.nomeKey || '';
+      if (k.length < 8) continue;
+      if (_assinaturaPalavras(k) === assinaturaAlvo || _distNivel1(k, keyExato)) { cfg = c; break; }
+    }
+  }
+  const est = estoqueDoItem(cfg?.nomeKey || keyBase);
+  return {
+    nomeKey: est?.nomeKey || cfg?.nomeKey || keyBase,
+    /* Item com fator de caixa cadastrado sempre baixa/retorna em unidade
+       solta (é como o estoque físico dele é guardado — ver qtdEmUnidadeBase);
+       usar a unidade "nativa" do Cadastro (cx) aqui gravava "265 cx" quando
+       na real eram 265 unidades soltas, e a contagem seguinte não batia. */
+    unidade: _unidadeQuebraItem(nomeItem, cfg?.unidade || est?.unidade || 'un'),
+    nome:    cfg?.nome || nomeBasDisplay(nomeItem),
+  };
+}
+
+async function _baixarEstoqueDaFesta(festa, itens) {
+  if (!festa || !festa.id) return 0;
+  try { const f = await buscarFestaPorId(festa.id); if (f && f.estoqueBaixado) return 0; } catch (_) {}
+  if (festa.estoqueBaixado) return 0;
+  let n = 0;
+  for (const item of (itens || [])) {
+    const q = qtdEmUnidadeBase(item.nome, item.qtdConferida ?? item.qtdSeparada ?? 0);
+    if (!(q > 0)) continue;
+    const ref = _movEstoqueRefsDoItem(item.nome);
+    try {
+      await registrarMovInformativaEstoque({
+        ...ref, tipo: 'saida', motivo: 'evento', qtd: q,
+        festaId: festa.id, festaNome: festa.nome,
+        por: usuarioAtual?.nome || '—',
+      });
+      n++;
+    } catch (e) { console.error('Baixa de estoque —', item.nome, e); }
+  }
+  try { await atualizarFesta(festa.id, { estoqueBaixado: true }); } catch (_) {}
+  return n;
+}
+
+async function _retornarEstoqueDaFesta(festa, itens) {
+  if (!festa || !festa.id) return 0;
+  try { const f = await buscarFestaPorId(festa.id); if (f && f.estoqueRetornado) return 0; } catch (_) {}
+  if (festa.estoqueRetornado) return 0;
+  let n = 0;
+  for (const item of (itens || [])) {
+    const q = qtdEmUnidadeBase(item.nome, item.qtdRetorno || 0);
+    if (!(q > 0)) continue;
+    const ref = _movEstoqueRefsDoItem(item.nome);
+    try {
+      await registrarMovInformativaEstoque({
+        ...ref, tipo: 'retorno', motivo: 'evento', qtd: q,
+        festaId: festa.id, festaNome: festa.nome,
+        por: usuarioAtual?.nome || '—',
+      });
+      n++;
+    } catch (e) { console.error('Retorno de estoque —', item.nome, e); }
+  }
+  try { await atualizarFesta(festa.id, { estoqueRetornado: true }); } catch (_) {}
+  return n;
+}
 
 /* Lançamentos de estoque já feitos pra esta festa — mostrado no Detalhe. */
 async function _renderMovEstoqueFesta(festaId) {
