@@ -681,17 +681,57 @@ async function listarMovsDeFestasExcluidas() {
     .filter(r => !r.excluido && r.festaId && !existentes.has(r.festaId));
 }
 
-async function tirarMovsFestaDoSaldo(por) {
-  const regs = await _movsFestaNoSaldo();
-  for (const r of regs) {
-    const delta = _deltaMov(r) || 0;
-    await r.ref.update({
-      informativo: true, delta: 0, saldoDepois: null,
-      deltaOriginal: delta, tiradoDoSaldoPor: por || '—', tiradoDoSaldoEm: TS(),
-    });
-    await _propagarDiffEstoque(r.nomeKey, _tsMov(r), -delta, r.id);
+/* Por produto, numa passada só (lê os lançamentos do item 1×, grava em
+   lote): mesma regra de _propagarDiffEstoque — o efeito de cada festa
+   removida corre pelos lançamentos seguintes até a próxima contagem (que só
+   ajusta o delta dela); se não houver contagem depois, corrige o saldo.
+   Uma execução por vez (início automático + botão não podem somar 2×). */
+let _tirandoFestasDoSaldo = null;
+function tirarMovsFestaDoSaldo(por) {
+  if (!_tirandoFestasDoSaldo) {
+    _tirandoFestasDoSaldo = _tirarMovsFestaDoSaldo(por)
+      .finally(() => { _tirandoFestasDoSaldo = null; });
   }
-  return regs.length;
+  return _tirandoFestasDoSaldo;
+}
+
+async function _tirarMovsFestaDoSaldo(por) {
+  const pendentes = await _movsFestaNoSaldo();
+  const chaves = [...new Set(pendentes.map(r => r.nomeKey).filter(Boolean))];
+  let total = 0;
+  for (const nomeKey of chaves) {
+    const regs = await _lancamentosDoItem(nomeKey);
+    const ops = [];
+    let acc = 0;   /* quanto o saldo corrido precisa mudar a partir daqui */
+    for (const r of regs) {
+      if (movFestaMexeNoSaldo(r)) {
+        const d = _deltaMov(r) || 0;
+        ops.push([r.ref, {
+          informativo: true, delta: 0, saldoDepois: null,
+          deltaOriginal: d, tiradoDoSaldoPor: por || '—', tiradoDoSaldoEm: TS(),
+        }]);
+        acc -= d;
+        total++;
+      } else if ((r.tipo || 'contagem') === 'contagem') {
+        if (acc && r.delta != null) ops.push([r.ref, { delta: (Number(r.delta) || 0) - acc }]);
+        acc = 0;
+      } else if (acc && r.saldoDepois != null) {
+        ops.push([r.ref, { saldoDepois: (Number(r.saldoDepois) || 0) + acc }]);
+      }
+    }
+    if (acc) {
+      const est = await db.collection('estoque').where('nomeKey', '==', nomeKey).limit(1).get();
+      if (!est.empty) ops.push([est.docs[0].ref, {
+        qtd: firebase.firestore.FieldValue.increment(acc), updatedAt: TS(),
+      }]);
+    }
+    for (let i = 0; i < ops.length; i += 400) {
+      const batch = db.batch();
+      ops.slice(i, i + 400).forEach(([ref, patch]) => batch.update(ref, patch));
+      await batch.commit();
+    }
+  }
+  return total;
 }
 
 /* ════════════════════════════════════════

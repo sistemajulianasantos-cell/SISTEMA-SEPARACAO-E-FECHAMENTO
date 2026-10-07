@@ -804,6 +804,7 @@ async function _ajustarFestasNoEstoqueAuto() {
     }
   } catch (e) {
     console.error('Ajuste automático de festas no estoque:', e);
+    toast('Não consegui acertar o estoque das festas: ' + (e?.message || e), 'erro');
     _ajusteFestasEstoqueFeito = false;
   }
 }
@@ -7385,14 +7386,16 @@ function _renderMovConciliacao(registros) {
       </td>
       ${td(`<strong>${_movQtd(u.contado)}</strong> <span style="font-size:11px;color:var(--cinza-500)">em ${_movDiaBR(u.data)}</span>${divHtml ? `<br><span style="font-size:11px">${divHtml}</span>` : ''}`)}
       ${td(desde, 'font-size:12px')}
+      ${td(`<strong style="font-size:15px">${_movQtd(estoqueDoItem(p.chave)?.qtd)}</strong>`)}
       ${td(`<strong style="font-size:15px">${_movQtd(p.saldo)}</strong>`, 'background:#F9FAFB')}
     </tr>`;
   }).join('');
 
   el.innerHTML = `
     <p style="font-size:12px;color:var(--cinza-600);margin:0 0 8px">
-      <strong>Deveria ter agora = última contagem − o que saiu (festas, perdas, produção) + o que entrou.</strong>
-      Festa não mexe no estoque — aparece aqui só pra você comparar na próxima contagem.
+      <strong>Estoque agora</strong> é o saldo real (festa não mexe nele).
+      <strong>Deveria ter (com festas)</strong> = última contagem − tudo que saiu, inclusive festas, + o que entrou — é a diferença
+      pra comparar na próxima contagem. Festa de teste: exclua a festa e ela some daqui.
       Clique no produto pra ver todos os lançamentos.
     </p>
     <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:8px;font-size:13px">
@@ -7405,7 +7408,7 @@ function _renderMovConciliacao(registros) {
       <div style="border:1px solid #E5E7EB;border-radius:8px">
         <table style="border-collapse:collapse;width:100%;font-size:13px">
           <thead><tr>
-            ${th('Produto', 'left')}${th('Última contagem')}${th('Depois da contagem')}${th('Deveria ter agora')}
+            ${th('Produto', 'left')}${th('Última contagem')}${th('Depois da contagem')}${th('Estoque agora')}${th('Deveria ter (com festas)')}
           </tr></thead>
           <tbody>${linhas}</tbody>
         </table>
