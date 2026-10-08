@@ -283,8 +283,8 @@ function _tvRenderProducao(producao) {
       (c.status === 'pendente' || c.status === 'pedido'));
   };
 
-  /* Produção: todos os itens da semana — pendentes em cima (laranja), os já
-     cobertos pelo estoque embaixo (verde), igual à tela inicial. */
+  /* Produção: só o que ainda falta (o estoque não cobre) — na TV item já
+     coberto não aparece (pedido da Juliana em 10-08). */
   const itens = producao.map(p => {
     const est    = estoqueDoItem(p.nomeKey);
     const qtdEst = est?.qtd || 0;
@@ -292,7 +292,7 @@ function _tvRenderProducao(producao) {
     const pct    = p.totalBase > 0 ? Math.min(100, Math.round((qtdEst / p.totalBase) * 100)) : 100;
     const falta  = Math.max(0, p.totalBase - qtdEst);
     return { ...p, qtdEst, unEst, pct, falta };
-  }).sort((a, b) => ((b.falta > 0) - (a.falta > 0)) || (a.pct - b.pct));
+  }).filter(p => p.falta > 0).sort((a, b) => b.falta - a.falta);
 
   /* Compras: o que as festas ainda não separadas precisam e o estoque não
      cobre — mesma lista do card Compras Pendentes da tela inicial. */
@@ -357,8 +357,8 @@ function _tvRenderProducao(producao) {
 
   const htmlProducao = `
     <div class="tv-prod-grupo">
-      <div class="tv-prod-grupo-header">Produção da semana (${itens.length})</div>
-      ${itens.length ? itens.map(renderProducao).join('') : '<div class="tv-vazio">Nenhum item de produção nessa semana</div>'}
+      <div class="tv-prod-grupo-header">Produção pendente (${itens.length})</div>
+      ${itens.length ? itens.map(renderProducao).join('') : '<div class="tv-vazio">Nenhuma produção pendente nessa semana</div>'}
     </div>`;
 
   const htmlCompras = `
