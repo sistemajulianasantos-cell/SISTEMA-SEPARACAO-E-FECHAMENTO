@@ -3270,7 +3270,7 @@ async function _fotosDaConferencia(festa) {
 }
 
 /* Foto reduzida (máx. 1000px, JPEG) pra caber no PDF sem pesar */
-async function _prepararImagemPdf(foto) {
+async function _prepararImagemPdf(foto, proporcao) {
   let blob = foto.blob;
   if (!blob) {
     const url = foto.url.includes('/image/upload/') ? foto.url.replace('/image/upload/', '/image/upload/w_1000,q_75/') : foto.url;
@@ -3282,11 +3282,18 @@ async function _prepararImagemPdf(foto) {
   const objUrl = URL.createObjectURL(blob);
   try {
     const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = objUrl; });
-    const k = Math.min(1, 1000 / Math.max(img.naturalWidth, img.naturalHeight));
+    /* proporcao (largura/altura): corta o centro da foto nesse formato —
+       assim todas saem do mesmo tamanho no PDF */
+    let sx = 0, sy = 0, sw = img.naturalWidth, sh = img.naturalHeight;
+    if (proporcao) {
+      if (sw / sh > proporcao) { const nw = sh * proporcao; sx = (sw - nw) / 2; sw = nw; }
+      else { const nh = sw / proporcao; sy = (sh - nh) / 2; sh = nh; }
+    }
+    const k = Math.min(1, 1000 / Math.max(sw, sh));
     const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(img.naturalWidth * k));
-    c.height = Math.max(1, Math.round(img.naturalHeight * k));
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    c.width = Math.max(1, Math.round(sw * k));
+    c.height = Math.max(1, Math.round(sh * k));
+    c.getContext('2d').drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
     return { data: c.toDataURL('image/jpeg', 0.75), w: c.width, h: c.height };
   } finally { URL.revokeObjectURL(objUrl); }
 }
@@ -3564,17 +3571,6 @@ async function compartilharFolhaConferencia(opts = {}) {
   if (!_folhaConfAtual || !_folhaPdf) return;
   await _folhaConfPronta.catch(() => {});
   return _compartilharPdf(_folhaPdf, _nomeArquivoFolhaConf(_folhaConfAtual), opts);
-}
-
-async function baixarFolhaConferencia() {
-  if (!_folhaConfAtual || !_folhaPdf) return;
-  try { _baixarBlob(await _folhaPdf, _nomeArquivoFolhaConf(_folhaConfAtual)); }
-  catch (e) { console.error('PDF da conferência:', e); toast('Não foi possível gerar o PDF.', 'erro'); }
-}
-
-function fecharFolhaConferencia() {
-  _folhaConfAtual = null;
-  irParaPrincipal();
 }
 
 /* ── RETORNO ── */
@@ -4245,14 +4241,9 @@ function _renderFolhaFechamento(festa) {
         <div style="border:1px solid #E5E7EB;border-radius:8px;margin-bottom:12px;overflow:hidden">
           <div style="background:#2B3B2A;color:#fff;font-weight:700;font-size:14px;padding:8px 10px">${_escHtml(l.nome)}</div>
           <table style="border-collapse:collapse;width:100%;table-layout:fixed">
-            <colgroup><col style="width:18%"><col style="width:18%"><col style="width:18%"><col style="width:18%"><col style="width:28%"></colgroup>
+            <colgroup><col style="width:20%"><col style="width:20%"><col style="width:20%"><col style="width:20%"><col style="width:20%"></colgroup>
             <tr style="background:#F3F4F6">${_COLS_FECH.map(c => cel(c, 'font-size:11px;font-weight:700;color:var(--cinza-600)')).join('')}</tr>
-            <tr>${cel(_escHtml(l.inicial))}${cel(_escHtml(l.reposta))}${cel(_escHtml(l.consumo))}${cel(_escHtml(l.quebras))}${cel(`<strong>${_escHtml(l.retorno)}</strong>`)}</tr>
-            <tr id="relret-fotos-item-${l.i}">
-              <td colspan="2" data-slot="inicial" style="padding:2px 4px 8px;vertical-align:top"></td>
-              <td colspan="2" data-slot="consumo" style="padding:2px 4px 8px;vertical-align:top"></td>
-              <td data-slot="retorno" style="padding:2px 4px 8px;vertical-align:top"></td>
-            </tr>
+            <tr>${[l.inicial, l.reposta, l.consumo, l.quebras].map((v, c) => cel(`${_escHtml(v)}<div id="relret-slot-${l.i}-${c}"></div>`)).join('')}${cel(`<strong>${_escHtml(l.retorno)}</strong><div id="relret-slot-${l.i}-4"></div>`)}</tr>
           </table>
         </div>`).join('')}
     </div>
@@ -4262,18 +4253,17 @@ function _renderFolhaFechamento(festa) {
     </div>
     <div class="folha-secao" id="relret-fotos"></div>`;
 
-  const thumb = f => `<div style="font-size:11px;text-align:center;min-width:0">
-      <img src="${f.blob ? URL.createObjectURL(f.blob) : f.url}" style="width:100%;max-width:150px;aspect-ratio:3/4;object-fit:cover;border-radius:6px;cursor:pointer;display:block;margin:0 auto"
-        onclick="window.open(this.src,'_blank')"><div>${_escHtml(f.legenda)}</div></div>`;
+  const thumb = f => `<img src="${f.blob ? URL.createObjectURL(f.blob) : f.url}" title="${_escHtml(f.legenda)}"
+      style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:4px;cursor:pointer;display:block;margin-top:4px"
+      onclick="window.open(this.src,'_blank')">`;
   _fotosDoFechamento(festa).then(({ porItem, gerais }) => {
     if (_fechAtual?.id !== festa.id) return;
     Object.entries(porItem).forEach(([i, fotos]) => {
-      const tr = document.getElementById(`relret-fotos-item-${i}`);
-      if (!tr) return;
       const slots = _slotsFotosFech(fotos);
-      ['inicial', 'consumo', 'retorno'].forEach(k => {
-        const c = tr.querySelector(`[data-slot="${k}"]`);
-        if (c && slots[k]) c.innerHTML = thumb(slots[k]);
+      const colConsumo = _ehCopoItem(festa.itens[i]) ? 3 : 2;
+      [[0, slots.inicial], [colConsumo, slots.consumo], [4, slots.retorno]].forEach(([col, f]) => {
+        const el = document.getElementById(`relret-slot-${i}-${col}`);
+        if (el && f) el.innerHTML = thumb(f);
       });
     });
     const el = document.getElementById('relret-fotos');
@@ -4285,72 +4275,75 @@ function _renderFolhaFechamento(festa) {
 
 async function _gerarPdfFolhaFechamento(festa) {
   const { porItem, gerais } = await _fotosDoFechamento(festa);
-  const preparar = f => _prepararImagemPdf(f).then(img => ({ ...img, legenda: f.legenda }))
+  const preparar = (f, prop) => _prepararImagemPdf(f, prop).then(img => ({ ...img, legenda: f.legenda }))
     .catch(e => { console.warn('Foto fora do PDF:', f.legenda, e); return { erro: true, legenda: f.legenda }; });
   const slotsImg = {};
   await Promise.all(Object.entries(porItem).map(async ([i, fotos]) => {
     const sl = _slotsFotosFech(fotos);
     slotsImg[i] = {
-      inicial: sl.inicial ? await preparar(sl.inicial) : null,
-      consumo: sl.consumo ? await preparar(sl.consumo) : null,
-      retorno: sl.retorno ? await preparar(sl.retorno) : null,
+      inicial: sl.inicial ? await preparar(sl.inicial, 3 / 4) : null,
+      consumo: sl.consumo ? await preparar(sl.consumo, 3 / 4) : null,
+      retorno: sl.retorno ? await preparar(sl.retorno, 3 / 4) : null,
     };
   }));
-  const imgsGerais = await Promise.all(gerais.map(preparar));
+  const imgsGerais = await Promise.all(gerais.map(f => preparar(f)));
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const linhas = _dadosFolhaFechamento(festa);
   const M = 14, LARG = 210 - 2 * M;
-  const FOTO_H = 44, LEG = 5;
-  const W = [34, 34, 34, 34, 46];   /* Inicial, Reposição, Consumo, Quebras, Retorno */
+  const COL = LARG / 5;                    /* Inicial, Reposição, Consumo, Quebras, Retorno */
+  const FOTO_W = COL - 5, FOTO_H = FOTO_W * 4 / 3, TXT = 7;
   let y = await _pdfCabecalhoTimbrado(doc, festa, 'fechamento', 'FOLHA DE FECHAMENTO');
 
-  const desenharFoto = (img, x, w, yTopo) => {
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
-    let hImg = 8;
+  /* Foto dentro do campo da coluna, logo abaixo do número (Juliana, 10-07):
+     todas no mesmo tamanho (recortadas em 3:4) */
+  const desenharFoto = (img, xCol, yTopo) => {
+    const x = xCol + (COL - FOTO_W) / 2;
     if (img.erro) {
-      doc.setTextColor(150); doc.text('foto não carregou', x + w / 2, yTopo + 6, { align: 'center' });
+      doc.setDrawColor(200); doc.rect(x, yTopo, FOTO_W, FOTO_H);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(150);
+      doc.text('foto não carregou', x + FOTO_W / 2, yTopo + FOTO_H / 2, { align: 'center' });
+      doc.setTextColor(0);
     } else {
-      const k = Math.min((w - 4) / img.w, FOTO_H / img.h);
-      hImg = img.h * k;
-      doc.addImage(img.data, 'JPEG', x + (w - img.w * k) / 2, yTopo, img.w * k, hImg);
+      doc.addImage(img.data, 'JPEG', x, yTopo, FOTO_W, FOTO_H);
     }
-    doc.setTextColor(60);
-    doc.text(img.legenda, x + w / 2, yTopo + hImg + 4, { align: 'center' });
-    doc.setTextColor(0);
   };
 
-  /* Um bloco por item (título + subtítulo + quantidades + fotos), sempre
-     inteiro na mesma página */
+  /* Um bloco por item (título + subtítulo + quantidades com as fotos),
+     sempre inteiro na mesma página */
   linhas.forEach(l => {
     const s = slotsImg[l.i];
     const temFoto = !!(s && (s.inicial || s.consumo || s.retorno));
-    const altFotos = temFoto ? FOTO_H + LEG + 4 : 0;
-    const altBloco = 8 + 6 + 7 + altFotos + 4;
-    if (y + altBloco > PDF_RODAPE_LIVRE) { doc.addPage(); y = 16; }
+    /* texto que quebra em 2 linhas (ex.: "147 un (= 9 cx e 12 un)") empurra a foto pra baixo */
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
+    const linhasTxt = Math.max(...[l.inicial, l.reposta, l.consumo, l.quebras, l.retorno].map(v => doc.splitTextToSize(String(v), COL - 3.2).length));
+    const altTxt = TXT + (linhasTxt - 1) * 3.9;
+    const altValores = altTxt + (temFoto ? FOTO_H + 4 : 0);
+    if (y + 8 + 6 + altValores + 4 > PDF_RODAPE_LIVRE) { doc.addPage(); y = 16; }
+    const colConsumo = _ehCopoItem(l.item) ? 3 : 2;   /* copo: foto das quebras no campo Quebras */
+    const fotoDaColuna = { 0: s?.inicial, [colConsumo]: s?.consumo, 4: s?.retorno };
 
     doc.autoTable({
       startY: y, margin: { left: M, right: M }, tableWidth: LARG,
       body: [
         [{ content: l.nome, colSpan: 5, styles: { fillColor: [43, 59, 42], textColor: 255, fontStyle: 'bold', fontSize: 10, halign: 'left' } }],
         _COLS_FECH.map(c => ({ content: c, styles: { fillColor: [235, 237, 233], fontStyle: 'bold', fontSize: 7.5, textColor: 80 } })),
-        [l.inicial, l.reposta, l.consumo, l.quebras, { content: l.retorno, styles: { fontStyle: 'bold' } }],
+        [l.inicial, l.reposta, l.consumo, l.quebras, { content: l.retorno, styles: { fontStyle: 'bold' } }]
+          .map(c => ({ ...(typeof c === 'object' ? c : { content: c }), styles: { ...((c && c.styles) || {}), minCellHeight: altValores, valign: 'top' }, _valores: true })),
       ],
       styles: { fontSize: 9, cellPadding: 1.6, halign: 'center', lineColor: [229, 231, 235], lineWidth: 0.1 },
-      columnStyles: { 0: { cellWidth: W[0] }, 1: { cellWidth: W[1] }, 2: { cellWidth: W[2] }, 3: { cellWidth: W[3] }, 4: { cellWidth: W[4] } },
+      columnStyles: { 0: { cellWidth: COL }, 1: { cellWidth: COL }, 2: { cellWidth: COL }, 3: { cellWidth: COL }, 4: { cellWidth: COL } },
       pageBreak: 'avoid', rowPageBreak: 'avoid',
+      /* depois da última célula da linha — senão o fundo da vizinha cobre a foto */
+      didDrawCell: h => {
+        if (h.section !== 'body' || h.column.index !== 4 || !(h.cell.raw && h.cell.raw._valores) || !temFoto) return;
+        Object.entries(fotoDaColuna).forEach(([col, img]) => {
+          if (img) desenharFoto(img, h.row.cells[col].x, h.cell.y + altTxt);
+        });
+      },
     });
-    y = doc.lastAutoTable.finalY + 2;
-
-    if (temFoto) {
-      const x0 = M, x2 = M + W[0] + W[1], x4 = M + W[0] + W[1] + W[2] + W[3];
-      if (s.inicial) desenharFoto(s.inicial, x0, W[0] + W[1], y);
-      if (s.consumo) desenharFoto(s.consumo, x2, W[2] + W[3], y);
-      if (s.retorno) desenharFoto(s.retorno, x4, W[4], y);
-      y += altFotos;
-    }
-    y += 4;
+    y = doc.lastAutoTable.finalY + 6;
   });
   y += 4;
 
@@ -4376,12 +4369,6 @@ async function compartilharFolhaFechamento(opts = {}) {
   if (!_fechAtual || !_fechPdf) return;
   await _fechPronta.catch(() => {});
   return _compartilharPdf(_fechPdf, _nomeArquivoFolhaFech(_fechAtual), opts);
-}
-
-async function baixarFolhaFechamento() {
-  if (!_fechAtual || !_fechPdf) return;
-  try { _baixarBlob(await _fechPdf, _nomeArquivoFolhaFech(_fechAtual)); }
-  catch (e) { console.error('PDF do fechamento:', e); toast('Não foi possível gerar o PDF.', 'erro'); }
 }
 
 /* ── GALPÃO ── */
