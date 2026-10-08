@@ -1024,6 +1024,7 @@ function renderizarHomeCoordenador(festa) {
     return;
   }
 
+  festaAtual = festa;   /* usado pelo card da Folha de Conferência */
   const ACAO_ETAPA = { conferencia: 'abrirConferencia', festa: 'avancarParaRetorno', retorno: 'abrirRetorno', galpao: 'abrirGalpao' };
   const funcao = ACAO_ETAPA[festa.status];
 
@@ -1039,6 +1040,11 @@ function renderizarHomeCoordenador(festa) {
       <div class="inicio-card" onclick="historico=['tela-inicial']; abrirReposicao('${festa.id}')">
         <div class="inicio-card-nome">Registrar reposição</div>
         <div class="inicio-card-sub">Chegou mais material durante a festa — registre com foto</div>
+      </div>` : ''}
+      ${['festa', 'retorno', 'galpao', 'concluida'].includes(festa.status) ? `
+      <div class="inicio-card" onclick="historico=['tela-inicial']; abrirFolhaConferencia(festaAtual, true)">
+        <div class="inicio-card-nome">Folha de Conferência (PDF)</div>
+        <div class="inicio-card-sub">Gerar de novo e enviar no grupo</div>
       </div>` : ''}
     </div>
   `;
