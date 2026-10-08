@@ -3142,10 +3142,24 @@ let _folhaConfPronta = Promise.resolve();
 /* Só o que foi conferido — sem "separado" nem divergência: a folha vai pro
    grupo e o conferente não deve saber o que divergiu (contagem cega). A
    investigação de divergência fica com o CEO (Juliana, 10-07). */
+/* Mesmos itens que o coordenador vê na conferência: fora os desligados no
+   Cadastro ("Conferir" off) e os que entraram depois por reposição. Exige o
+   Cadastro carregado (ver _garantirItemConfigs) — sem ele, nenhum item era
+   reconhecido como desligado e a folha saía com tudo. */
 function _dadosFolhaConferencia(festa) {
   return (festa.itens || [])
-    .filter(it => buscarConfigItemPorNome(it.nome)?.conferirCoord !== false)
+    .filter(it => !it.origemReposicao && buscarConfigItemPorNome(it.nome)?.conferirCoord !== false)
     .map(it => ({ nome: nomeBasDisplay(it.nome), un: it.unidade || 'un', qtd: it.qtdConferida ?? 0 }));
+}
+
+async function _garantirItemConfigs() {
+  if (Object.keys(itemConfigsCache).length) return;
+  try {
+    const [cfgs, cats] = await Promise.all([listarItemConfigs(), listarCategorias()]);
+    itemConfigsCache = {};
+    cfgs.forEach(c => { itemConfigsCache[c.nomeKey] = c; });
+    categoriasCache = cats;
+  } catch (e) { console.error('Erro ao carregar o Cadastro:', e); }
 }
 
 /* Cabeçalho: só as linhas que têm informação */
@@ -3255,8 +3269,11 @@ function abrirFolhaConferencia(festa, voltarParaDetalhe) {
     historico = [telaListaAtual()];
   }
   mostrarTela('tela-folha-conferencia', 'Folha de Conferência');
-  _renderFolhaConferencia(festa);
-  _folhaConfPronta = _completarFestaComGestao(festa).then(comp => {
+  document.getElementById('folhaconf-content').innerHTML = '<div class="estado-vazio"><p>Montando a folha...</p></div>';
+  _folhaConfPronta = _garantirItemConfigs().then(() => {
+    if (_folhaConfAtual === festa) _renderFolhaConferencia(festa);
+    return _completarFestaComGestao(festa);
+  }).then(comp => {
     if (_folhaConfAtual !== festa) return;
     _folhaConfAtual = comp;
     _renderFolhaConferencia(comp);
