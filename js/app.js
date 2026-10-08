@@ -57,7 +57,7 @@ let _vinculoEquipeFestaId= null;  /* festa em edição no modal de vínculo manu
 let _mapaPrecoInsumoGestao     = null;   /* nomeBaseKey → custoReposicao, lido do controle-gestao-main */
 let _insumosGestaoIndisponivel = false;  /* true = última tentativa de leitura falhou/projeto fora do ar */
 
-let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [], reposicao: [], confItens: {} };
+let fotosCache = { separacao: [], conferencia: [], retorno: [], consumo: [], galpao: [], reposicao: [], confItens: {} };
 let modoGrupoSep = 'categoria'; /* 'nenhum' | 'categoria' | 'setor' */
 let _tvClockTimer      = null;
 let _tvScrollTimers    = [];
@@ -1468,7 +1468,7 @@ function logout() {
   localStorage.removeItem('rc_auto_login');
   usuarioAtual = null;
   festaAtual   = null;
-  fotosCache   = { separacao: [], conferencia: [], retorno: [], galpao: [], reposicao: [], confItens: {} };
+  fotosCache   = { separacao: [], conferencia: [], retorno: [], consumo: [], galpao: [], reposicao: [], confItens: {} };
   historico    = [];
   document.getElementById('login-nome').value  = '';
   document.getElementById('login-senha').value = '';
@@ -3468,20 +3468,32 @@ function fecharFolhaConferencia() {
 function abrirRetorno(id) {
   pararListeners();
   fotosCache.retorno = [];
+  fotosCache.consumo = [];
   document.getElementById('preview-ret').innerHTML = '';
+  document.getElementById('preview-cons').innerHTML = '';
   document.getElementById('ret-obs').value = '';
   document.getElementById('ret-conv-portaria').value = '';
-  document.getElementById('ret-conv-final').value = '';
   document.getElementById('ret-hora-extra').value = '';
+  document.getElementById('ret-hora-extra-qtd').value = '';
+  document.getElementById('ret-hora-extra-qtd-box').classList.add('hidden');
 
   historico = [telaListaAtual()];
   mostrarTela('tela-retorno', 'Registro de Retorno');
 
-  unsubFesta = escutarFesta(id, festa => {
-    festaAtual = festa;
-    renderizarRetorno(festa);
+  /* Cadastro carregado antes: o retorno mostra só os itens da conferência
+     ("Conferir" desligado fica de fora) */
+  _garantirItemConfigs().then(() => {
+    unsubFesta = escutarFesta(id, festa => {
+      festaAtual = festa;
+      renderizarRetorno(festa);
+    });
   });
 }
+
+/* Itens que entram no retorno: os conferidos na chegada + os que vieram por
+   reposição. Desligados no Cadastro ("Conferir" off, ex. Bar Back) ficam
+   fora — voltam inteiros (qtdRetorno = enviado) ao concluir. */
+const _itemNoRetorno = item => item.origemReposicao || buscarConfigItemPorNome(item.nome)?.conferirCoord !== false;
 
 /* "Unidades por Caixa/Embalagem" do Cadastro (ex: 1 cx de copo = 15 un) —
    0 quando o item não tem embalagem cadastrada (já é vendido/contado solto). */
@@ -3513,7 +3525,9 @@ function _calcularRetornoNativo(enviado, consumido, danificadoUn, fator) {
 function renderizarRetorno(festa) {
   document.getElementById('ret-info').innerHTML = htmlInfoFesta(festa) + htmlLinkConferenciaBtn(festa);
 
-  document.getElementById('ret-itens').innerHTML = (festa.itens || []).map((item, i) => {
+  const noRetorno = (festa.itens || []).map((item, i) => ({ item, i })).filter(({ item }) => _itemNoRetorno(item));
+
+  document.getElementById('ret-itens').innerHTML = noRetorno.map(({ item, i }) => {
     const badgeForn = htmlBadgeForn(item);
     const enviado   = _qtdEnviadaItem(item);
     const unidade   = item.unidade || 'un';
@@ -3554,10 +3568,19 @@ function renderizarRetorno(festa) {
           min="0" placeholder="0" style="width:70px" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}', ${fator})" />
         <span class="item-unidade">${_escHtml(unQuebra)}</span>
       </div>
-      <div class="item-sub" id="ret-calc-${i}" style="margin-top:6px">Retorna pro galpão: <strong>${_fmtQtd(retornoInicial)}</strong> ${_escHtml(unidade)}</div>
     </div>
   `;
   }).join('');
+
+  /* Retorno: o que volta de cada item, recalculado ao digitar consumo/quebras */
+  document.getElementById('ret-retorno-lista').innerHTML = noRetorno.map(({ item, i }) => {
+    const enviado = _qtdEnviadaItem(item);
+    const retorno = _calcularRetornoNativo(enviado, Number(item.qtdConsumida) || 0, item.qtdDanificada || 0, _fatorEmbalagemItem(item.nome));
+    return `<div class="detalhe-linha">
+      <span>${_escHtml(nomeBasDisplay(item.nome))}</span>
+      <span id="ret-ret-${i}"><strong>${_fmtQtd(retorno)}</strong> ${_escHtml(item.unidade || 'un')}</span>
+    </div>`;
+  }).join('') || estadoVazio('Nenhum item.');
 }
 
 /* Quanto foi pra festa: conferido na chegada (ou separado) + reposições
@@ -3718,8 +3741,8 @@ function calcularRetornoItem(i, enviado, unidade, fator) {
   const consumido  = parseFloat(document.getElementById(`ret-cons-${i}`)?.value) || 0;
   const danificado = parseFloat(document.getElementById(`ret-dan-${i}`)?.value) || 0;
   const retorno = _calcularRetornoNativo(enviado, consumido, danificado, fator || 0);
-  const el = document.getElementById(`ret-calc-${i}`);
-  if (el) el.innerHTML = `Retorna pro galpão: <strong>${_fmtQtd(retorno)}</strong> ${_escHtml(unidade)}`;
+  const el = document.getElementById(`ret-ret-${i}`);
+  if (el) el.innerHTML = `<strong>${_fmtQtd(retorno)}</strong> ${_escHtml(unidade)}`;
 }
 
 async function concluirRetorno() {
@@ -3741,18 +3764,28 @@ async function concluirRetorno() {
     });
 
     const convPortariaVal = parseFloat(document.getElementById('ret-conv-portaria').value);
-    const convFinalVal    = parseFloat(document.getElementById('ret-conv-final').value);
+    const horaExtra       = document.getElementById('ret-hora-extra').value || null;
+    const horasExtraVal   = parseFloat(String(document.getElementById('ret-hora-extra-qtd').value).replace(',', '.'));
+    if (horaExtra === 'sim' && !(horasExtraVal > 0)) {
+      toast('Informe quantas horas extras.', 'erro');
+      document.getElementById('ret-hora-extra-qtd').focus();
+      btn.disabled = false; btn.textContent = 'Confirmar Retorno — Enviar para Galpão';
+      return;
+    }
 
-    const fotos = await _fotosEtapa(fotosCache.retorno, 'retorno', 'fotosRetorno');
-    if (fotos.naFila) toast(`${fotos.naFila} foto(s) ficaram guardadas no aparelho e sobem quando tiver internet.`, 'aviso');
+    const fotosCons = await _fotosEtapa(fotosCache.consumo, 'consumo', 'fotosConsumo');
+    const fotos     = await _fotosEtapa(fotosCache.retorno, 'retorno', 'fotosRetorno');
+    const naFila    = fotosCons.naFila + fotos.naFila;
+    if (naFila) toast(`${naFila} foto(s) ficaram guardadas no aparelho e sobem quando tiver internet.`, 'aviso');
 
     const patchRetorno = {
       itens,
       obsRetorno:         document.getElementById('ret-obs').value,
+      ...fotosCons.patch,
       ...fotos.patch,
       convidadosPortaria: isNaN(convPortariaVal) ? null : convPortariaVal,
-      convidadosFinal:    isNaN(convFinalVal) ? null : convFinalVal,
-      horaExtra:          document.getElementById('ret-hora-extra').value || null,
+      horaExtra,
+      horaExtraHoras:     horaExtra === 'sim' ? horasExtraVal : null,
     };
 
     await concluirEtapa(festaAtual.id, 'retorno', patchRetorno);
@@ -3762,7 +3795,9 @@ async function concluirRetorno() {
     catch (e) { console.error('Registro de retorno da festa:', e); }
 
     toast('Retorno registrado. Festa enviada para o Galpao.', 'sucesso');
-    abrirRelatorioRetorno({ ...festaAtual, ...patchRetorno, fotosRetorno: [...(festaAtual.fotosRetorno || []), ...fotos.urls] });
+    abrirRelatorioRetorno({ ...festaAtual, ...patchRetorno,
+      fotosRetorno: [...(festaAtual.fotosRetorno || []), ...fotos.urls],
+      fotosConsumo: [...(festaAtual.fotosConsumo || []), ...fotosCons.urls] });
 
   } catch (e) {
     console.error(e);
@@ -3846,14 +3881,21 @@ function abrirRelatorioRetorno(festa, voltarParaDetalhe) {
   const bebidasConsignada = itens.filter(it => _grupoFolhaFechamento(it) === 'consignado');
   const coposDecoracao    = itens.filter(it => _grupoFolhaFechamento(it) === 'copos');
 
-  const horaExtraTxt = festa.horaExtra === 'sim' ? 'Sim' : festa.horaExtra === 'nao' ? 'Não' : '—';
+  const horaExtraTxt = festa.horaExtra === 'sim'
+    ? 'Sim' + (festa.horaExtraHoras ? ` — ${_fmtQtd(Number(festa.horaExtraHoras))} hora(s)` : '')
+    : festa.horaExtra === 'nao' ? 'Não' : '—';
 
-  const fotosRetornoHTML = (festa.fotosRetorno || []).length ? `
+  const fotosRetornoHTML = ((festa.fotosConsumo || []).length ? `
+    <div class="folha-secao">
+      <h3 class="folha-secao-titulo">Fotos do Consumo e Quebras</h3>
+      <div class="grade-fotos">${festa.fotosConsumo.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
+    </div>
+  ` : '') + ((festa.fotosRetorno || []).length ? `
     <div class="folha-secao">
       <h3 class="folha-secao-titulo">Fotos do Retorno</h3>
       <div class="grade-fotos">${festa.fotosRetorno.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
     </div>
-  ` : '';
+  ` : '');
 
   document.getElementById('relret-content').innerHTML = `
     <div class="card-festa-info" style="margin-bottom:16px">
@@ -3869,7 +3911,6 @@ function abrirRelatorioRetorno(festa, voltarParaDetalhe) {
       <div class="folha-header-linha"><strong>Local:</strong> ${_escHtml(festa.local || '—')}</div>
       <div class="folha-header-linha"><strong>Hora Início:</strong> ${_escHtml(festa.hora || '—')}</div>
       <div class="folha-header-linha"><strong>Convidados Portaria:</strong> ${festa.convidadosPortaria != null ? festa.convidadosPortaria : '—'}</div>
-      <div class="folha-header-linha"><strong>Convidados Final:</strong> ${festa.convidadosFinal != null ? festa.convidadosFinal : '—'}</div>
     </div>
 
     ${_tabelaFolha('Bebidas Cliente', ['Bebida', 'Marca', 'Quantidade Inicial', 'Consumo'], bebidasCliente, _linhaFolhaBebida)}
@@ -4832,6 +4873,11 @@ function renderizarDetalhe(festa) {
     ${festa.fotosConferencia?.length ? `
       <div class="detalhe-card"><h3>Fotos da Conferencia</h3>
         <div class="grade-fotos">${festa.fotosConferencia.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
+      </div>` : ''}
+
+    ${festa.fotosConsumo?.length ? `
+      <div class="detalhe-card"><h3>Fotos do Consumo e Quebras</h3>
+        <div class="grade-fotos">${festa.fotosConsumo.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
       </div>` : ''}
 
     ${festa.fotosRetorno?.length ? `
@@ -5979,7 +6025,7 @@ function preencherFormularioImport(dados) {
    FOTOS
 ══════════════════════════════════════════════════ */
 
-const TIPO_PARA_ID = { separacao: 'sep', conferencia: 'conf', retorno: 'ret', galpao: 'gal', reposicao: 'rep' };
+const TIPO_PARA_ID = { separacao: 'sep', conferencia: 'conf', retorno: 'ret', consumo: 'cons', galpao: 'gal', reposicao: 'rep' };
 
 function handleFotos(input, tipo) {
   const files = Array.from(input.files);
