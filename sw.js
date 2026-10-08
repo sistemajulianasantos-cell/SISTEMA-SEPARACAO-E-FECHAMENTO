@@ -5,8 +5,9 @@
      Check): usa a cópia guardada na hora e atualiza em segundo plano.
    • Dados (Firestore), login e upload de fotos NÃO passam por aqui — o
      Firestore tem o próprio cache offline (ver js/config.js). */
-const CACHE = 'rc-separacao-v1';
-const ESSENCIAIS = ['./', './index.html', './manifest.json', './icons/icon-rc.svg'];
+const CACHE = 'rc-separacao-v2';
+const ESSENCIAIS = ['./', './index.html', './manifest.json', './icons/icon-rc.svg',
+  './icons/folha-logo-topo.png', './icons/folha-logo-rodape.png'];
 
 self.addEventListener('install', e => {
   self.skipWaiting();

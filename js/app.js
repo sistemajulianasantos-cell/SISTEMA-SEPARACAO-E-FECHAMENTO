@@ -3235,6 +3235,7 @@ async function _completarFestaComGestao(festa) {
     preencher('contrato', p.proposta);
     preencher('local', p.local, sep.local);
     preencher('hora', p.hrInicio, sep.hrInicio);
+    preencher('horaFim', p.hrFim, sep.hrFim);
     preencher('convidados', p.convidados, sep.convidados);
     return comp;
   } catch (e) {
@@ -3371,26 +3372,10 @@ async function _gerarPdfFolhaConferencia(festa) {
   const linhas = _dadosFolhaConferencia(festa);
   const VERDE = [43, 59, 42];
   const M = 14, LARG = 210 - 2 * M;
-  let y = 16;
-
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
-  doc.text('Folha de Conferência — Chegada', M, y); y += 7;
-  doc.setFontSize(11);
-  doc.text(String(festa.cliente || festa.nome || ''), M, y); y += 7;
-
-  doc.setFontSize(9.5);
-  const info = _infoFolhaConferencia(festa);
-  info.forEach(([k, v], i) => {
-    const x = i % 2 === 0 ? M : M + LARG / 2;
-    doc.setFont('helvetica', 'bold'); doc.text(`${k}:`, x, y);
-    doc.setFont('helvetica', 'normal');
-    doc.text(doc.splitTextToSize(String(v), LARG / 2 - 26)[0] || '', x + 24, y);
-    if (i % 2 === 1 || i === info.length - 1) y += 5.5;
-  });
-  y += 4;
+  let y = await _pdfCabecalhoTimbrado(doc, festa, 'conferencia', 'FOLHA DE CONFERÊNCIA — CHEGADA');
 
   doc.autoTable({
-    startY: y, margin: { left: M, right: M },
+    startY: y, margin: { left: M, right: M, bottom: 297 - PDF_RODAPE_LIVRE },
     head: [['Item', 'Quantidade inicial']],
     body: linhas.map(l => [l.nome, `${_fmtQtd(l.qtd)} ${l.un}`]),
     styles: { fontSize: 9, cellPadding: 1.8 },
@@ -3409,11 +3394,7 @@ async function _gerarPdfFolhaConferencia(festa) {
 
   y = _pdfGradeFotos(doc, imagens, y, M, LARG);
 
-  const n = doc.getNumberOfPages();
-  for (let p = 1; p <= n; p++) {
-    doc.setPage(p); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
-    doc.text(`${festa.nome || ''} · página ${p} de ${n}`, M, 290);
-  }
+  await _pdfRodapeTimbrado(doc, festa);
   return doc.output('blob');
 }
 
@@ -3431,7 +3412,7 @@ function _pdfGradeFotos(doc, imagens, y, M, LARG, titulo = 'Fotos') {
       return { ...img, wmm: img.w * k, hmm: img.h * k };
     });
     const altLinha = Math.max(...par.map(p => p.hmm)) + LEG;
-    if (y + altLinha > 282) { doc.addPage(); y = 16; }
+    if (y + altLinha > PDF_RODAPE_LIVRE) { doc.addPage(); y = 16; }
     par.forEach((p, j) => {
       const x = M + j * (COL + 6);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5);
@@ -3444,6 +3425,99 @@ function _pdfGradeFotos(doc, imagens, y, M, LARG, titulo = 'Fotos') {
   }
   doc.setTextColor(0);
   return y;
+}
+
+/* ── Papel timbrado das folhas em PDF (modelo da Juliana, 10-07) ──
+   Logo verde "romero." no canto superior esquerdo + quadro com os dados
+   do evento ao lado (CLIENTE | DATA, EVENTO | CONTRATO, ...), e a marca
+   "romero. coquetéis exclusivos" no rodapé de todas as páginas.
+   Imagens tiradas do MODELO FECHAMENTO.docx (icons/folha-logo-*.png). */
+const PDF_RODAPE_LIVRE = 266;   /* conteúdo não passa daqui (rodapé com a logo) */
+let _timbradoImgs = null;
+function _carregarTimbrado() {
+  if (!_timbradoImgs) {
+    const ler = url => fetch(url).then(r => { if (!r.ok) throw new Error(url); return r.blob(); })
+      .then(b => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(b); }))
+      .then(data => new Promise(res => { const im = new Image(); im.onload = () => res({ data, w: im.naturalWidth, h: im.naturalHeight }); im.onerror = () => res(null); im.src = data; }))
+      .catch(e => { console.warn('Timbrado:', e); return null; });
+    _timbradoImgs = Promise.all([ler('icons/folha-logo-topo.png'), ler('icons/folha-logo-rodape.png')])
+      .then(([topo, rodape]) => ({ topo, rodape }));
+  }
+  return _timbradoImgs;
+}
+
+const _maiusc = v => (v === undefined || v === null ? '' : String(v)).toUpperCase();
+const _horaFolha = h => _maiusc(h).replace(':', 'H');
+
+/* Quadro do cabeçalho: lista de linhas, cada linha 1 ou 2 campos [rótulo, valor] */
+function _linhasCabecalhoFolha(festa, tipo) {
+  const hora = [festa.hora && _horaFolha(festa.hora), festa.horaFim && _horaFolha(festa.horaFim)].filter(Boolean).join(' ÀS ');
+  const linhas = [
+    [['CLIENTE', festa.cliente], ['DATA', festa.data ? formatarData(festa.data) : '']],
+    [['EVENTO', festa.tipoEvento], ['CONTRATO', festa.contrato]],
+    [['LOCAL', festa.local]],
+    [['HORA INÍCIO', hora]],
+  ];
+  if (tipo === 'fechamento') {
+    const horaExtra = festa.horaExtra === 'sim'
+      ? 'SIM' + (festa.horaExtraHoras ? ` — ${_fmtQtd(Number(festa.horaExtraHoras)).replace('.', ',')}H` : '')
+      : festa.horaExtra === 'nao' ? 'NÃO' : '';
+    linhas.push([['CONVIDADOS PORTARIA', festa.convidadosPortaria], ['HORA EXTRA', horaExtra]]);
+    linhas.push([['COORDENADOR', festa.coordenador], ['RETORNO EM', festa.retornoFim ? formatarDataHora(festa.retornoFim) : '']]);
+  } else {
+    linhas.push([['CONVIDADOS', festa.convidados], ['COORDENADOR', festa.coordenador]]);
+    linhas.push([['CONFERIDA EM', festa.conferenciaFim ? formatarDataHora(festa.conferenciaFim) : '']]);
+  }
+  return linhas;
+}
+
+/* Desenha logo + quadro + título; devolve o y onde o conteúdo começa */
+async function _pdfCabecalhoTimbrado(doc, festa, tipo, titulo) {
+  const { topo } = await _carregarTimbrado();
+  const M = 14, Y0 = 12, LOGO_W = 30;
+  let xQuadro = M;
+  let altLogo = 0;
+  if (topo) {
+    altLogo = LOGO_W * topo.h / topo.w;
+    doc.addImage(topo.data, 'PNG', M - 4, Y0 - 4, LOGO_W, altLogo, 'logoTopo', 'FAST');
+    xQuadro = M - 4 + LOGO_W + 2;
+  }
+  const larg = 210 - M - xQuadro, ALT = 6.6, DIV = 0.6;
+  const linhas = _linhasCabecalhoFolha(festa, tipo);
+  doc.setDrawColor(0); doc.setLineWidth(0.25); doc.setTextColor(0);
+  doc.setFontSize(8.5);
+  linhas.forEach((campos, i) => {
+    const y = Y0 + i * ALT;
+    doc.rect(xQuadro, y, larg, ALT);
+    campos.forEach(([rot, val], j) => {
+      const x = xQuadro + (j === 0 ? 0 : larg * DIV);
+      const w = campos.length === 1 ? larg : (j === 0 ? larg * DIV : larg * (1 - DIV));
+      const txt = `${rot}: ${_maiusc(val)}`;
+      doc.setFont('helvetica', 'normal');
+      doc.text(doc.splitTextToSize(txt, w - 3)[0] || '', x + 1.5, y + ALT - 2);
+    });
+  });
+  let y = Math.max(Y0 + linhas.length * ALT, Y0 - 4 + altLogo * 0.83) + 7;
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(13); doc.setTextColor(43, 59, 42);
+  doc.text(titulo, M, y);
+  doc.setTextColor(0);
+  return y + 5;
+}
+
+/* Rodapé de todas as páginas: logo à direita + nome da festa e página */
+async function _pdfRodapeTimbrado(doc, festa) {
+  const { rodape } = await _carregarTimbrado();
+  const n = doc.getNumberOfPages();
+  for (let p = 1; p <= n; p++) {
+    doc.setPage(p);
+    if (rodape) {
+      const w = 30, h = w * rodape.h / rodape.w;
+      doc.addImage(rodape.data, 'PNG', 210 - 14 - w, 297 - 8 - h, w, h, 'logoRodape', 'FAST');
+    }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
+    doc.text(`${festa.nome || ''} · página ${p} de ${n}`, 14, 287);
+    doc.setTextColor(0);
+  }
 }
 
 function _baixarBlob(blob, nome) {
@@ -4230,23 +4304,7 @@ async function _gerarPdfFolhaFechamento(festa) {
   const M = 14, LARG = 210 - 2 * M;
   const FOTO_H = 44, LEG = 5;
   const W = [34, 34, 34, 34, 46];   /* Inicial, Reposição, Consumo, Quebras, Retorno */
-  let y = 16;
-
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
-  doc.text('Folha de Fechamento', M, y); y += 7;
-  doc.setFontSize(11);
-  doc.text(String(festa.cliente || festa.nome || ''), M, y); y += 7;
-
-  doc.setFontSize(9.5);
-  const info = _infoFolhaFechamento(festa);
-  info.forEach(([k, v], i) => {
-    const x = i % 2 === 0 ? M : M + LARG / 2;
-    doc.setFont('helvetica', 'bold'); doc.text(`${k}:`, x, y);
-    doc.setFont('helvetica', 'normal');
-    doc.text(doc.splitTextToSize(String(v), LARG / 2 - 30)[0] || '', x + 28, y);
-    if (i % 2 === 1 || i === info.length - 1) y += 5.5;
-  });
-  y += 5;
+  let y = await _pdfCabecalhoTimbrado(doc, festa, 'fechamento', 'FOLHA DE FECHAMENTO');
 
   const desenharFoto = (img, x, w, yTopo) => {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
@@ -4270,7 +4328,7 @@ async function _gerarPdfFolhaFechamento(festa) {
     const temFoto = !!(s && (s.inicial || s.consumo || s.retorno));
     const altFotos = temFoto ? FOTO_H + LEG + 4 : 0;
     const altBloco = 8 + 6 + 7 + altFotos + 4;
-    if (y + altBloco > 282) { doc.addPage(); y = 16; }
+    if (y + altBloco > PDF_RODAPE_LIVRE) { doc.addPage(); y = 16; }
 
     doc.autoTable({
       startY: y, margin: { left: M, right: M }, tableWidth: LARG,
@@ -4306,11 +4364,7 @@ async function _gerarPdfFolhaFechamento(festa) {
 
   y = _pdfGradeFotos(doc, imgsGerais, y, M, LARG, 'Fotos gerais');
 
-  const n = doc.getNumberOfPages();
-  for (let p = 1; p <= n; p++) {
-    doc.setPage(p); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
-    doc.text(`${festa.nome || ''} · página ${p} de ${n}`, M, 290);
-  }
+  await _pdfRodapeTimbrado(doc, festa);
   return doc.output('blob');
 }
 
