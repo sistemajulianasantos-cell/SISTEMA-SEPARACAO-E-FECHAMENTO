@@ -57,7 +57,7 @@ let _vinculoEquipeFestaId= null;  /* festa em edição no modal de vínculo manu
 let _mapaPrecoInsumoGestao     = null;   /* nomeBaseKey → custoReposicao, lido do controle-gestao-main */
 let _insumosGestaoIndisponivel = false;  /* true = última tentativa de leitura falhou/projeto fora do ar */
 
-let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [], confItens: {} };
+let fotosCache = { separacao: [], conferencia: [], retorno: [], galpao: [], reposicao: [], confItens: {} };
 let modoGrupoSep = 'categoria'; /* 'nenhum' | 'categoria' | 'setor' */
 let _tvClockTimer      = null;
 let _tvScrollTimers    = [];
@@ -1033,8 +1033,13 @@ function renderizarHomeCoordenador(festa) {
       <div class="inicio-card${funcao ? '' : ' inicio-card-desabilitado'}"
         ${funcao ? `onclick="${funcao}('${festa.id}')"` : ''}>
         <div class="inicio-card-nome">${_escHtml(festa.nome)}</div>
-        <div class="inicio-card-sub">${funcao ? (STATUS_LABELS[festa.status] || festa.status) : 'Aguardando — ' + (STATUS_LABELS[festa.status] || festa.status)}</div>
+        <div class="inicio-card-sub">${festa.status === 'festa' ? 'Festa encerrada? Iniciar retorno' : funcao ? (STATUS_LABELS[festa.status] || festa.status) : 'Aguardando — ' + (STATUS_LABELS[festa.status] || festa.status)}</div>
       </div>
+      ${festa.status === 'festa' ? `
+      <div class="inicio-card" onclick="historico=['tela-inicial']; abrirReposicao('${festa.id}')">
+        <div class="inicio-card-nome">Registrar reposição</div>
+        <div class="inicio-card-sub">Chegou mais material durante a festa — registre com foto</div>
+      </div>` : ''}
     </div>
   `;
 }
@@ -1440,7 +1445,7 @@ function logout() {
   localStorage.removeItem('rc_auto_login');
   usuarioAtual = null;
   festaAtual   = null;
-  fotosCache   = { separacao: [], conferencia: [], retorno: [], galpao: [] };
+  fotosCache   = { separacao: [], conferencia: [], retorno: [], galpao: [], reposicao: [], confItens: {} };
   historico    = [];
   document.getElementById('login-nome').value  = '';
   document.getElementById('login-senha').value = '';
@@ -3378,7 +3383,7 @@ function renderizarRetorno(festa) {
 
   document.getElementById('ret-itens').innerHTML = (festa.itens || []).map((item, i) => {
     const badgeForn = htmlBadgeForn(item);
-    const enviado   = item.qtdConferida || item.qtdSeparada || 0;
+    const enviado   = _qtdEnviadaItem(item);
     const unidade   = item.unidade || 'un';
     const fator     = _fatorEmbalagemItem(item.nome);
     const unQuebra  = _unidadeQuebraItem(item.nome, unidade);
@@ -3394,7 +3399,7 @@ function renderizarRetorno(festa) {
         <div>
           <div class="item-nome">${_escHtml(nomeBasDisplay(item.nome))}</div>
           ${badgeForn || ''}
-          <div class="item-sub">Enviado: <strong>${enviado}</strong> ${_escHtml(unidade)}${htmlConversaoUnidades(item.nome, enviado)}</div>
+          <div class="item-sub">Enviado: <strong>${enviado}</strong> ${_escHtml(unidade)}${htmlConversaoUnidades(item.nome, enviado)}${item.qtdReposta ? ` <span style="color:#1D4ED8">(inclui ${_fmtQtd(item.qtdReposta)} de reposição)</span>` : ''}</div>
         </div>
       </div>
       ${mostrarMarca ? `
@@ -3423,6 +3428,156 @@ function renderizarRetorno(festa) {
   }).join('');
 }
 
+/* Quanto foi pra festa: conferido na chegada (ou separado) + reposições
+   feitas durante a festa. Base do retorno e da Folha de Fechamento. */
+function _qtdEnviadaItem(item) {
+  return (item.qtdConferida || item.qtdSeparada || 0) + (item.qtdReposta || 0);
+}
+
+/* ══════════════════════════════════════════════════
+   REPOSIÇÃO DURANTE A FESTA (Juliana, 10-07)
+   Chegou mais material no meio da festa: registra o que entrou + fotos.
+   • item.qtdReposta soma no "enviado" (retorno/Folha de Fechamento);
+     item que não estava na festa entra na lista com qtdReposta.
+   • festa.reposicoes.<id> guarda o registro (quando, quem, itens, obs) e
+     festa.fotosReposicao.<id> as fotos — campos por id, gravados sem
+     regravar a festa inteira (funciona offline; fotos pela fila).
+   • Estoque: lançamento informativo de saída (festa não mexe no saldo).
+══════════════════════════════════════════════════ */
+function abrirReposicao(id) {
+  pararListeners();
+  fotosCache.reposicao = [];
+  document.getElementById('preview-rep').innerHTML = '';
+  document.getElementById('rep-obs').value = '';
+  document.getElementById('rep-itens-lista').innerHTML = '';
+  historico.push('tela-reposicao');
+  mostrarTela('tela-reposicao', 'Reposição na Festa');
+
+  let primeira = true;
+  unsubFesta = escutarFesta(id, async festa => {
+    festaAtual = festa;
+    document.getElementById('rep-info').innerHTML = htmlInfoFesta(festa);
+    if (!primeira) return;
+    primeira = false;
+    if (!Object.keys(itemConfigsCache).length) {
+      try { (await listarItemConfigs()).forEach(c => { itemConfigsCache[c.nomeKey] = c; }); } catch (_) {}
+    }
+    const nomes = new Set([
+      ...(festa.itens || []).map(it => nomeBasDisplay(it.nome)),
+      ...Object.values(itemConfigsCache).map(c => c.nome),
+    ]);
+    document.getElementById('rep-itens-datalist').innerHTML =
+      [...nomes].filter(Boolean).sort((a, b) => a.localeCompare(b, 'pt-BR')).map(n => `<option value="${_escHtml(n)}">`).join('');
+    _repAddLinha();
+  });
+}
+
+function _repAddLinha() {
+  const row = document.createElement('div');
+  row.className = 'item-criar-row';
+  row.innerHTML = `
+    <input type="text"   class="rep-item-nome" list="rep-itens-datalist" placeholder="Item" />
+    <input type="number" class="rep-item-qtd"  min="0" step="any" placeholder="Qtd" />
+    <button class="btn-del-item" onclick="this.closest('.item-criar-row').remove()">x</button>
+  `;
+  document.getElementById('rep-itens-lista').appendChild(row);
+  row.querySelector('.rep-item-nome').focus();
+}
+
+/* Índice do item na festa com o mesmo nome (exato, base ou mesmo item do
+   Cadastro), ou -1 */
+function _idxItemFestaPorNome(itens, nome) {
+  const key = normalizarNomeItem(nome);
+  let i = itens.findIndex(it => normalizarNomeItem(it.nome) === key);
+  if (i >= 0) return i;
+  i = itens.findIndex(it => nomeBaseKey(normalizarNomeItem(it.nome)) === nomeBaseKey(key));
+  if (i >= 0) return i;
+  const cfg = buscarConfigItemPorNome(nome);
+  if (!cfg) return -1;
+  return itens.findIndex(it => buscarConfigItemPorNome(it.nome)?.nomeKey === cfg.nomeKey);
+}
+
+async function confirmarReposicao() {
+  if (!festaAtual) return;
+  const linhas = [...document.querySelectorAll('#rep-itens-lista .item-criar-row')].map(r => ({
+    nome: r.querySelector('.rep-item-nome').value.trim(),
+    qtd:  parseFloat(r.querySelector('.rep-item-qtd').value) || 0,
+  })).filter(l => l.nome && l.qtd > 0);
+  if (!linhas.length) return toast('Informe pelo menos um item com quantidade.', 'erro');
+
+  const btn = document.getElementById('btn-rep-confirmar');
+  if (btn) { btn.disabled = true; btn.textContent = 'Registrando...'; }
+
+  try {
+    const festa = festaAtual;
+    const repId = 'rep_' + Date.now();
+    const itens = (festa.itens || []).map(it => ({ ...it }));
+    const registrados = linhas.map(l => {
+      const i = _idxItemFestaPorNome(itens, l.nome);
+      if (i >= 0) {
+        itens[i].qtdReposta = (itens[i].qtdReposta || 0) + l.qtd;
+        return { nome: itens[i].nome, unidade: itens[i].unidade || 'un', qtd: l.qtd };
+      }
+      const cfg = buscarConfigItemPorNome(l.nome);
+      const novo = {
+        nome: cfg?.nome || l.nome, unidade: cfg?.unidade || 'un',
+        qtdSeparada: 0, qtdConferida: 0, qtdReposta: l.qtd, origemReposicao: true,
+      };
+      itens.push(novo);
+      return { nome: novo.nome, unidade: novo.unidade, qtd: l.qtd };
+    });
+
+    const fotos = await _fotosEtapa(fotosCache.reposicao, `reposicao_${repId}`, `fotosReposicao.${repId}`);
+
+    await atualizarFesta(festa.id, {
+      itens,
+      [`reposicoes.${repId}`]: {
+        em: new Date(), por: usuarioAtual?.nome || '—', itens: registrados,
+        obs: document.getElementById('rep-obs').value.trim(),
+      },
+      ...fotos.patch,
+    });
+
+    registrados.forEach(r => {
+      const ref = _movEstoqueRefsDoItem(r.nome);
+      registrarMovInformativaEstoque({
+        ...ref, tipo: 'saida', motivo: 'evento', qtd: qtdEmUnidadeBase(r.nome, r.qtd),
+        festaId: festa.id, festaNome: festa.nome, obs: 'reposição durante a festa',
+        por: usuarioAtual?.nome || '—',
+      }).catch(e => console.error('Registro de estoque da reposição:', e));
+    });
+
+    toast(`Reposição registrada: ${registrados.length} item(ns).`
+      + (fotos.naFila ? ` ${fotos.naFila} foto(s) guardadas no aparelho, sobem quando tiver internet.` : ''), 'sucesso');
+    fotosCache.reposicao = [];
+    goBack();
+  } catch (e) {
+    console.error('Reposição:', e);
+    toast('Erro ao registrar a reposição. Tente de novo.', 'erro');
+    if (btn) { btn.disabled = false; btn.textContent = 'Registrar reposição'; }
+  }
+}
+
+/* Bloco "Reposições" do detalhe da festa */
+function htmlReposicoesFesta(festa) {
+  const reps = Object.entries(festa.reposicoes || {})
+    .map(([id, r]) => ({ id, ...r }))
+    .sort((a, b) => (toDate(a.em)?.getTime() || 0) - (toDate(b.em)?.getTime() || 0));
+  if (!reps.length) return '';
+  return `
+    <div class="detalhe-card"><h3>Reposições durante a festa (${reps.length})</h3>
+      ${reps.map(r => {
+        const fotos = festa.fotosReposicao?.[r.id] || [];
+        return `<div style="padding:8px 0;border-bottom:1px solid #F3F4F6">
+          <div style="font-size:12px;color:var(--cinza-500)">${formatarDataHora(r.em)} · ${_escHtml(r.por || '—')}</div>
+          ${(r.itens || []).map(it => `<div class="detalhe-linha"><span>${_escHtml(nomeBasDisplay(it.nome))}</span><span>+${_fmtQtd(it.qtd)} ${_escHtml(it.unidade || 'un')}</span></div>`).join('')}
+          ${r.obs ? `<div style="font-size:12px;margin-top:4px">${_escHtml(r.obs)}</div>` : ''}
+          ${fotos.length ? `<div class="grade-fotos" style="margin-top:6px">${fotos.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>` : ''}
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
 function _fmtQtd(v) {
   return Number.isInteger(v) ? String(v) : v.toFixed(2).replace(/\.?0+$/, '');
 }
@@ -3443,7 +3598,7 @@ async function concluirRetorno() {
 
   try {
     const itens = (festaAtual.itens || []).map((item, i) => {
-      const enviado    = item.qtdConferida || item.qtdSeparada || 0;
+      const enviado    = _qtdEnviadaItem(item);
       const consumido  = parseFloat(document.getElementById(`ret-cons-${i}`)?.value) || 0;
       const danificado = parseFloat(document.getElementById(`ret-dan-${i}`)?.value) || 0;
       const fator      = _fatorEmbalagemItem(item.nome);
@@ -3521,7 +3676,7 @@ function _tabelaFolha(titulo, colunas, itens, linhaFn) {
 }
 
 function _linhaFolhaBebida(item) {
-  const enviado = item.qtdConferida || item.qtdSeparada || 0;
+  const enviado = _qtdEnviadaItem(item);
   const unidade = item.unidade || 'un';
   const temConsumo = item.qtdConsumida !== undefined;
   return `<tr>
@@ -3533,7 +3688,7 @@ function _linhaFolhaBebida(item) {
 }
 
 function _linhaFolhaCopo(item) {
-  const enviado  = item.qtdConferida || item.qtdSeparada || 0;
+  const enviado  = _qtdEnviadaItem(item);
   const unidade  = item.unidade || 'un';
   const unQuebra = _unidadeQuebraItem(item.nome, unidade);
   const quebras  = item.qtdDanificada || 0;
@@ -4380,6 +4535,8 @@ function renderizarDetalhe(festa) {
 
   const avancarHTML = festa.status === 'festa'
     ? `<div class="caixa-avancar">
+        <p>Chegou mais material durante a festa? Registre a reposição com foto.</p>
+        <button class="btn-secundario" style="margin-bottom:10px" onclick="abrirReposicao('${festa.id}')">Registrar reposição</button>
         <p>Festa encerrada? Registre o retorno dos materiais.</p>
         <button class="btn-primario" onclick="avancarParaRetorno('${festa.id}')">Iniciar Retorno</button>
        </div>`
@@ -4477,6 +4634,7 @@ function renderizarDetalhe(festa) {
     ${excluirHTML}
     ${linkConfHTML}
     ${avancarHTML}
+    ${htmlReposicoesFesta(festa)}
     ${folhaConferenciaHTML}
     ${folhaFechamentoHTML}
     ${editarHTML}
@@ -5689,7 +5847,7 @@ function preencherFormularioImport(dados) {
    FOTOS
 ══════════════════════════════════════════════════ */
 
-const TIPO_PARA_ID = { separacao: 'sep', conferencia: 'conf', retorno: 'ret', galpao: 'gal' };
+const TIPO_PARA_ID = { separacao: 'sep', conferencia: 'conf', retorno: 'ret', galpao: 'gal', reposicao: 'rep' };
 
 function handleFotos(input, tipo) {
   const files = Array.from(input.files);
@@ -11992,7 +12150,7 @@ function renderizarRelPorItem(festasNoPeriodo, todasFestas, estoqueMap) {
         nomeKey: key, nome: item.nome, unidade: item.unidade||'un',
         solicitado:0, saida:0, retorno:0, avarias:0, festasDetalhe:[],
       };
-      const saida = item.qtdConferida ?? item.qtdSeparada ?? 0;
+      const saida = (item.qtdConferida ?? item.qtdSeparada ?? 0) + (item.qtdReposta || 0);
       mapa[key].solicitado += item.qtdNecessaria || 0;
       mapa[key].saida      += saida;
       mapa[key].retorno    += item.qtdRetorno    || 0;

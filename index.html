@@ -753,6 +753,37 @@
     </div>
   </div>
 
+  <!-- ══════════ TELA: REPOSIÇÃO DURANTE A FESTA ══════════ -->
+  <div id="tela-reposicao" class="tela hidden">
+    <div class="container">
+      <div id="rep-info" class="card-festa-info"></div>
+
+      <h3 class="titulo-secao">O que chegou de reposição</h3>
+      <datalist id="rep-itens-datalist"></datalist>
+      <div id="rep-itens-lista"></div>
+      <button class="btn-secundario btn-sm" onclick="_repAddLinha()">+ Item</button>
+
+      <div class="form-group mt-lg">
+        <label>Fotos da reposição</label>
+        <div class="area-upload" onclick="document.getElementById('input-foto-rep').click()">
+          <input type="file" id="input-foto-rep" accept="image/*" multiple capture="environment"
+            style="display:none" onchange="handleFotos(this,'reposicao')">
+          Selecionar / Tirar Foto
+        </div>
+        <div id="preview-rep" class="grade-fotos"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Observações</label>
+        <textarea id="rep-obs" placeholder="Ex: acabou o gin às 23h, chegou motoboy com 3 garrafas"></textarea>
+      </div>
+
+      <button class="btn-confirmar btn-full" id="btn-rep-confirmar" onclick="confirmarReposicao()">
+        Registrar reposição
+      </button>
+    </div>
+  </div>
+
   <!-- ══════════ TELA: RETORNO — DETALHE ══════════ -->
   <div id="tela-retorno" class="tela hidden">
     <div class="container">
@@ -1819,7 +1850,7 @@
 
   <script src="js/config.js?v=5"></script>
   <script src="js/firestore.js?v=64"></script>
-  <script src="js/app.js?v=149"></script>
+  <script src="js/app.js?v=150"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>
