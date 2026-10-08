@@ -1041,17 +1041,21 @@ function renderizarHomeCoordenador(festa) {
   }
 
   festaAtual = festa;   /* usado pelo card da Folha de Conferência */
-  const ACAO_ETAPA = { conferencia: 'abrirConferencia', festa: 'avancarParaRetorno', retorno: 'abrirRetorno', galpao: 'abrirGalpao' };
+  /* Galpão não é etapa do coordenador: depois do retorno o card da festa
+     some e ficam só as duas folhas em PDF (Juliana, 10-07) */
+  const ACAO_ETAPA = { conferencia: 'abrirConferencia', festa: 'avancarParaRetorno', retorno: 'abrirRetorno' };
   const funcao = ACAO_ETAPA[festa.status];
+  const etapaEncerrada = ['galpao', 'concluida'].includes(festa.status);
 
   el.innerHTML = `
     ${saudacao}
     <div class="inicio-grid">
+      ${etapaEncerrada ? '' : `
       <div class="inicio-card${funcao ? '' : ' inicio-card-desabilitado'}"
         ${funcao ? `onclick="${funcao}('${festa.id}')"` : ''}>
         <div class="inicio-card-nome">${_escHtml(festa.nome)}</div>
         <div class="inicio-card-sub">${festa.status === 'festa' ? 'Festa encerrada? Iniciar retorno' : funcao ? (STATUS_LABELS[festa.status] || festa.status) : 'Aguardando — ' + (STATUS_LABELS[festa.status] || festa.status)}</div>
-      </div>
+      </div>`}
       ${festa.status === 'festa' ? `
       <div class="inicio-card" onclick="historico=['tela-inicial']; abrirReposicao('${festa.id}')">
         <div class="inicio-card-nome">Registrar reposição</div>
@@ -1060,12 +1064,12 @@ function renderizarHomeCoordenador(festa) {
       ${['festa', 'retorno', 'galpao', 'concluida'].includes(festa.status) ? `
       <div class="inicio-card" onclick="historico=['tela-inicial']; abrirFolhaConferencia(festaAtual, true)">
         <div class="inicio-card-nome">Folha de Conferência (PDF)</div>
-        <div class="inicio-card-sub">Gerar de novo e enviar no grupo</div>
+        <div class="inicio-card-sub">${_escHtml(festa.nome)} — gerar de novo e enviar no grupo</div>
       </div>` : ''}
       ${['galpao', 'concluida'].includes(festa.status) ? `
       <div class="inicio-card" onclick="historico=['tela-inicial']; abrirRelatorioRetorno(festaAtual, true)">
         <div class="inicio-card-nome">Folha de Fechamento (PDF)</div>
-        <div class="inicio-card-sub">Inicial, reposição, consumo e retorno — enviar no grupo</div>
+        <div class="inicio-card-sub">${_escHtml(festa.nome)} — inicial, reposição, consumo e retorno</div>
       </div>` : ''}
     </div>
   `;
