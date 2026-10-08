@@ -204,29 +204,19 @@ function renderizarPainelTV(festas) {
     })
     .sort((a, b) => toDate(a.data) - toDate(b.data));
 
-  /* Produção TV: apenas itens eProducao, agrega por nomeBaseKey */
-  const mapaProd = {};
-  festas.filter(f => {
-    const fd = toDate(f.data); fd.setHours(0, 0, 0, 0);
-    if (f.status === 'agendada') return fd >= inicioSemana && fd <= fimSemana;
-    if (f.status !== 'separando') return false;
-    return fd >= hojeDate && fd <= fimSemana;
-  }).forEach(f => {
-    (f.itens || []).forEach(item => {
-      const key = nomeBaseKey(normalizarNomeItem(item.nome));
-      const cfg = buscarConfigItem(key);
-      if (!cfg?.eProducao) return;
-      if (!mapaProd[key]) mapaProd[key] = {
-        nomeKey: key,
-        nome:    nomeBasDisplay(item.nome),
-        total:   0,
-        unidade: item.unidade || 'un',
-        grupo:   cfg.grupo || 'Geral',
-      };
-      mapaProd[key].total += (item.qtdNecessaria || 0);
-    });
+  /* Produção e Compras da TV = mesmo cálculo da tela inicial (Produção da
+     Semana / Compras Pendentes) — antes a TV escondia item de produção com
+     estoque suficiente e, em compras, mostrava alerta de estoque mínimo em
+     vez do que falta pras festas (pedido da Juliana em 10-08). */
+  const festasSemana = festas.filter(f => {
+    if (!festaAtiva(f)) return false;
+    const fd = toDate(f.data);
+    if (isNaN(fd)) return false;
+    fd.setHours(0, 0, 0, 0);
+    return fd >= inicioSemana && fd <= fimSemana;
   });
-  const producao = Object.values(mapaProd).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  const producao = agregarItensFestas(festasSemana)
+    .filter(item => buscarConfigItem(item.nomeKey)?.eProducao === true);
 
   _tvRenderSeparando(separando);
   _tvRenderProducao(producao);
@@ -286,136 +276,100 @@ function _tvRenderProducao(producao) {
   const el = document.getElementById('tv-producao');
   if (!el) return;
 
-  /* Enriquecer com dados de estoque e manter só o que está pendente — na TV
-     item com estoque suficiente (falta <= 0) some da tela; nas outras telas
-     (que usam `producao` cru, sem esse filtro) ele continua aparecendo. */
+  const compraDe = nomeKey => {
+    const baseKey = nomeBaseKey(nomeKey);
+    return comprasCache.find(c =>
+      (c.nomeKey === nomeKey || c.nomeKey === baseKey) &&
+      (c.status === 'pendente' || c.status === 'pedido'));
+  };
+
+  /* Produção: todos os itens da semana — pendentes em cima (laranja), os já
+     cobertos pelo estoque embaixo (verde), igual à tela inicial. */
   const itens = producao.map(p => {
-    const est    = estoqueCache[p.nomeKey] || estoqueCache[nomeBaseKey(p.nomeKey)] || {};
-    const qtdEst = est.qtd || 0;
-    const falta  = p.total - qtdEst;
-    const pct    = p.total > 0 ? Math.min(100, Math.round((qtdEst / p.total) * 100)) : 100;
-    return { ...p, qtdEst, falta, pct };
-  }).filter(p => p.falta > 0);
+    const est    = estoqueDoItem(p.nomeKey);
+    const qtdEst = est?.qtd || 0;
+    const unEst  = unidadeEstoqueDoItem(p.nomeKey, est, p.unidade);
+    const pct    = p.totalBase > 0 ? Math.min(100, Math.round((qtdEst / p.totalBase) * 100)) : 100;
+    const falta  = Math.max(0, p.totalBase - qtdEst);
+    return { ...p, qtdEst, unEst, pct, falta };
+  }).sort((a, b) => ((b.falta > 0) - (a.falta > 0)) || (a.pct - b.pct));
 
-  /* Alertas gerais de estoque (aba Compras) — abaixo do mínimo ou com compra
-     pendente, cobrindo todo o cadastro, não só o que as festas da semana
-     precisam. Não repete item que já apareceu na lista de produção acima. */
-  const chavesProducao = new Set(itens.map(p => nomeBaseKey(p.nomeKey)));
-  const _temPedido = a => comprasCache.some(c => c.nomeKey === a.nomeKey && (c.status === 'pendente' || c.status === 'pedido'));
-  const alertasGerais = _alertasCompras()
-    .filter(a => a.falta > 0 && !chavesProducao.has(nomeBaseKey(a.nomeKey)))
-    .sort((a, b) => (_temPedido(a) ? 1 : 0) - (_temPedido(b) ? 1 : 0) || b.falta - a.falta);
+  /* Compras: o que as festas ainda não separadas precisam e o estoque não
+     cobre — mesma lista do card Compras Pendentes da tela inicial. */
+  const compras = _itensFaltandoParaFestas()
+    .sort((a, b) => (compraDe(a.nomeKey) ? 1 : 0) - (compraDe(b.nomeKey) ? 1 : 0) || b.falta - a.falta);
 
-  if (!itens.length && !alertasGerais.length) {
+  if (!itens.length && !compras.length) {
     el.innerHTML = '<div class="tv-vazio">Nenhum item pendente de produção ou compra</div>';
     return;
   }
 
-  /* Dentro de cada grupo: falta sem compra → aguardando chegada → ok */
-  const grupos = {};
-  itens.forEach(p => {
-    const g = p.grupo || 'Geral';
-    if (!grupos[g]) grupos[g] = [];
-    grupos[g].push(p);
-  });
-  const _prioridade = p => {
-    const baseKey = nomeBaseKey(p.nomeKey);
-    const temCompra = comprasCache.some(c =>
-      (c.nomeKey === p.nomeKey || c.nomeKey === baseKey) &&
-      (c.status === 'pendente' || c.status === 'pedido')
-    );
-    return temCompra ? 1 : 0;  // 0 = urgente (sem compra), 1 = aguardando chegada
-  };
-  Object.values(grupos).forEach(arr => arr.sort((a, b) => _prioridade(a) - _prioridade(b) || b.falta - a.falta));
-
-  const renderItem = p => {
-    const baseKey = nomeBaseKey(p.nomeKey);
-    const compra  = comprasCache.find(c =>
-      (c.nomeKey === p.nomeKey || c.nomeKey === baseKey) &&
-      (c.status === 'pendente' || c.status === 'pedido')
-    );
-
-    if (p.falta > 0 && compra) {
-      /* Falta, mas há compra em andamento — aguardando chegada */
-      const statusLabel = compra.status === 'pedido' ? 'Pedido feito' : 'Compra solicitada';
-      return `
-        <div class="tv-prod-item tv-prod-aguardando">
-          <div class="tv-prod-item-topo">
-            <div class="tv-prod-nome">${_escHtml(p.nome)}</div>
-            <div style="text-align:right">
-              <div class="tv-prod-falta-num" style="color:#1d4ed8">${compra.qtdSolicitada}</div>
-              <div class="tv-prod-falta-label" style="color:#1d4ed8">${_escHtml(p.unidade)} a chegar</div>
-            </div>
-          </div>
-          <div class="tv-prod-detalhe">Estoque: ${p.qtdEst} &nbsp;|&nbsp; Falta: ${p.falta}</div>
-          <div class="tv-prod-aguardando-label">${statusLabel} — aguardando chegada</div>
-          <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill tv-prod-barra-aguardando" style="width:${p.pct}%"></div></div>
-        </div>`;
-    }
-
-    /* Falta e sem compra registrada */
-    return `
-      <div class="tv-prod-item tv-prod-falta">
-        <div class="tv-prod-item-topo">
-          <div class="tv-prod-nome">${_escHtml(p.nome)}</div>
-          <div style="text-align:right">
-            <div class="tv-prod-falta-num">${p.falta}</div>
-            <div class="tv-prod-falta-label">${_escHtml(p.unidade)} falta</div>
-          </div>
-        </div>
-        <div class="tv-prod-detalhe">Estoque: ${p.qtdEst}</div>
-        <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill deficit" style="width:${p.pct}%"></div></div>
-      </div>`;
-  };
-
-  const renderAlertaGeral = a => {
-    const compra = comprasCache.find(c => c.nomeKey === a.nomeKey && (c.status === 'pendente' || c.status === 'pedido'));
+  const renderFalta = (nome, nomeKey, falta, unidade, detalhe, pct) => {
+    const compra = compraDe(nomeKey);
     if (compra) {
       const statusLabel = compra.status === 'pedido' ? 'Pedido feito' : 'Compra solicitada';
       return `
         <div class="tv-prod-item tv-prod-aguardando">
           <div class="tv-prod-item-topo">
-            <div class="tv-prod-nome">${_escHtml(a.nome)}</div>
+            <div class="tv-prod-nome">${_escHtml(nome)}</div>
             <div style="text-align:right">
               <div class="tv-prod-falta-num" style="color:#1d4ed8">${compra.qtdSolicitada}</div>
-              <div class="tv-prod-falta-label" style="color:#1d4ed8">${_escHtml(a.unidade)} a chegar</div>
+              <div class="tv-prod-falta-label" style="color:#1d4ed8">${_escHtml(unidade)} a chegar</div>
             </div>
           </div>
-          <div class="tv-prod-detalhe">Estoque: ${a.qtdAtual} &nbsp;|&nbsp; Mínimo: ${a.estoqueMinimo}</div>
+          <div class="tv-prod-detalhe">${detalhe} &nbsp;|&nbsp; Falta: ${falta}</div>
           <div class="tv-prod-aguardando-label">${statusLabel} — aguardando chegada</div>
-          <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill tv-prod-barra-aguardando" style="width:${a.pct}%"></div></div>
+          <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill tv-prod-barra-aguardando" style="width:${Math.max(4, pct)}%"></div></div>
         </div>`;
     }
     return `
       <div class="tv-prod-item tv-prod-falta">
         <div class="tv-prod-item-topo">
-          <div class="tv-prod-nome">${_escHtml(a.nome)}</div>
+          <div class="tv-prod-nome">${_escHtml(nome)}</div>
           <div style="text-align:right">
-            <div class="tv-prod-falta-num">${a.falta}</div>
-            <div class="tv-prod-falta-label">${_escHtml(a.unidade)} abaixo do mínimo</div>
+            <div class="tv-prod-falta-num">${falta}</div>
+            <div class="tv-prod-falta-label">${_escHtml(unidade)} falta</div>
           </div>
         </div>
-        <div class="tv-prod-detalhe">Estoque: ${a.qtdAtual} &nbsp;|&nbsp; Mínimo: ${a.estoqueMinimo}</div>
-        <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill deficit" style="width:${a.pct}%"></div></div>
+        <div class="tv-prod-detalhe">${detalhe}</div>
+        <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill deficit" style="width:${Math.max(4, pct)}%"></div></div>
       </div>`;
   };
 
-  const ordemGrupos = Object.keys(grupos).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  const htmlProducao = ordemGrupos.map(g => `
-    <div class="tv-prod-grupo">
-      <div class="tv-prod-grupo-header">${_escHtml(g)}</div>
-      ${grupos[g].map(renderItem).join('')}
-    </div>
-  `).join('');
+  const renderProducao = p => {
+    if (p.falta > 0) {
+      return renderFalta(nomeBasDisplay(p.nome), p.nomeKey, p.falta, p.unEst,
+        `Estoque: ${p.qtdEst} ${_escHtml(p.unEst)} / precisa ${p.total} ${_escHtml(p.unidade)}`, p.pct);
+    }
+    return `
+      <div class="tv-prod-item">
+        <div class="tv-prod-item-topo">
+          <div class="tv-prod-nome">${_escHtml(nomeBasDisplay(p.nome))}</div>
+          <div style="text-align:right">
+            <div class="tv-prod-qty">${p.qtdEst}</div>
+            <div class="tv-prod-ok-label">${_escHtml(p.unEst)} em estoque</div>
+          </div>
+        </div>
+        <div class="tv-prod-detalhe">Precisa: ${p.total} ${_escHtml(p.unidade)}</div>
+        <div class="tv-prod-barra-wrap"><div class="tv-prod-barra-fill" style="width:100%"></div></div>
+      </div>`;
+  };
 
-  const htmlComprasGerais = alertasGerais.length ? `
+  const htmlProducao = `
     <div class="tv-prod-grupo">
-      <div class="tv-prod-grupo-header">Em compra (estoque geral)</div>
-      ${alertasGerais.map(renderAlertaGeral).join('')}
-    </div>
-  ` : '';
+      <div class="tv-prod-grupo-header">Produção da semana (${itens.length})</div>
+      ${itens.length ? itens.map(renderProducao).join('') : '<div class="tv-vazio">Nenhum item de produção nessa semana</div>'}
+    </div>`;
 
-  el.innerHTML = htmlProducao + htmlComprasGerais;
+  const htmlCompras = `
+    <div class="tv-prod-grupo">
+      <div class="tv-prod-grupo-header">Compras pendentes (${compras.length})</div>
+      ${compras.length
+        ? compras.map(c => renderFalta(c.nome, c.nomeKey, c.falta, c.unidade, 'Falta para as festas', c.pct)).join('')
+        : '<div class="tv-vazio">Nenhum item faltando para as festas</div>'}
+    </div>`;
+
+  el.innerHTML = htmlProducao + htmlCompras;
 }
 
 function _tvRenderEstoque(producao) {
