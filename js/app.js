@@ -545,11 +545,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         toast('Este link expirou. Peça um novo ao responsável.', 'erro');
       } else {
         linkConferenciaPendente = { festaId: link.festaId };
+        try { sessionStorage.setItem('rc_link_conf', link.festaId); } catch (_) {}
         document.getElementById('login-aviso-link').classList.remove('hidden');
       }
+      /* O link é usado UMA vez: tira o ?conf= do endereço. Senão cada
+         atualização da página (por 24h) reabria a festa em vez da tela
+         inicial (Juliana, 10-07). O acesso do coordenador à festa já fica
+         salvo na conta (festaLinkAtivaId) — o card dela segue no início. */
+      params.delete('conf');
+      history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params : '') + location.hash);
     } catch (e) {
       console.error('Erro ao validar link de conferência:', e);
     }
+  } else {
+    /* Atualizou a página antes de terminar o login: o link ainda vale */
+    try {
+      const pend = sessionStorage.getItem('rc_link_conf');
+      if (pend) {
+        linkConferenciaPendente = { festaId: pend };
+        document.getElementById('login-aviso-link').classList.remove('hidden');
+      }
+    } catch (_) {}
   }
 
   /* Auto-login: se este aparelho já tem uma sessão real salva e a pessoa
@@ -1337,6 +1353,7 @@ function roteamentoPosLogin(usuario) {
   if (linkConferenciaPendente) {
     const { festaId } = linkConferenciaPendente;
     linkConferenciaPendente = null;
+    try { sessionStorage.removeItem('rc_link_conf'); } catch (_) {}
     const rolesLink = usuario.roles || [usuario.role];
     if (rolesLink.includes('coordenador') || rolesLink.includes('ceo')) {
       if (!rolesLink.includes('ceo')) {
