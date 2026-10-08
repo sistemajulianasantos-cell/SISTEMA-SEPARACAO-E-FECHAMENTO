@@ -1049,6 +1049,7 @@ async function buscarEscalasGestao()     { return _buscarDocGestao('escalas'); }
 async function buscarContratosGestao()   { return _buscarDocGestao('contratos'); }
 async function buscarInsumosGestao()     { return _buscarDocGestao('insumos'); }
 async function buscarSeparacoesGestao()  { return _buscarDocGestao('separacoes'); }
+async function buscarProducoesGestao()   { return _buscarDocGestao('producoes'); }
 async function buscarFichasGestao()      { return _buscarDocGestao('fichas'); }
 
 /* Fotos (Catálogo) — cada foto é 1 documento próprio "fichaFoto_<id>" ou

@@ -2593,7 +2593,7 @@ function htmlCardConfItem(item, ri, conferido) {
               : '')
         : '')
       + (item.contagem1 !== undefined
-          ? `<div class="item-sub">1ª contagem: <strong>${item.contagem1}</strong>${item.recontagem !== undefined ? ` · Recontagem: <strong>${item.recontagem}</strong>` : ' · aguardando recontagem'}</div>`
+          ? `<div class="item-sub">Quantidade inicial: <strong>${item.contagem1}</strong>${item.recontagem !== undefined ? ` · Recontagem: <strong>${item.recontagem}</strong>` : ' · aguardando recontagem'}</div>`
           : '')
     : (recontarPendente
         ? `<span class="msg-item msg-alerta">Recontar este item — conte de novo com atenção, esta é a contagem final</span>`
@@ -3100,6 +3100,7 @@ async function concluirConferencia() {
       ...festaAtual, itens, divergencias, recontagens,
       obsConferencia: document.getElementById('conf-obs').value,
       coordenador: usuarioAtual.nome, conferenciaFim: new Date(),
+      fotosConferencia: [...(festaAtual.fotosConferencia || []), ...(fotosGerais.urls || [])],
     });
     compartilharFolhaConferencia({ automatico: true });
 
@@ -3113,48 +3114,119 @@ async function concluirConferencia() {
 
 /* ══════════════════════════════════════════════════
    FOLHA DE CONFERÊNCIA (chegada) — PDF pro grupo
-   Gerada ao concluir a conferência: itens conferidos (separado x
-   conferido) e, no fim, as divergências da contagem inicial (1ª contagem
-   do coordenador que não bateu com o separado, e como ficou na
-   recontagem). PDF feito no aparelho (jsPDF), funciona sem internet.
+   Gerada ao concluir a conferência: só os itens e a quantidade inicial
+   conferida (sem separado/divergência — vai pro grupo). Cabeçalho
+   completado com a Produção da Gestão. PDF feito no aparelho (jsPDF),
+   funciona sem internet.
 ══════════════════════════════════════════════════ */
 let _folhaConfAtual = null;
+let _folhaConfPronta = Promise.resolve();
 
+/* Só o que foi conferido — sem "separado" nem divergência: a folha vai pro
+   grupo e o conferente não deve saber o que divergiu (contagem cega). A
+   investigação de divergência fica com o CEO (Juliana, 10-07). */
 function _dadosFolhaConferencia(festa) {
-  const itens = (festa.itens || []).filter(it => buscarConfigItemPorNome(it.nome)?.conferirCoord !== false);
-  const linhas = itens.map(it => ({
-    nome: nomeBasDisplay(it.nome), un: it.unidade || 'un',
-    sep: it.qtdSeparada || 0, conf: it.qtdConferida ?? 0,
-  }));
-  const diverg = itens
-    .filter(it => it.contagem1 !== undefined || (it.qtdConferida ?? 0) !== (it.qtdSeparada || 0))
-    .map(it => {
-      const sep = it.qtdSeparada || 0;
-      const fin = it.qtdConferida ?? 0;
-      const recontou = it.contagem1 !== undefined;
-      return {
-        nome: nomeBasDisplay(it.nome), un: it.unidade || 'un', sep,
-        c1:  recontou ? it.contagem1 : fin,
-        rec: recontou ? fin : null,
-        situacao: fin === sep ? 'bateu na recontagem'
-          : fin < sep ? `faltam ${_fmtQtd(sep - fin)}` : `sobram ${_fmtQtd(fin - sep)}`,
-      };
-    });
-  return { linhas, diverg };
+  return (festa.itens || [])
+    .filter(it => buscarConfigItemPorNome(it.nome)?.conferirCoord !== false)
+    .map(it => ({ nome: nomeBasDisplay(it.nome), un: it.unidade || 'un', qtd: it.qtdConferida ?? 0 }));
 }
 
+/* Cabeçalho: só as linhas que têm informação */
 function _infoFolhaConferencia(festa) {
   return [
-    ['Cliente', festa.cliente || '—'],
-    ['Data', festa.data ? formatarData(festa.data) : '—'],
-    ['Evento', festa.tipoEvento || '—'],
-    ['Contrato', festa.contrato || '—'],
-    ['Local', festa.local || '—'],
-    ['Hora início', festa.hora || '—'],
-    ['Coordenador', festa.coordenador || '—'],
-    ['Conferida em', festa.conferenciaFim ? formatarDataHora(festa.conferenciaFim) : '—'],
-  ];
+    ['Cliente', festa.cliente],
+    ['Data', festa.data ? formatarData(festa.data) : ''],
+    ['Evento', festa.tipoEvento],
+    ['Nº proposta', festa.contrato],
+    ['Local', festa.local],
+    ['Hora início', festa.hora],
+    ['Convidados', festa.convidados != null && festa.convidados !== '' ? String(festa.convidados) : ''],
+    ['Coordenador', festa.coordenador],
+    ['Conferida em', festa.conferenciaFim ? formatarDataHora(festa.conferenciaFim) : ''],
+  ].filter(([, v]) => v !== undefined && v !== null && String(v).trim() !== '');
 }
+
+/* A festa importada da Gestão só traz nome/cliente/data/hora/local/
+   convidados — tipo de evento e nº da proposta ficam na Produção de lá.
+   Completa o que faltar (sem gravar nada; sem internet, segue sem). */
+async function _completarFestaComGestao(festa) {
+  try {
+    const seps = await buscarSeparacoesGestao();
+    if (!seps || !seps.length) return festa;
+    const chave = _chaveMatchEvento(festa.nome, festa.data);
+    const sep = seps.find(s => festa.origemFolhaGestao && s.id === festa.origemFolhaGestao)
+      || seps.find(s => _chaveMatchEvento(s.evento || s.cliente, s.data) === chave);
+    if (!sep) return festa;
+    const prods = sep.producaoId ? await buscarProducoesGestao() : null;
+    const p = (prods || []).find(x => x.id === sep.producaoId) || {};
+    const vazio = v => v === undefined || v === null || String(v).trim() === '';
+    const comp = { ...festa };
+    const preencher = (campo, ...valores) => {
+      if (!vazio(comp[campo])) return;
+      const v = valores.find(x => !vazio(x));
+      if (v !== undefined) comp[campo] = v;
+    };
+    preencher('cliente', p.cliente, sep.cliente);
+    preencher('tipoEvento', p.tipo);
+    preencher('contrato', p.proposta);
+    preencher('local', p.local, sep.local);
+    preencher('hora', p.hrInicio, sep.hrInicio);
+    preencher('convidados', p.convidados, sep.convidados);
+    return comp;
+  } catch (e) {
+    console.warn('Completar folha com dados da Gestão:', e);
+    return festa;
+  }
+}
+
+/* Fotos da conferência pro PDF: dos itens (com o nome do item) e gerais.
+   As que ainda estão na fila do aparelho (sem internet) entram direto do
+   arquivo guardado. */
+async function _fotosDaConferencia(festa) {
+  const out = [];
+  (festa.itens || []).forEach((it, i) => {
+    const u = _fotoItemConf(festa, it, i);
+    if (u && u !== 'pendente') out.push({ legenda: nomeBasDisplay(it.nome), url: u });
+  });
+  (festa.fotosConferencia || []).forEach(u => out.push({ legenda: 'Foto geral da conferência', url: u }));
+  try {
+    (await listarFilaFotos())
+      .filter(f => f.festaId === festa.id && (f.pasta === 'conferencia' || String(f.pasta).startsWith('conf_item_')))
+      .forEach(f => {
+        let legenda = 'Foto geral da conferência';
+        if (f.destino?.tipo === 'item') {
+          const it = (festa.itens || []).find((x, i) => _chaveFotoItem(x, i) === f.destino.chave);
+          if (it) legenda = nomeBasDisplay(it.nome);
+        }
+        out.push({ legenda, blob: new Blob([f.dados], { type: f.tipoArquivo }) });
+      });
+  } catch (_) {}
+  return out;
+}
+
+/* Foto reduzida (máx. 1000px, JPEG) pra caber no PDF sem pesar */
+async function _prepararImagemPdf(foto) {
+  let blob = foto.blob;
+  if (!blob) {
+    const url = foto.url.includes('/image/upload/') ? foto.url.replace('/image/upload/', '/image/upload/w_1000,q_75/') : foto.url;
+    blob = await Promise.race([
+      fetch(url).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000)),
+    ]);
+  }
+  const objUrl = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = objUrl; });
+    const k = Math.min(1, 1000 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth * k));
+    c.height = Math.max(1, Math.round(img.naturalHeight * k));
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return { data: c.toDataURL('image/jpeg', 0.75), w: c.width, h: c.height };
+  } finally { URL.revokeObjectURL(objUrl); }
+}
+
+let _folhaPdf = null;   /* Promise<Blob> já preparado — o toque em "Enviar" compartilha na hora */
 
 function abrirFolhaConferencia(festa, voltarParaDetalhe) {
   pararListeners();
@@ -3166,10 +3238,20 @@ function abrirFolhaConferencia(festa, voltarParaDetalhe) {
     historico = [telaListaAtual()];
   }
   mostrarTela('tela-folha-conferencia', 'Folha de Conferência');
+  _renderFolhaConferencia(festa);
+  _folhaConfPronta = _completarFestaComGestao(festa).then(comp => {
+    if (_folhaConfAtual !== festa) return;
+    _folhaConfAtual = comp;
+    _renderFolhaConferencia(comp);
+  });
+  _folhaPdf = _folhaConfPronta.then(() => _gerarPdfFolhaConferencia(_folhaConfAtual));
+  _folhaPdf.catch(e => console.error('PDF da conferência:', e));
+}
 
-  const { linhas, diverg } = _dadosFolhaConferencia(festa);
+function _renderFolhaConferencia(festa) {
+  const linhas = _dadosFolhaConferencia(festa);
   const th = t => `<th style="padding:6px 8px;text-align:left;font-size:11px;border-bottom:2px solid #E5E7EB">${t}</th>`;
-  const td = (c, extra = '') => `<td style="padding:6px 8px;border-bottom:1px solid #F3F4F6;${extra}">${c}</td>`;
+  const td = c => `<td style="padding:6px 8px;border-bottom:1px solid #F3F4F6">${c}</td>`;
 
   document.getElementById('folhaconf-content').innerHTML = `
     <div class="card-festa-info" style="margin-bottom:16px">
@@ -3182,32 +3264,28 @@ function abrirFolhaConferencia(festa, voltarParaDetalhe) {
     <div class="folha-secao">
       <h3 class="folha-secao-titulo">Itens conferidos (${linhas.length})</h3>
       <table style="border-collapse:collapse;width:100%;font-size:13px">
-        <thead><tr>${th('Item')}${th('Separado')}${th('Conferido')}</tr></thead>
-        <tbody>${linhas.map(l => `<tr>
-          ${td(_escHtml(l.nome))}
-          ${td(`${_fmtQtd(l.sep)} ${_escHtml(l.un)}`)}
-          ${td(`<strong style="color:${l.conf !== l.sep ? '#B91C1C' : 'inherit'}">${_fmtQtd(l.conf)} ${_escHtml(l.un)}</strong>`)}
-        </tr>`).join('')}</tbody>
+        <thead><tr>${th('Item')}${th('Quantidade inicial')}</tr></thead>
+        <tbody>${linhas.map(l => `<tr>${td(_escHtml(l.nome))}${td(`<strong>${_fmtQtd(l.qtd)} ${_escHtml(l.un)}</strong>`)}</tr>`).join('')}</tbody>
       </table>
-    </div>
-    <div class="folha-secao">
-      <h3 class="folha-secao-titulo">Divergências na conferência inicial (${diverg.length})</h3>
-      ${diverg.length ? `
-        <table style="border-collapse:collapse;width:100%;font-size:13px">
-          <thead><tr>${th('Item')}${th('Separado')}${th('1ª contagem')}${th('Recontagem')}${th('Situação')}</tr></thead>
-          <tbody>${diverg.map(d => `<tr>
-            ${td(_escHtml(d.nome))}
-            ${td(`${_fmtQtd(d.sep)} ${_escHtml(d.un)}`)}
-            ${td(`<strong style="color:#B91C1C">${_fmtQtd(d.c1)}</strong>`)}
-            ${td(d.rec !== null ? _fmtQtd(d.rec) : '—')}
-            ${td(_escHtml(d.situacao), `color:${d.situacao.startsWith('bateu') ? '#047857' : '#B91C1C'};font-weight:600`)}
-          </tr>`).join('')}</tbody>
-        </table>` : '<div class="folha-texto">Nenhuma — tudo bateu na primeira contagem.</div>'}
     </div>
     <div class="folha-secao">
       <h3 class="folha-secao-titulo">Observações</h3>
       <div class="folha-texto">${festa.obsConferencia ? _escHtml(festa.obsConferencia).replace(/\n/g, '<br>') : '—'}</div>
-    </div>`;
+    </div>
+    <div class="folha-secao" id="folhaconf-fotos"></div>`;
+
+  _fotosDaConferencia(festa).then(fotos => {
+    const el = document.getElementById('folhaconf-fotos');
+    if (!el || _folhaConfAtual?.id !== festa.id) return;
+    el.innerHTML = fotos.length ? `
+      <h3 class="folha-secao-titulo">Fotos (${fotos.length})</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px">
+        ${fotos.map(f => {
+          const src = f.blob ? URL.createObjectURL(f.blob) : f.url;
+          return `<div style="font-size:11px;text-align:center"><img src="${src}" style="width:100%;height:110px;object-fit:cover;border-radius:6px"><div>${_escHtml(f.legenda)}</div></div>`;
+        }).join('')}
+      </div>` : '';
+  });
 }
 
 function _nomeArquivoFolhaConf(festa) {
@@ -3217,11 +3295,14 @@ function _nomeArquivoFolhaConf(festa) {
   return `Conferencia - ${limpo}${dia ? ' - ' + dia : ''}.pdf`;
 }
 
-function _gerarPdfFolhaConferencia(festa) {
+async function _gerarPdfFolhaConferencia(festa) {
+  const fotos = await _fotosDaConferencia(festa);
+  const imagens = await Promise.all(fotos.map(f => _prepararImagemPdf(f).then(img => ({ ...img, legenda: f.legenda }))
+    .catch(e => { console.warn('Foto fora do PDF:', f.legenda, e); return { erro: true, legenda: f.legenda }; })));
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const { linhas, diverg } = _dadosFolhaConferencia(festa);
-  const VERDE = [43, 59, 42], VERMELHO = [185, 28, 28];
+  const linhas = _dadosFolhaConferencia(festa);
+  const VERDE = [43, 59, 42];
   const M = 14, LARG = 210 - 2 * M;
   let y = 16;
 
@@ -3237,43 +3318,19 @@ function _gerarPdfFolhaConferencia(festa) {
     doc.setFont('helvetica', 'bold'); doc.text(`${k}:`, x, y);
     doc.setFont('helvetica', 'normal');
     doc.text(doc.splitTextToSize(String(v), LARG / 2 - 26)[0] || '', x + 24, y);
-    if (i % 2 === 1) y += 5.5;
+    if (i % 2 === 1 || i === info.length - 1) y += 5.5;
   });
   y += 4;
 
   doc.autoTable({
     startY: y, margin: { left: M, right: M },
-    head: [['Item', 'Separado', 'Conferido']],
-    body: linhas.map(l => [l.nome, `${_fmtQtd(l.sep)} ${l.un}`, `${_fmtQtd(l.conf)} ${l.un}`]),
+    head: [['Item', 'Quantidade inicial']],
+    body: linhas.map(l => [l.nome, `${_fmtQtd(l.qtd)} ${l.un}`]),
     styles: { fontSize: 9, cellPadding: 1.8 },
     headStyles: { fillColor: VERDE },
-    columnStyles: { 1: { halign: 'center', cellWidth: 30 }, 2: { halign: 'center', cellWidth: 30 } },
-    didParseCell: h => {
-      if (h.section === 'body' && h.column.index === 2 && linhas[h.row.index].conf !== linhas[h.row.index].sep) {
-        h.cell.styles.textColor = VERMELHO; h.cell.styles.fontStyle = 'bold';
-      }
-    },
+    columnStyles: { 1: { halign: 'center', cellWidth: 40 } },
   });
   y = doc.lastAutoTable.finalY + 9;
-
-  if (y > 265) { doc.addPage(); y = 16; }
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...VERMELHO);
-  doc.text(`Divergências na conferência inicial (${diverg.length})`, M, y);
-  doc.setTextColor(0, 0, 0); y += 3;
-  if (diverg.length) {
-    doc.autoTable({
-      startY: y, margin: { left: M, right: M },
-      head: [['Item', 'Separado', '1ª contagem', 'Recontagem', 'Situação']],
-      body: diverg.map(d => [d.nome, `${_fmtQtd(d.sep)} ${d.un}`, _fmtQtd(d.c1), d.rec !== null ? _fmtQtd(d.rec) : '—', d.situacao]),
-      styles: { fontSize: 9, cellPadding: 1.8 },
-      headStyles: { fillColor: VERMELHO },
-      columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' } },
-    });
-    y = doc.lastAutoTable.finalY + 9;
-  } else {
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-    doc.text('Nenhuma — tudo bateu na primeira contagem.', M, y + 4); y += 12;
-  }
 
   if (festa.obsConferencia) {
     if (y > 260) { doc.addPage(); y = 16; }
@@ -3281,6 +3338,36 @@ function _gerarPdfFolhaConferencia(festa) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
     const linhasObs = doc.splitTextToSize(String(festa.obsConferencia), LARG);
     doc.text(linhasObs, M, y); y += linhasObs.length * 4.5 + 4;
+  }
+
+  if (imagens.length) {
+    const COL = (LARG - 6) / 2, ALT_MAX = 80, LEG = 6;
+    if (y > 240) { doc.addPage(); y = 16; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+    doc.text(`Fotos (${imagens.length})`, M, y); y += 5;
+    for (let i = 0; i < imagens.length; i += 2) {
+      const par = imagens.slice(i, i + 2).map(img => {
+        if (img.erro) return { ...img, wmm: COL, hmm: 10 };
+        const k = Math.min(COL / img.w, ALT_MAX / img.h);
+        return { ...img, wmm: img.w * k, hmm: img.h * k };
+      });
+      const altLinha = Math.max(...par.map(p => p.hmm)) + LEG;
+      if (y + altLinha > 282) { doc.addPage(); y = 16; }
+      par.forEach((p, j) => {
+        const x = M + j * (COL + 6);
+        doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(0);
+        if (p.erro) {
+          doc.setTextColor(150);
+          doc.text('foto não carregou (sem internet?)', x, y + 5);
+        } else {
+          doc.addImage(p.data, 'JPEG', x + (COL - p.wmm) / 2, y, p.wmm, p.hmm);
+        }
+        doc.setTextColor(60);
+        doc.text(doc.splitTextToSize(p.legenda, COL)[0], x + COL / 2, y + p.hmm + 4, { align: 'center' });
+      });
+      y += altLinha + 4;
+    }
+    doc.setTextColor(0);
   }
 
   const n = doc.getNumberOfPages();
@@ -3303,11 +3390,14 @@ function _baixarBlob(blob, nome) {
    compartilhar (exige toque recente) ou não suportar, não faz nada além de
    avisar; o botão da tela resolve. */
 async function compartilharFolhaConferencia(opts = {}) {
+  if (!_folhaConfAtual || !_folhaPdf) return;
+  const pronto = await Promise.race([_folhaPdf.then(() => true, () => true), new Promise(r => setTimeout(() => r(false), 400))]);
+  if (!pronto && !opts.automatico) toast('Preparando o PDF com as fotos...', 'info');
+  let blob;
+  try { blob = await _folhaPdf; }
+  catch (e) { toast('Não foi possível gerar o PDF.', 'erro'); return; }
   const festa = _folhaConfAtual;
   if (!festa) return;
-  let blob;
-  try { blob = _gerarPdfFolhaConferencia(festa); }
-  catch (e) { console.error('PDF da conferência:', e); toast('Não foi possível gerar o PDF.', 'erro'); return; }
   const nome = _nomeArquivoFolhaConf(festa);
   const file = new File([blob], nome, { type: 'application/pdf' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -3316,7 +3406,10 @@ async function compartilharFolhaConferencia(opts = {}) {
       return;
     } catch (e) {
       if (e.name === 'AbortError') return;
-      if (opts.automatico) { toast('Toque em "Enviar PDF no grupo" para mandar a folha.', 'info'); return; }
+      /* Celular só abre o compartilhar logo após um toque: se o PDF demorou
+         (fotos), o toque "venceu" — agora já está pronto, é só tocar de novo. */
+      if (e.name === 'NotAllowedError') { toast('PDF pronto — toque em "Enviar PDF no grupo" de novo.', 'info'); return; }
+      if (opts.automatico) return;
       console.error('Compartilhar PDF:', e);
     }
   } else if (opts.automatico) {
@@ -3326,10 +3419,9 @@ async function compartilharFolhaConferencia(opts = {}) {
   toast('PDF baixado — anexe no grupo do WhatsApp.', 'info');
 }
 
-function baixarFolhaConferencia() {
-  const festa = _folhaConfAtual;
-  if (!festa) return;
-  try { _baixarBlob(_gerarPdfFolhaConferencia(festa), _nomeArquivoFolhaConf(festa)); }
+async function baixarFolhaConferencia() {
+  if (!_folhaConfAtual || !_folhaPdf) return;
+  try { _baixarBlob(await _folhaPdf, _nomeArquivoFolhaConf(_folhaConfAtual)); }
   catch (e) { console.error('PDF da conferência:', e); toast('Não foi possível gerar o PDF.', 'erro'); }
 }
 
@@ -4663,7 +4755,7 @@ function renderizarDetalhe(festa) {
         ${divs.map(d => `
           <div class="detalhe-linha">
             <span>${_escHtml(d.item)}</span>
-            <span>Separado: ${d.separado} / Conferido: ${d.conferido}${d.contagem1 !== undefined ? ` (1ª contagem: ${d.contagem1})` : ''}</span>
+            <span>Separado: ${d.separado} / Conferido: ${d.conferido}${d.contagem1 !== undefined ? ` (quantidade inicial: ${d.contagem1})` : ''}</span>
           </div>
         `).join('')}
       </div>
@@ -4672,11 +4764,11 @@ function renderizarDetalhe(festa) {
     ${(festa.recontagens || []).length ? `
       <div class="detalhe-card" style="border-left:3px solid var(--amarelo)">
         <h3 style="color:var(--amarelo)">Recontagens na Conferencia (${festa.recontagens.length})</h3>
-        <p style="font-size:12px;color:var(--cinza-600);margin-bottom:8px">Itens que divergiram na 1ª contagem do coordenador e foram recontados. Atenção aos que só bateram na recontagem.</p>
+        <p style="font-size:12px;color:var(--cinza-600);margin-bottom:8px">Itens que divergiram na quantidade inicial do coordenador e foram recontados. Atenção aos que só bateram na recontagem.</p>
         ${festa.recontagens.map(r => `
           <div class="detalhe-linha">
             <span>${_escHtml(r.item)}${r.recontagem === r.separado ? ' <strong>(bateu na recontagem)</strong>' : ''}</span>
-            <span>Separado: ${r.separado} / 1ª: ${r.contagem1} / Recontagem: ${r.recontagem}</span>
+            <span>Separado: ${r.separado} / Quantidade inicial: ${r.contagem1} / Recontagem: ${r.recontagem}</span>
           </div>
         `).join('')}
       </div>
