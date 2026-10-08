@@ -4139,10 +4139,19 @@ function abrirRelatorioRetorno(festa, voltarParaDetalhe) {
   _fechPdf.catch(e => console.error('PDF do fechamento:', e));
 }
 
+/* Fotos do item em 3 posições, cada uma embaixo da sua coluna:
+   Inicial (sob Inicial+Reposição), Consumo/Quebras (sob Consumo+Quebras)
+   e Retorno (sob Retorno) — Juliana, 10-07: a foto acompanha o número. */
+const _slotsFotosFech = fotos => ({
+  inicial: (fotos || []).find(f => f.ordem === 0) || null,
+  consumo: (fotos || []).find(f => f.ordem === 1) || null,
+  retorno: (fotos || []).find(f => f.ordem === 2) || null,
+});
+
 function _renderFolhaFechamento(festa) {
   const linhas = _dadosFolhaFechamento(festa);
-  const th = t => `<th style="padding:6px 6px;text-align:left;font-size:11px;border-bottom:2px solid #E5E7EB">${t}</th>`;
-  const td = c => `<td style="padding:6px 6px;font-size:12px;vertical-align:top">${c}</td>`;
+  const th = t => `<th style="padding:6px 4px;text-align:left;font-size:11px;border-bottom:2px solid #E5E7EB">${t}</th>`;
+  const td = (c, extra = '') => `<td style="padding:6px 4px;font-size:12px;vertical-align:top;${extra}">${c}</td>`;
   document.getElementById('relret-content').innerHTML = `
     <div class="card-festa-info" style="margin-bottom:16px">
       <h2>${_escHtml(festa.cliente || festa.nome)}</h2>
@@ -4151,13 +4160,22 @@ function _renderFolhaFechamento(festa) {
     <div class="folha-header">
       ${_infoFolhaFechamento(festa).map(([k, v]) => `<div class="folha-header-linha"><strong>${k}:</strong> ${_escHtml(String(v))}</div>`).join('')}
     </div>
-    <div class="folha-secao" style="overflow-x:auto">
+    <div class="folha-secao">
       <h3 class="folha-secao-titulo">Itens (${linhas.length})</h3>
-      <table style="border-collapse:collapse;width:100%">
+      <table style="border-collapse:collapse;width:100%;table-layout:fixed">
+        <colgroup><col style="width:22%"><col style="width:14%"><col style="width:13%"><col style="width:14%"><col style="width:13%"><col style="width:24%"></colgroup>
         <thead><tr>${th('Item')}${th('Inicial')}${th('Reposição')}${th('Consumo')}${th('Quebras')}${th('Retorno')}</tr></thead>
-        <tbody>${linhas.map(l => `
-          <tr style="${l.i % 2 ? '' : 'background:#F9FAFB'}">${td(`<strong>${_escHtml(l.nome)}</strong>`)}${td(_escHtml(l.inicial))}${td(_escHtml(l.reposta))}${td(_escHtml(l.consumo))}${td(_escHtml(l.quebras))}${td(`<strong>${_escHtml(l.retorno)}</strong>`)}</tr>
-          <tr style="${l.i % 2 ? '' : 'background:#F9FAFB'}"><td colspan="6" id="relret-fotos-item-${l.i}" style="padding:0 6px 8px;border-bottom:1px solid #E5E7EB"></td></tr>`).join('')}</tbody>
+        <tbody>${linhas.map(l => {
+          const fundo = l.i % 2 ? '' : 'background:#F9FAFB;';
+          return `
+          <tr style="${fundo}">${td(`<strong>${_escHtml(l.nome)}</strong>`, 'word-break:break-word')}${td(_escHtml(l.inicial))}${td(_escHtml(l.reposta))}${td(_escHtml(l.consumo))}${td(_escHtml(l.quebras))}${td(`<strong>${_escHtml(l.retorno)}</strong>`)}</tr>
+          <tr style="${fundo}" id="relret-fotos-item-${l.i}">
+            <td style="border-bottom:1px solid #E5E7EB"></td>
+            <td colspan="2" data-slot="inicial" style="padding:0 4px 8px;vertical-align:top;border-bottom:1px solid #E5E7EB"></td>
+            <td colspan="2" data-slot="consumo" style="padding:0 4px 8px;vertical-align:top;border-bottom:1px solid #E5E7EB"></td>
+            <td data-slot="retorno" style="padding:0 4px 8px;vertical-align:top;border-bottom:1px solid #E5E7EB"></td>
+          </tr>`;
+        }).join('')}</tbody>
       </table>
     </div>
     <div class="folha-secao">
@@ -4166,22 +4184,24 @@ function _renderFolhaFechamento(festa) {
     </div>
     <div class="folha-secao" id="relret-fotos"></div>`;
 
-  /* 3 colunas iguais que encolhem com a tela: Inicial, Consumo e Retorno
-     sempre lado a lado, inclusive no celular */
-  const GRADE3 = 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px';
   const thumb = f => `<div style="font-size:11px;text-align:center;min-width:0">
       <img src="${f.blob ? URL.createObjectURL(f.blob) : f.url}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:6px;cursor:pointer;display:block"
         onclick="window.open(this.src,'_blank')"><div>${_escHtml(f.legenda)}</div></div>`;
   _fotosDoFechamento(festa).then(({ porItem, gerais }) => {
     if (_fechAtual?.id !== festa.id) return;
     Object.entries(porItem).forEach(([i, fotos]) => {
-      const el = document.getElementById(`relret-fotos-item-${i}`);
-      if (el) el.innerHTML = `<div style="${GRADE3}">${fotos.map(thumb).join('')}</div>`;
+      const tr = document.getElementById(`relret-fotos-item-${i}`);
+      if (!tr) return;
+      const slots = _slotsFotosFech(fotos);
+      ['inicial', 'consumo', 'retorno'].forEach(k => {
+        const cel = tr.querySelector(`[data-slot="${k}"]`);
+        if (cel && slots[k]) cel.innerHTML = thumb(slots[k]);
+      });
     });
     const el = document.getElementById('relret-fotos');
     if (el) el.innerHTML = gerais.length ? `
       <h3 class="folha-secao-titulo">Fotos gerais (${gerais.length})</h3>
-      <div style="${GRADE3}">${gerais.map(thumb).join('')}</div>` : '';
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">${gerais.map(thumb).join('')}</div>` : '';
   });
 }
 
@@ -4189,15 +4209,22 @@ async function _gerarPdfFolhaFechamento(festa) {
   const { porItem, gerais } = await _fotosDoFechamento(festa);
   const preparar = f => _prepararImagemPdf(f).then(img => ({ ...img, legenda: f.legenda }))
     .catch(e => { console.warn('Foto fora do PDF:', f.legenda, e); return { erro: true, legenda: f.legenda }; });
-  const imgsItem = {};
-  await Promise.all(Object.entries(porItem).map(async ([i, fotos]) => { imgsItem[i] = await Promise.all(fotos.map(preparar)); }));
+  const slotsImg = {};
+  await Promise.all(Object.entries(porItem).map(async ([i, fotos]) => {
+    const sl = _slotsFotosFech(fotos);
+    slotsImg[i] = {
+      inicial: sl.inicial ? await preparar(sl.inicial) : null,
+      consumo: sl.consumo ? await preparar(sl.consumo) : null,
+      retorno: sl.retorno ? await preparar(sl.retorno) : null,
+    };
+  }));
   const imgsGerais = await Promise.all(gerais.map(preparar));
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const linhas = _dadosFolhaFechamento(festa);
   const M = 14, LARG = 210 - 2 * M;
-  const FOTO_W = (LARG - 8) / 3, FOTO_H = 42, LEG = 5;
+  const FOTO_H = 40, TOPO_TXT = 7, LEG = 5;
   let y = 16;
 
   doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
@@ -4216,16 +4243,32 @@ async function _gerarPdfFolhaFechamento(festa) {
   });
   y += 4;
 
-  /* Cada item: linha com as quantidades + linha logo abaixo com as fotos
-     dele (Inicial | Consumo | Retorno), desenhadas dentro da célula */
-  const body = [];
-  linhas.forEach(l => {
+  /* Uma linha por item (texto em cima, fotos embaixo da coluna certa) —
+     linha única não se divide entre páginas: se não couber, desce inteira */
+  const temFoto = l => { const s = slotsImg[l.i]; return !!(s && (s.inicial || s.consumo || s.retorno)); };
+  const body = linhas.map(l => {
     const cor = l.i % 2 ? [255, 255, 255] : [245, 245, 245];
-    body.push([l.nome, l.inicial, l.reposta, l.consumo, l.quebras, l.retorno].map(c => ({ content: c, styles: { fillColor: cor } })));
-    if (imgsItem[l.i]?.length) {
-      body.push([{ content: '', colSpan: 6, styles: { minCellHeight: FOTO_H + LEG + 3, fillColor: cor }, _fotos: imgsItem[l.i] }]);
-    }
+    const altura = temFoto(l) ? TOPO_TXT + FOTO_H + LEG + 3 : 0;
+    return [l.nome, l.inicial, l.reposta, l.consumo, l.quebras, l.retorno]
+      .map(c => ({ content: c, styles: { fillColor: cor, minCellHeight: altura, valign: 'top' }, _linha: l }));
   });
+
+  /* Larguras: as fotos ocupam Inicial+Reposição, Consumo+Quebras e Retorno */
+  const W = { 0: 36, 1: 26, 2: 22, 3: 26, 4: 22, 5: 50 };
+  const desenharFoto = (img, x, w, yTopo) => {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+    let hImg = 8;
+    if (img.erro) {
+      doc.setTextColor(150); doc.text('foto não carregou', x + 1, yTopo + 6);
+    } else {
+      const k = Math.min((w - 3) / img.w, FOTO_H / img.h);
+      hImg = img.h * k;
+      doc.addImage(img.data, 'JPEG', x + (w - img.w * k) / 2, yTopo, img.w * k, hImg);
+    }
+    doc.setTextColor(60);
+    doc.text(img.legenda, x + w / 2, yTopo + hImg + 4, { align: 'center' });
+    doc.setTextColor(0);
+  };
 
   doc.autoTable({
     startY: y, margin: { left: M, right: M },
@@ -4233,27 +4276,27 @@ async function _gerarPdfFolhaFechamento(festa) {
     body,
     rowPageBreak: 'avoid',
     styles: { fontSize: 8.5, cellPadding: 1.6 },
-    headStyles: { fillColor: [43, 59, 42] },
-    columnStyles: { 0: { fontStyle: 'bold' }, 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' }, 4: { halign: 'center' }, 5: { halign: 'center', fontStyle: 'bold' } },
+    headStyles: { fillColor: [43, 59, 42], halign: 'center' },
+    columnStyles: {
+      0: { fontStyle: 'bold', cellWidth: W[0] },
+      1: { halign: 'center', cellWidth: W[1] }, 2: { halign: 'center', cellWidth: W[2] },
+      3: { halign: 'center', cellWidth: W[3] }, 4: { halign: 'center', cellWidth: W[4] },
+      5: { halign: 'center', fontStyle: 'bold', cellWidth: W[5] },
+    },
+    didParseCell: h => { if (h.section === 'head' && h.column.index === 0) h.cell.styles.halign = 'left'; },
+    /* Fotos desenhadas depois da ÚLTIMA célula da linha — se fossem
+       desenhadas na própria coluna, o fundo da coluna vizinha (pintado
+       depois) cobria metade da foto */
     didDrawCell: h => {
-      const fotos = h.section === 'body' && h.cell.raw && h.cell.raw._fotos;
-      if (!fotos) return;
-      fotos.slice(0, 3).forEach((img, j) => {
-        const x0 = h.cell.x + 2 + j * (FOTO_W + 2);
-        const y0 = h.cell.y + 1.5;
-        doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
-        let hImg = 8;
-        if (img.erro) {
-          doc.setTextColor(150); doc.text('foto não carregou', x0, y0 + 6);
-        } else {
-          const k = Math.min((FOTO_W - 2) / img.w, FOTO_H / img.h);
-          hImg = img.h * k;
-          doc.addImage(img.data, 'JPEG', x0 + (FOTO_W - 2 - img.w * k) / 2, y0, img.w * k, hImg);
-        }
-        doc.setTextColor(60);
-        doc.text(img.legenda, x0 + (FOTO_W - 2) / 2, y0 + hImg + 4, { align: 'center' });
-        doc.setTextColor(0);
-      });
+      if (h.section !== 'body' || h.column.index !== 5) return;
+      const l = h.cell.raw && h.cell.raw._linha;
+      const s = l && slotsImg[l.i];
+      if (!s) return;
+      const c = h.row.cells;
+      const yTopo = h.cell.y + TOPO_TXT;
+      if (s.inicial) desenharFoto(s.inicial, c[1].x, W[1] + W[2], yTopo);
+      if (s.consumo) desenharFoto(s.consumo, c[3].x, W[3] + W[4], yTopo);
+      if (s.retorno) desenharFoto(s.retorno, c[5].x, W[5], yTopo);
     },
   });
   y = doc.lastAutoTable.finalY + 9;
