@@ -792,12 +792,12 @@
       <div class="form-secao">
         <div class="form-group">
           <label>Convidados na Portaria</label>
-          <input type="number" id="ret-conv-portaria" min="0" placeholder="Ex: 125" />
+          <input type="number" id="ret-conv-portaria" min="0" placeholder="Ex: 125" oninput="_salvarRascunhoRetornoGeral()" />
         </div>
         <div class="form-row">
           <div class="form-group">
             <label>Teve hora extra?</label>
-            <select id="ret-hora-extra" onchange="document.getElementById('ret-hora-extra-qtd-box').classList.toggle('hidden', this.value !== 'sim')">
+            <select id="ret-hora-extra" onchange="document.getElementById('ret-hora-extra-qtd-box').classList.toggle('hidden', this.value !== 'sim'); _salvarRascunhoRetornoGeral()">
               <option value="">— Selecionar —</option>
               <option value="nao">Não</option>
               <option value="sim">Sim</option>
@@ -805,7 +805,7 @@
           </div>
           <div class="form-group hidden" id="ret-hora-extra-qtd-box">
             <label>Quantas horas?</label>
-            <input type="number" id="ret-hora-extra-qtd" min="0" step="0.5" placeholder="Ex: 1" />
+            <input type="number" id="ret-hora-extra-qtd" min="0" step="0.5" placeholder="Ex: 1" oninput="_salvarRascunhoRetornoGeral()" />
           </div>
         </div>
       </div>
@@ -821,6 +821,7 @@
           Selecionar / Tirar Foto
         </div>
         <div id="preview-cons" class="grade-fotos"></div>
+        <div id="ret-fotos-salvas-cons"></div>
       </div>
 
       <div class="form-group mt-lg">
@@ -831,11 +832,12 @@
           Selecionar / Tirar Foto
         </div>
         <div id="preview-ret" class="grade-fotos"></div>
+        <div id="ret-fotos-salvas-ret"></div>
       </div>
 
       <div class="form-group">
         <label>Observações</label>
-        <textarea id="ret-obs" placeholder="Itens danificados, perdidos..."></textarea>
+        <textarea id="ret-obs" placeholder="Itens danificados, perdidos..." oninput="_salvarRascunhoRetornoGeral()"></textarea>
       </div>
 
       <button class="btn-confirmar btn-full" id="btn-ret-concluir" onclick="concluirRetorno()">
@@ -1859,7 +1861,7 @@
 
   <script src="js/config.js?v=5"></script>
   <script src="js/firestore.js?v=66"></script>
-  <script src="js/app.js?v=158"></script>
+  <script src="js/app.js?v=159"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>

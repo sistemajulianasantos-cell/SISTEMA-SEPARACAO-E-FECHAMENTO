@@ -3483,11 +3483,83 @@ function abrirRetorno(id) {
   /* Cadastro carregado antes: o retorno mostra só os itens da conferência
      ("Conferir" desligado fica de fora) */
   _garantirItemConfigs().then(() => {
+    let primeira = true;
     unsubFesta = escutarFesta(id, festa => {
       festaAtual = festa;
+      if (primeira) { primeira = false; _preencherRascunhoRetornoGeral(festa); }
       renderizarRetorno(festa);
     });
   });
+}
+
+/* ── Rascunho do retorno ──
+   Tudo que o coordenador preenche vai sendo salvo na festa
+   (festa.rascunhoRetorno) enquanto digita — atualizar a página ou fechar o
+   app no meio não perde nada (Juliana, 10-07: perdeu quantidades e fotos
+   ao atualizar). Por item: rascunhoRetorno.<chave> = { cons, dan, marca };
+   gerais: rascunhoRetorno._geral. Apagado ao confirmar o retorno. */
+const _timersRascRet = {};
+function _salvarRascunhoRetornoItem(i) {
+  clearTimeout(_timersRascRet[i]);
+  _timersRascRet[i] = setTimeout(() => {
+    const item = festaAtual?.itens?.[i];
+    if (!item) return;
+    const v = id => document.getElementById(id)?.value ?? '';
+    atualizarFesta(festaAtual.id, {
+      [`rascunhoRetorno.${_chaveFotoItem(item, i)}`]: { cons: v(`ret-cons-${i}`), dan: v(`ret-dan-${i}`), marca: v(`ret-marca-${i}`) },
+    }).catch(e => console.error('Rascunho do retorno:', e));
+  }, 600);
+}
+
+function _salvarRascunhoRetornoGeral() {
+  clearTimeout(_timersRascRet._geral);
+  _timersRascRet._geral = setTimeout(() => {
+    if (!festaAtual) return;
+    const v = id => document.getElementById(id)?.value ?? '';
+    atualizarFesta(festaAtual.id, {
+      'rascunhoRetorno._geral': { portaria: v('ret-conv-portaria'), horaExtra: v('ret-hora-extra'), horas: v('ret-hora-extra-qtd'), obs: v('ret-obs') },
+    }).catch(e => console.error('Rascunho do retorno:', e));
+  }, 600);
+}
+
+function _preencherRascunhoRetornoGeral(festa) {
+  const g = festa.rascunhoRetorno?._geral;
+  if (!g) return;
+  const set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
+  set('ret-conv-portaria', g.portaria);
+  set('ret-hora-extra', g.horaExtra);
+  set('ret-hora-extra-qtd', g.horas);
+  set('ret-obs', g.obs);
+  document.getElementById('ret-hora-extra-qtd-box').classList.toggle('hidden', g.horaExtra !== 'sim');
+}
+
+/* Fotos gerais do retorno sobem na hora (ou vão pra fila), não só ao
+   confirmar — senão atualizar a página no meio perdia as fotos. */
+const _fotosGeraisRetNaFila = { consumo: 0, retorno: 0 };
+async function _enviarFotosGeraisRetorno(tipo, files, inicio) {
+  const festa = festaAtual;
+  if (!festa) return;
+  const campo = tipo === 'consumo' ? 'fotosConsumo' : 'fotosRetorno';
+  try {
+    const { urls, naFila } = await enviarFotosOuGuardar(files, festa.id, tipo, campo);
+    if (urls.length) await atualizarFesta(festa.id, { [campo]: firebase.firestore.FieldValue.arrayUnion(...urls) });
+    files.forEach((_, j) => { fotosCache[tipo][inicio + j] = null; });   /* já salvas — não reenviar ao confirmar */
+    _fotosGeraisRetNaFila[tipo] += naFila;
+    const prev = document.getElementById(`preview-${TIPO_PARA_ID[tipo]}`);
+    if (prev) prev.innerHTML = '';
+    if (festaAtual) renderizarRetorno(festaAtual);
+  } catch (e) {
+    console.error('Fotos gerais do retorno (ficam pra enviar ao confirmar):', e);
+  }
+}
+
+function _htmlFotosGeraisSalvasRet(festa, tipo) {
+  const urls = (tipo === 'consumo' ? festa.fotosConsumo : festa.fotosRetorno) || [];
+  const fila = _fotosGeraisRetNaFila[tipo];
+  if (!urls.length && !fila) return '';
+  return `
+    ${urls.length ? `<div class="grade-fotos">${urls.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>` : ''}
+    ${fila ? `<div style="font-size:12px;color:#B45309;margin-top:4px">${fila} foto(s) guardada(s) no aparelho — sobem quando tiver internet</div>` : ''}`;
 }
 
 /* Itens que entram no retorno: os conferidos na chegada + os que vieram por
@@ -3584,7 +3656,12 @@ function renderizarRetorno(festa) {
   const digitado = {};
   document.querySelectorAll('#ret-itens input[id^="ret-cons-"], #ret-itens input[id^="ret-dan-"], #ret-itens input[id^="ret-marca-"]')
     .forEach(el => { digitado[el.id] = el.value; });
-  const val = (id, padrao) => (id in digitado ? digitado[id] : padrao);
+  const rasc = festa.rascunhoRetorno || {};
+  const val = (id, padrao, i, campo) => {
+    if (id in digitado) return digitado[id];
+    const r = i !== undefined ? rasc[_chaveFotoItem(festa.itens[i], i)] : null;
+    return r && r[campo] !== undefined && r[campo] !== '' ? r[campo] : padrao;
+  };
 
   const noRetorno = (festa.itens || []).map((item, i) => ({ item, i })).filter(({ item }) => _itemNoRetorno(item));
 
@@ -3595,8 +3672,8 @@ function renderizarRetorno(festa) {
     const unidade   = item.unidade || 'un';
     const fator     = _fatorEmbalagemItem(item.nome);
     const unQuebra  = _unidadeQuebraItem(item.nome, unidade);
-    const consumido = val(`ret-cons-${i}`, item.qtdConsumida !== undefined ? item.qtdConsumida : '');
-    const quebras   = val(`ret-dan-${i}`, item.qtdDanificada || 0);
+    const consumido = val(`ret-cons-${i}`, item.qtdConsumida !== undefined ? item.qtdConsumida : '', i, 'cons');
+    const quebras   = val(`ret-dan-${i}`, item.qtdDanificada || 0, i, 'dan');
     const retorno   = _calcularRetornoNativo(enviado, parseFloat(consumido) || 0, parseFloat(quebras) || 0, fator);
     const forn = item.fornecimento || extrairFornDoNome(item.nome);
     const mostrarMarca = forn === 'cliente' || forn === 'consignado';
@@ -3614,7 +3691,8 @@ function renderizarRetorno(festa) {
       <div class="item-entrada" style="margin-bottom:8px">
         <label>Marca:</label>
         <input type="text" class="qty-input" id="ret-marca-${i}"
-          value="${_escHtml(val(`ret-marca-${i}`, item.marca || ''))}" placeholder="Ex: Hendricks" style="width:auto;flex:1" />
+          value="${_escHtml(val(`ret-marca-${i}`, item.marca || '', i, 'marca'))}" placeholder="Ex: Hendricks" style="width:auto;flex:1"
+          oninput="_salvarRascunhoRetornoItem(${i})" />
       </div>` : ''}
       ${copo ? '' : `
       <div class="item-entrada" style="margin-bottom:8px">
@@ -3631,15 +3709,23 @@ function renderizarRetorno(festa) {
           min="0" placeholder="0" style="width:70px" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}', ${fator})" />
         <span class="item-unidade">${_escHtml(unQuebra)}</span>
       </div>
-      ${cfg?.exigeFoto ? `<div id="ret-foto-box-consumo-${i}" class="${(parseFloat(consumido) || 0) + (parseFloat(quebras) || 0) > 0 ? '' : 'hidden'}">${_htmlFotoItemRet(festa, item, i, 'consumo', copo ? 'Foto das quebras' : 'Foto do consumo')}</div>` : ''}
+      ${cfg?.exigeFoto ? `<div id="ret-foto-box-consumo-${i}" class="${(parseFloat(consumido) || 0) + (parseFloat(quebras) || 0) > 0 || _temFotoRet(festa, item, i, 'consumo') ? '' : 'hidden'}">${_htmlFotoItemRet(festa, item, i, 'consumo', copo ? 'Foto das quebras' : 'Foto do consumo')}</div>` : ''}
       <div class="item-sub" style="margin-top:10px;padding:8px 10px;background:#F0FDF4;border-radius:6px;font-size:14px">
         Retorna pro galpão: <strong id="ret-ret-${i}">${_escHtml(_txtQtdRetorno(retorno, unidade, fator))}</strong>
       </div>
-      ${cfg?.exigeFoto ? `<div id="ret-foto-box-retorno-${i}" class="${retorno > 0 ? '' : 'hidden'}">${_htmlFotoItemRet(festa, item, i, 'retorno', 'Foto do retorno')}</div>` : ''}
+      ${cfg?.exigeFoto ? `<div id="ret-foto-box-retorno-${i}" class="${retorno > 0 || _temFotoRet(festa, item, i, 'retorno') ? '' : 'hidden'}">${_htmlFotoItemRet(festa, item, i, 'retorno', 'Foto do retorno')}</div>` : ''}
     </div>
   `;
   }).join('') || estadoVazio('Nenhum item.');
+
+  const salvasCons = document.getElementById('ret-fotos-salvas-cons');
+  if (salvasCons) salvasCons.innerHTML = _htmlFotosGeraisSalvasRet(festa, 'consumo');
+  const salvasRet = document.getElementById('ret-fotos-salvas-ret');
+  if (salvasRet) salvasRet.innerHTML = _htmlFotosGeraisSalvasRet(festa, 'retorno');
 }
+
+const _temFotoRet = (festa, item, i, tipo) =>
+  !!(festa.fotosItensRet?.[_chaveFotoRet(item, i, tipo)] || _fotosRetSessao[_chaveFotoRet(item, i, tipo)]);
 
 /* Copo (categoria com "copo" no Cadastro): no retorno não tem consumo,
    só quebra */
@@ -3820,8 +3906,10 @@ function calcularRetornoItem(i, enviado, unidade, fator) {
   if (el) el.textContent = _txtQtdRetorno(retorno, unidade, fator);
   /* Foto só do que existe: 100% consumido não tem retorno pra fotografar;
      nada consumido/quebrado não tem consumo pra fotografar */
-  document.getElementById(`ret-foto-box-retorno-${i}`)?.classList.toggle('hidden', !(retorno > 0));
-  document.getElementById(`ret-foto-box-consumo-${i}`)?.classList.toggle('hidden', !(consumido + danificado > 0));
+  const item = festaAtual?.itens?.[i];
+  document.getElementById(`ret-foto-box-retorno-${i}`)?.classList.toggle('hidden', !(retorno > 0) && !(item && _temFotoRet(festaAtual, item, i, 'retorno')));
+  document.getElementById(`ret-foto-box-consumo-${i}`)?.classList.toggle('hidden', !(consumido + danificado > 0) && !(item && _temFotoRet(festaAtual, item, i, 'consumo')));
+  _salvarRascunhoRetornoItem(i);
 }
 
 /* Quais fotos do retorno se aplicam ao item, pelo que foi digitado */
@@ -3881,6 +3969,7 @@ async function concluirRetorno() {
       convidadosPortaria: isNaN(convPortariaVal) ? null : convPortariaVal,
       horaExtra,
       horaExtraHoras:     horaExtra === 'sim' ? horasExtraVal : null,
+      rascunhoRetorno:    firebase.firestore.FieldValue.delete(),
     };
 
     await concluirEtapa(festaAtual.id, 'retorno', patchRetorno);
@@ -6150,6 +6239,8 @@ function handleFotos(input, tipo) {
     };
     reader.readAsDataURL(file);
   });
+
+  if (tipo === 'consumo' || tipo === 'retorno') _enviarFotosGeraisRetorno(tipo, files, inicio);
 }
 
 function removerFoto(tipo, idx, btn) {
