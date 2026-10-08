@@ -4053,9 +4053,9 @@ function _dadosFolhaFechamento(festa) {
       i, item,
       nome: nomeBasDisplay(item.nome) + (item.marca ? ` (${item.marca})` : ''),
       inicial:  `${_fmtQtd(item.origemReposicao ? 0 : (item.qtdConferida ?? item.qtdSeparada ?? 0))} ${un}`,
-      reposta:  item.qtdReposta ? `${_fmtQtd(item.qtdReposta)} ${un}` : '—',
-      consumo:  copo ? '—' : `${_fmtQtd(Number(item.qtdConsumida) || 0)} ${un}`,
-      quebras:  item.qtdDanificada ? `${_fmtQtd(item.qtdDanificada)} ${_unidadeQuebraItem(item.nome, un)}` : '—',
+      reposta:  `${_fmtQtd(Number(item.qtdReposta) || 0)} ${un}`,
+      consumo:  `${_fmtQtd(copo ? 0 : (Number(item.qtdConsumida) || 0))} ${un}`,
+      quebras:  `${_fmtQtd(Number(item.qtdDanificada) || 0)} ${_unidadeQuebraItem(item.nome, un)}`,
       retorno:  _txtQtdRetorno(retorno, un, fator),
     };
   });
@@ -4162,19 +4162,22 @@ function _renderFolhaFechamento(festa) {
     </div>
     <div class="folha-secao" id="relret-fotos"></div>`;
 
-  const thumb = f => `<div style="font-size:11px;text-align:center;width:120px">
-      <img src="${f.blob ? URL.createObjectURL(f.blob) : f.url}" style="width:120px;height:95px;object-fit:cover;border-radius:6px;cursor:pointer"
+  /* 3 colunas iguais que encolhem com a tela: Inicial, Consumo e Retorno
+     sempre lado a lado, inclusive no celular */
+  const GRADE3 = 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px';
+  const thumb = f => `<div style="font-size:11px;text-align:center;min-width:0">
+      <img src="${f.blob ? URL.createObjectURL(f.blob) : f.url}" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:6px;cursor:pointer;display:block"
         onclick="window.open(this.src,'_blank')"><div>${_escHtml(f.legenda)}</div></div>`;
   _fotosDoFechamento(festa).then(({ porItem, gerais }) => {
     if (_fechAtual?.id !== festa.id) return;
     Object.entries(porItem).forEach(([i, fotos]) => {
       const el = document.getElementById(`relret-fotos-item-${i}`);
-      if (el) el.innerHTML = `<div style="display:flex;gap:8px;flex-wrap:wrap">${fotos.map(thumb).join('')}</div>`;
+      if (el) el.innerHTML = `<div style="${GRADE3}">${fotos.map(thumb).join('')}</div>`;
     });
     const el = document.getElementById('relret-fotos');
     if (el) el.innerHTML = gerais.length ? `
       <h3 class="folha-secao-titulo">Fotos gerais (${gerais.length})</h3>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">${gerais.map(thumb).join('')}</div>` : '';
+      <div style="${GRADE3}">${gerais.map(thumb).join('')}</div>` : '';
   });
 }
 
