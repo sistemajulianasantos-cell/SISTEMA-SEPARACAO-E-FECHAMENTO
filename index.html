@@ -815,6 +815,20 @@
     </div>
   </div>
 
+  <!-- ══════════ TELA: FOLHA DE CONFERÊNCIA (chegada) ══════════ -->
+  <div id="tela-folha-conferencia" class="tela hidden">
+    <div class="container">
+      <div id="folhaconf-content"></div>
+      <div class="no-print" style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+        <button class="btn-confirmar btn-full" onclick="compartilharFolhaConferencia()">Enviar PDF no grupo</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn-secundario btn-full" onclick="baixarFolhaConferencia()">Baixar PDF</button>
+          <button class="btn-primario btn-full" onclick="fecharFolhaConferencia()">Concluir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════ TELA: GALPÃO — DETALHE ══════════ -->
   <div id="tela-galpao" class="tela hidden">
     <div class="container">
@@ -1780,6 +1794,15 @@
     integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e"
     crossorigin="anonymous"></script>
 
+  <!-- jsPDF — Folha de Conferência em PDF (carregado sempre, pra ficar
+       guardado pelo sw.js e funcionar sem internet) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+    integrity="sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk"
+    crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"
+    integrity="sha384-fCAW/rDWORTbQXSiB7mOg0QtQ5c+r0f544y6XoKjuVva0nMBlCpNUjiFeG5iMdS3"
+    crossorigin="anonymous"></script>
+
   <!-- Firebase SDK (Compat) -->
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"
     integrity="sha384-BkEIW/B4JV9w6pRfBRgZtAcYDk5goH1nUI49rLo8s5PSHgTfgxWBczRVJx+fv5kP"
@@ -1796,7 +1819,7 @@
 
   <script src="js/config.js?v=5"></script>
   <script src="js/firestore.js?v=64"></script>
-  <script src="js/app.js?v=148"></script>
+  <script src="js/app.js?v=149"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>

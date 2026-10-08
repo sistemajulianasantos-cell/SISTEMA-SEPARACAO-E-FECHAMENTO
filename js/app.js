@@ -3074,14 +3074,23 @@ async function concluirConferencia() {
 
     /* Registra no histórico o que saiu pra festa (informativo — não mexe no
        saldo). Não trava a conclusão se falhar. */
-    try { await _baixarEstoqueDaFesta({ ...festaAtual, estoqueBaixado: festaAtual.estoqueBaixado }, itens); }
-    catch (e) { console.error('Registro de saída da festa:', e); }
+    _baixarEstoqueDaFesta({ ...festaAtual, estoqueBaixado: festaAtual.estoqueBaixado }, itens)
+      .catch(e => console.error('Registro de saída da festa:', e));
 
     const msg = divergencias.length
       ? `Conferencia concluida com ${divergencias.length} divergencia(s). Festa liberada.`
       : 'Conferencia concluida sem divergencias. Festa liberada.';
     toast(msg, divergencias.length ? 'aviso' : 'sucesso');
-    setTimeout(() => irParaPrincipal(), 1800);
+
+    /* Folha de Conferência em PDF já pronta pra enviar no grupo (Juliana,
+       10-07). Tenta abrir o compartilhar na hora; se o celular bloquear
+       (passou tempo desde o toque), fica o botão "Enviar PDF no grupo". */
+    abrirFolhaConferencia({
+      ...festaAtual, itens, divergencias, recontagens,
+      obsConferencia: document.getElementById('conf-obs').value,
+      coordenador: usuarioAtual.nome, conferenciaFim: new Date(),
+    });
+    compartilharFolhaConferencia({ automatico: true });
 
   } catch (e) {
     console.error(e);
@@ -3089,6 +3098,233 @@ async function concluirConferencia() {
     btn.disabled    = false;
     btn.textContent = 'Confirmar Conferência — Liberar para Festa';
   }
+}
+
+/* ══════════════════════════════════════════════════
+   FOLHA DE CONFERÊNCIA (chegada) — PDF pro grupo
+   Gerada ao concluir a conferência: itens conferidos (separado x
+   conferido) e, no fim, as divergências da contagem inicial (1ª contagem
+   do coordenador que não bateu com o separado, e como ficou na
+   recontagem). PDF feito no aparelho (jsPDF), funciona sem internet.
+══════════════════════════════════════════════════ */
+let _folhaConfAtual = null;
+
+function _dadosFolhaConferencia(festa) {
+  const itens = (festa.itens || []).filter(it => buscarConfigItemPorNome(it.nome)?.conferirCoord !== false);
+  const linhas = itens.map(it => ({
+    nome: nomeBasDisplay(it.nome), un: it.unidade || 'un',
+    sep: it.qtdSeparada || 0, conf: it.qtdConferida ?? 0,
+  }));
+  const diverg = itens
+    .filter(it => it.contagem1 !== undefined || (it.qtdConferida ?? 0) !== (it.qtdSeparada || 0))
+    .map(it => {
+      const sep = it.qtdSeparada || 0;
+      const fin = it.qtdConferida ?? 0;
+      const recontou = it.contagem1 !== undefined;
+      return {
+        nome: nomeBasDisplay(it.nome), un: it.unidade || 'un', sep,
+        c1:  recontou ? it.contagem1 : fin,
+        rec: recontou ? fin : null,
+        situacao: fin === sep ? 'bateu na recontagem'
+          : fin < sep ? `faltam ${_fmtQtd(sep - fin)}` : `sobram ${_fmtQtd(fin - sep)}`,
+      };
+    });
+  return { linhas, diverg };
+}
+
+function _infoFolhaConferencia(festa) {
+  return [
+    ['Cliente', festa.cliente || '—'],
+    ['Data', festa.data ? formatarData(festa.data) : '—'],
+    ['Evento', festa.tipoEvento || '—'],
+    ['Contrato', festa.contrato || '—'],
+    ['Local', festa.local || '—'],
+    ['Hora início', festa.hora || '—'],
+    ['Coordenador', festa.coordenador || '—'],
+    ['Conferida em', festa.conferenciaFim ? formatarDataHora(festa.conferenciaFim) : '—'],
+  ];
+}
+
+function abrirFolhaConferencia(festa, voltarParaDetalhe) {
+  pararListeners();
+  _folhaConfAtual = festa;
+  if (voltarParaDetalhe) {
+    festaAtual = festa;
+    historico.push('tela-folha-conferencia');
+  } else {
+    historico = [telaListaAtual()];
+  }
+  mostrarTela('tela-folha-conferencia', 'Folha de Conferência');
+
+  const { linhas, diverg } = _dadosFolhaConferencia(festa);
+  const th = t => `<th style="padding:6px 8px;text-align:left;font-size:11px;border-bottom:2px solid #E5E7EB">${t}</th>`;
+  const td = (c, extra = '') => `<td style="padding:6px 8px;border-bottom:1px solid #F3F4F6;${extra}">${c}</td>`;
+
+  document.getElementById('folhaconf-content').innerHTML = `
+    <div class="card-festa-info" style="margin-bottom:16px">
+      <h2>${_escHtml(festa.cliente || festa.nome)}</h2>
+      <div class="card-festa-meta">${_escHtml(festa.nome)} · Folha de Conferência (chegada)</div>
+    </div>
+    <div class="folha-header">
+      ${_infoFolhaConferencia(festa).map(([k, v]) => `<div class="folha-header-linha"><strong>${k}:</strong> ${_escHtml(String(v))}</div>`).join('')}
+    </div>
+    <div class="folha-secao">
+      <h3 class="folha-secao-titulo">Itens conferidos (${linhas.length})</h3>
+      <table style="border-collapse:collapse;width:100%;font-size:13px">
+        <thead><tr>${th('Item')}${th('Separado')}${th('Conferido')}</tr></thead>
+        <tbody>${linhas.map(l => `<tr>
+          ${td(_escHtml(l.nome))}
+          ${td(`${_fmtQtd(l.sep)} ${_escHtml(l.un)}`)}
+          ${td(`<strong style="color:${l.conf !== l.sep ? '#B91C1C' : 'inherit'}">${_fmtQtd(l.conf)} ${_escHtml(l.un)}</strong>`)}
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <div class="folha-secao">
+      <h3 class="folha-secao-titulo">Divergências na conferência inicial (${diverg.length})</h3>
+      ${diverg.length ? `
+        <table style="border-collapse:collapse;width:100%;font-size:13px">
+          <thead><tr>${th('Item')}${th('Separado')}${th('1ª contagem')}${th('Recontagem')}${th('Situação')}</tr></thead>
+          <tbody>${diverg.map(d => `<tr>
+            ${td(_escHtml(d.nome))}
+            ${td(`${_fmtQtd(d.sep)} ${_escHtml(d.un)}`)}
+            ${td(`<strong style="color:#B91C1C">${_fmtQtd(d.c1)}</strong>`)}
+            ${td(d.rec !== null ? _fmtQtd(d.rec) : '—')}
+            ${td(_escHtml(d.situacao), `color:${d.situacao.startsWith('bateu') ? '#047857' : '#B91C1C'};font-weight:600`)}
+          </tr>`).join('')}</tbody>
+        </table>` : '<div class="folha-texto">Nenhuma — tudo bateu na primeira contagem.</div>'}
+    </div>
+    <div class="folha-secao">
+      <h3 class="folha-secao-titulo">Observações</h3>
+      <div class="folha-texto">${festa.obsConferencia ? _escHtml(festa.obsConferencia).replace(/\n/g, '<br>') : '—'}</div>
+    </div>`;
+}
+
+function _nomeArquivoFolhaConf(festa) {
+  const limpo = String(festa.cliente || festa.nome || 'festa').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60);
+  const d = festa.data ? toDate(festa.data) : new Date();
+  const dia = !isNaN(d) ? `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}` : '';
+  return `Conferencia - ${limpo}${dia ? ' - ' + dia : ''}.pdf`;
+}
+
+function _gerarPdfFolhaConferencia(festa) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const { linhas, diverg } = _dadosFolhaConferencia(festa);
+  const VERDE = [43, 59, 42], VERMELHO = [185, 28, 28];
+  const M = 14, LARG = 210 - 2 * M;
+  let y = 16;
+
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(15);
+  doc.text('Folha de Conferência — Chegada', M, y); y += 7;
+  doc.setFontSize(11);
+  doc.text(String(festa.cliente || festa.nome || ''), M, y); y += 7;
+
+  doc.setFontSize(9.5);
+  const info = _infoFolhaConferencia(festa);
+  info.forEach(([k, v], i) => {
+    const x = i % 2 === 0 ? M : M + LARG / 2;
+    doc.setFont('helvetica', 'bold'); doc.text(`${k}:`, x, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(doc.splitTextToSize(String(v), LARG / 2 - 26)[0] || '', x + 24, y);
+    if (i % 2 === 1) y += 5.5;
+  });
+  y += 4;
+
+  doc.autoTable({
+    startY: y, margin: { left: M, right: M },
+    head: [['Item', 'Separado', 'Conferido']],
+    body: linhas.map(l => [l.nome, `${_fmtQtd(l.sep)} ${l.un}`, `${_fmtQtd(l.conf)} ${l.un}`]),
+    styles: { fontSize: 9, cellPadding: 1.8 },
+    headStyles: { fillColor: VERDE },
+    columnStyles: { 1: { halign: 'center', cellWidth: 30 }, 2: { halign: 'center', cellWidth: 30 } },
+    didParseCell: h => {
+      if (h.section === 'body' && h.column.index === 2 && linhas[h.row.index].conf !== linhas[h.row.index].sep) {
+        h.cell.styles.textColor = VERMELHO; h.cell.styles.fontStyle = 'bold';
+      }
+    },
+  });
+  y = doc.lastAutoTable.finalY + 9;
+
+  if (y > 265) { doc.addPage(); y = 16; }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(...VERMELHO);
+  doc.text(`Divergências na conferência inicial (${diverg.length})`, M, y);
+  doc.setTextColor(0, 0, 0); y += 3;
+  if (diverg.length) {
+    doc.autoTable({
+      startY: y, margin: { left: M, right: M },
+      head: [['Item', 'Separado', '1ª contagem', 'Recontagem', 'Situação']],
+      body: diverg.map(d => [d.nome, `${_fmtQtd(d.sep)} ${d.un}`, _fmtQtd(d.c1), d.rec !== null ? _fmtQtd(d.rec) : '—', d.situacao]),
+      styles: { fontSize: 9, cellPadding: 1.8 },
+      headStyles: { fillColor: VERMELHO },
+      columnStyles: { 1: { halign: 'center' }, 2: { halign: 'center' }, 3: { halign: 'center' } },
+    });
+    y = doc.lastAutoTable.finalY + 9;
+  } else {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+    doc.text('Nenhuma — tudo bateu na primeira contagem.', M, y + 4); y += 12;
+  }
+
+  if (festa.obsConferencia) {
+    if (y > 260) { doc.addPage(); y = 16; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text('Observações', M, y); y += 5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+    const linhasObs = doc.splitTextToSize(String(festa.obsConferencia), LARG);
+    doc.text(linhasObs, M, y); y += linhasObs.length * 4.5 + 4;
+  }
+
+  const n = doc.getNumberOfPages();
+  for (let p = 1; p <= n; p++) {
+    doc.setPage(p); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110);
+    doc.text(`${festa.nome || ''} · página ${p} de ${n}`, M, 290);
+  }
+  return doc.output('blob');
+}
+
+function _baixarBlob(blob, nome) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nome;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
+/* automatico: chamado logo após concluir — se o celular bloquear o
+   compartilhar (exige toque recente) ou não suportar, não faz nada além de
+   avisar; o botão da tela resolve. */
+async function compartilharFolhaConferencia(opts = {}) {
+  const festa = _folhaConfAtual;
+  if (!festa) return;
+  let blob;
+  try { blob = _gerarPdfFolhaConferencia(festa); }
+  catch (e) { console.error('PDF da conferência:', e); toast('Não foi possível gerar o PDF.', 'erro'); return; }
+  const nome = _nomeArquivoFolhaConf(festa);
+  const file = new File([blob], nome, { type: 'application/pdf' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: nome.replace(/\.pdf$/, '') });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      if (opts.automatico) { toast('Toque em "Enviar PDF no grupo" para mandar a folha.', 'info'); return; }
+      console.error('Compartilhar PDF:', e);
+    }
+  } else if (opts.automatico) {
+    return;   /* computador: fica o botão (baixa o PDF) */
+  }
+  _baixarBlob(blob, nome);
+  toast('PDF baixado — anexe no grupo do WhatsApp.', 'info');
+}
+
+function baixarFolhaConferencia() {
+  const festa = _folhaConfAtual;
+  if (!festa) return;
+  try { _baixarBlob(_gerarPdfFolhaConferencia(festa), _nomeArquivoFolhaConf(festa)); }
+  catch (e) { console.error('PDF da conferência:', e); toast('Não foi possível gerar o PDF.', 'erro'); }
+}
+
+function fecharFolhaConferencia() {
+  _folhaConfAtual = null;
+  irParaPrincipal();
 }
 
 /* ── RETORNO ── */
@@ -4149,6 +4385,12 @@ function renderizarDetalhe(festa) {
        </div>`
     : '';
 
+  const folhaConferenciaHTML = ['festa', 'retorno', 'galpao', 'concluida'].includes(festa.status)
+    ? `<div class="detalhe-acoes" style="margin-bottom:16px">
+        <button class="btn-secundario" onclick="abrirFolhaConferencia(festaAtual, true)">Folha de Conferência (PDF)</button>
+       </div>`
+    : '';
+
   const folhaFechamentoHTML = (festa.status === 'galpao' || festa.status === 'concluida')
     ? `<div class="detalhe-acoes" style="margin-bottom:16px">
         <button class="btn-secundario" onclick="abrirRelatorioRetorno(festaAtual, true)">Ver Folha de Fechamento</button>
@@ -4235,6 +4477,7 @@ function renderizarDetalhe(festa) {
     ${excluirHTML}
     ${linkConfHTML}
     ${avancarHTML}
+    ${folhaConferenciaHTML}
     ${folhaFechamentoHTML}
     ${editarHTML}
     <div id="banner-divergencia-gestao"></div>
