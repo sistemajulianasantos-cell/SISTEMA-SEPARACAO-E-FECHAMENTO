@@ -2550,9 +2550,33 @@ async function abrirConferencia(id) {
 
   unsubFesta = escutarFesta(id, festa => {
     festaAtual = festa;
-    renderizarConferencia(festa);
+    _renderSemFecharTeclado('tela-conferencia', () => renderizarConferencia(festaAtual));
   });
 }
+
+/* Redesenhar a tela enquanto a pessoa digita recria o campo e o celular
+   fecha o teclado (Juliana, 10-07: a cada número digitado o teclado sumia —
+   o salvamento automático dispara a atualização da festa). Enquanto houver
+   um campo de digitação com foco na tela, adia; redesenha quando ela tocar
+   fora (o que já foi digitado continua no campo e já foi salvo). */
+const _rendersAdiados = {};
+const _digitandoEm = telaId => {
+  const a = document.activeElement;
+  return !!(a && ['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName) && a.type !== 'file' && a.closest('#' + telaId));
+};
+function _renderSemFecharTeclado(telaId, render) {
+  if (_digitandoEm(telaId)) { _rendersAdiados[telaId] = render; return; }
+  _rendersAdiados[telaId] = null;
+  render();
+}
+function _rodarRendersAdiados() {
+  Object.keys(_rendersAdiados).forEach(telaId => {
+    const r = _rendersAdiados[telaId];
+    if (r && !_digitandoEm(telaId)) { _rendersAdiados[telaId] = null; r(); }
+  });
+}
+document.addEventListener('focusout', () => setTimeout(_rodarRendersAdiados, 250));
+setInterval(_rodarRendersAdiados, 1000);   /* garantia, caso o "saiu do campo" não dispare */
 
 /* Foto do item na conferência: item.fotoConferencia (enviada na hora) ou
    festa.fotosItensConf[chave] (veio da fila de fotos offline — 'pendente'
@@ -3487,7 +3511,7 @@ function abrirRetorno(id) {
     unsubFesta = escutarFesta(id, festa => {
       festaAtual = festa;
       if (primeira) { primeira = false; _preencherRascunhoRetornoGeral(festa); }
-      renderizarRetorno(festa);
+      _renderSemFecharTeclado('tela-retorno', () => renderizarRetorno(festaAtual));
     });
   });
 }
