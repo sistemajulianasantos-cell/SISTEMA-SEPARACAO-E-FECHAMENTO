@@ -3600,6 +3600,7 @@ function renderizarRetorno(festa) {
     const retorno   = _calcularRetornoNativo(enviado, parseFloat(consumido) || 0, parseFloat(quebras) || 0, fator);
     const forn = item.fornecimento || extrairFornDoNome(item.nome);
     const mostrarMarca = forn === 'cliente' || forn === 'consignado';
+    const copo = _ehCopoItem(item);   /* copo não é consumido, só quebra (em un) */
     return `
     <div class="item-row">
       <div class="item-topo">
@@ -3615,28 +3616,46 @@ function renderizarRetorno(festa) {
         <input type="text" class="qty-input" id="ret-marca-${i}"
           value="${_escHtml(val(`ret-marca-${i}`, item.marca || ''))}" placeholder="Ex: Hendricks" style="width:auto;flex:1" />
       </div>` : ''}
+      ${copo ? '' : `
       <div class="item-entrada" style="margin-bottom:8px">
         <label>Consumido:</label>
         <input type="number" class="qty-input" id="ret-cons-${i}"
           value="${_escHtml(String(consumido))}"
           min="0" placeholder="0" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}', ${fator})" />
         <span class="item-unidade">${_escHtml(unidade)}</span>
-      </div>
+      </div>`}
       <div class="item-entrada">
-        <label>Quebras / Danificado:</label>
+        <label>${copo ? 'Quebras' : 'Quebras / Danificado'}:</label>
         <input type="number" class="qty-input" id="ret-dan-${i}"
           value="${_escHtml(String(quebras))}"
           min="0" placeholder="0" style="width:70px" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}', ${fator})" />
         <span class="item-unidade">${_escHtml(unQuebra)}</span>
       </div>
-      ${cfg?.exigeFoto ? `<div id="ret-foto-box-consumo-${i}" class="${(parseFloat(consumido) || 0) + (parseFloat(quebras) || 0) > 0 ? '' : 'hidden'}">${_htmlFotoItemRet(festa, item, i, 'consumo', 'Foto do consumo')}</div>` : ''}
+      ${cfg?.exigeFoto ? `<div id="ret-foto-box-consumo-${i}" class="${(parseFloat(consumido) || 0) + (parseFloat(quebras) || 0) > 0 ? '' : 'hidden'}">${_htmlFotoItemRet(festa, item, i, 'consumo', copo ? 'Foto das quebras' : 'Foto do consumo')}</div>` : ''}
       <div class="item-sub" style="margin-top:10px;padding:8px 10px;background:#F0FDF4;border-radius:6px;font-size:14px">
-        Retorna pro galpão: <strong id="ret-ret-${i}">${_fmtQtd(retorno)} ${_escHtml(unidade)}</strong>
+        Retorna pro galpão: <strong id="ret-ret-${i}">${_escHtml(_txtQtdRetorno(retorno, unidade, fator))}</strong>
       </div>
       ${cfg?.exigeFoto ? `<div id="ret-foto-box-retorno-${i}" class="${retorno > 0 ? '' : 'hidden'}">${_htmlFotoItemRet(festa, item, i, 'retorno', 'Foto do retorno')}</div>` : ''}
     </div>
   `;
   }).join('') || estadoVazio('Nenhum item.');
+}
+
+/* Copo (categoria com "copo" no Cadastro): no retorno não tem consumo,
+   só quebra */
+function _ehCopoItem(item) {
+  return _categoriaNormItem(item).includes('copo');
+}
+
+/* Retorno com a conversão quando o item tem caixa cadastrada: a quebra é
+   em unidade, então mostra em un + quantas caixas fechadas e soltas
+   (ex.: "147 un (= 9 cx e 12 un)"). Sem caixa, "8 un". */
+function _txtQtdRetorno(qtdNativa, unidade, fator) {
+  if (!(fator > 0)) return `${_fmtQtd(qtdNativa)} ${unidade}`;
+  const un = Math.round(qtdNativa * fator * 10) / 10;
+  const cx = Math.floor(un / fator);
+  const soltas = Math.round((un - cx * fator) * 10) / 10;
+  return `${_fmtQtd(un)} un (= ${cx} ${unidade}${soltas ? ` e ${_fmtQtd(soltas)} un` : ''})`;
 }
 
 /* Quanto foi pra festa: conferido na chegada (ou separado) + reposições
@@ -3798,7 +3817,7 @@ function calcularRetornoItem(i, enviado, unidade, fator) {
   const danificado = parseFloat(document.getElementById(`ret-dan-${i}`)?.value) || 0;
   const retorno = _calcularRetornoNativo(enviado, consumido, danificado, fator || 0);
   const el = document.getElementById(`ret-ret-${i}`);
-  if (el) el.textContent = `${_fmtQtd(retorno)} ${unidade}`;
+  if (el) el.textContent = _txtQtdRetorno(retorno, unidade, fator);
   /* Foto só do que existe: 100% consumido não tem retorno pra fotografar;
      nada consumido/quebrado não tem consumo pra fotografar */
   document.getElementById(`ret-foto-box-retorno-${i}`)?.classList.toggle('hidden', !(retorno > 0));
@@ -3891,7 +3910,7 @@ async function concluirRetorno() {
    Retorno — dá pra reabrir a qualquer momento pelo Detalhe da Festa (não
    só logo após concluir o Retorno) pra acompanhar se está tudo batendo. */
 function _categoriaNormItem(item) {
-  const cfg = buscarConfigItem(normalizarNomeItem(item.nome));
+  const cfg = buscarConfigItemPorNome(item.nome);
   return normalizarNomeItem(cfg?.grupo || item.categoria || '');
 }
 
