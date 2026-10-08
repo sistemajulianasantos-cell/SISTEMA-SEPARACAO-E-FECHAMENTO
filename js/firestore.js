@@ -1149,7 +1149,8 @@ const listarFilaFotos = () => _filaFotos('readonly', st => st.getAll());
 async function _aplicarFotoEnviada(f) {
   const ref = db.collection('festas').doc(f.festaId);
   if (f.destino.tipo === 'item') {
-    return ref.update({ [`fotosItensConf.${f.destino.chave}`]: f.url });
+    /* campo: 'fotosItensConf' (conferência, padrão) ou 'fotosItensRet' (retorno) */
+    return ref.update({ [`${f.destino.campo || 'fotosItensConf'}.${f.destino.chave}`]: f.url });
   }
   return ref.update({ [f.destino.campo]: firebase.firestore.FieldValue.arrayUnion(f.url) });
 }

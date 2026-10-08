@@ -810,11 +810,11 @@
         </div>
       </div>
 
-      <h3 class="titulo-secao">Consumo e quebras</h3>
+      <h3 class="titulo-secao">Itens — consumo, quebras e retorno</h3>
       <div id="ret-itens"></div>
 
       <div class="form-group mt-lg">
-        <label>Fotos do consumo e quebras</label>
+        <label>Fotos gerais do consumo e quebras (opcional)</label>
         <div class="area-upload" onclick="document.getElementById('input-foto-cons').click()">
           <input type="file" id="input-foto-cons" accept="image/*" multiple capture="environment"
             style="display:none" onchange="handleFotos(this,'consumo')">
@@ -823,12 +823,8 @@
         <div id="preview-cons" class="grade-fotos"></div>
       </div>
 
-      <h3 class="titulo-secao mt-lg">Retorno</h3>
-      <p style="font-size:12px;color:var(--cinza-600);margin:-4px 0 8px">O que volta pro galpão (enviado − consumo − quebras).</p>
-      <div id="ret-retorno-lista" class="detalhe-card"></div>
-
       <div class="form-group mt-lg">
-        <label>Fotos do retorno</label>
+        <label>Fotos gerais do retorno (opcional)</label>
         <div class="area-upload" onclick="document.getElementById('input-foto-ret').click()">
           <input type="file" id="input-foto-ret" accept="image/*" multiple capture="environment"
             style="display:none" onchange="handleFotos(this,'retorno')">
@@ -1862,8 +1858,8 @@
     crossorigin="anonymous"></script>
 
   <script src="js/config.js?v=5"></script>
-  <script src="js/firestore.js?v=65"></script>
-  <script src="js/app.js?v=155"></script>
+  <script src="js/firestore.js?v=66"></script>
+  <script src="js/app.js?v=156"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>

@@ -3522,23 +3522,84 @@ function _calcularRetornoNativo(enviado, consumido, danificadoUn, fator) {
   return Math.max(0, enviado - consumido - danificadoUn);
 }
 
+/* Foto de item no retorno (itens com "Exige foto" no Cadastro, igual à
+   conferência): uma do consumo e uma do retorno. Ficam em
+   festa.fotosItensRet["<chave>__consumo" | "<chave>__retorno"] — campo
+   próprio (não o array itens), 'pendente' enquanto está na fila do aparelho. */
+const _chaveFotoRet = (item, idx, tipo) => `${_chaveFotoItem(item, idx)}__${tipo}`;
+const _fotosRetSessao = {};   /* chave -> File, só pra mostrar a prévia na sessão */
+
+function _htmlFotoItemRet(festa, item, i, tipo, titulo) {
+  const k = _chaveFotoRet(item, i, tipo);
+  const salva = festa.fotosItensRet?.[k];
+  const pendente = salva === 'pendente';
+  const local = _fotosRetSessao[k];
+  const tem = !!(local || salva);
+  return `
+    <div class="item-foto-area${tem ? ' ok' : ''}" style="margin-top:8px">
+      <div class="item-foto-preview">
+        ${local ? `<img src="${URL.createObjectURL(local)}" alt="foto">`
+          : salva && !pendente ? `<img src="${salva}" alt="foto">` : `<div class="item-foto-placeholder"></div>`}
+      </div>
+      <div class="item-foto-label">
+        <div class="item-foto-label-titulo${tem ? ' ok' : ''}">${pendente ? `${titulo} salva no aparelho` : tem ? `${titulo} anexada` : `${titulo} obrigatória`}</div>
+        <div class="item-foto-label-desc">${pendente ? 'Envia sozinha quando tiver internet' : tem ? 'Toque para trocar' : 'Este item exige registro fotográfico'}</div>
+      </div>
+      <input type="file" id="ret-foto-${tipo}-${i}" accept="image/*" capture="environment" style="display:none"
+        onchange="onFotoItemRet(${i}, '${tipo}', this)" />
+      <button class="btn-foto-item${tem ? ' ok' : ''}" onclick="document.getElementById('ret-foto-${tipo}-${i}').click()">${tem ? 'OK' : 'Anexar'}</button>
+    </div>`;
+}
+
+async function onFotoItemRet(idx, tipo, input) {
+  const file = input.files?.[0];
+  if (!file || !festaAtual) return;
+  const item = festaAtual.itens?.[idx];
+  const k = _chaveFotoRet(item, idx, tipo);
+  _fotosRetSessao[k] = file;
+  renderizarRetorno(festaAtual);
+  try {
+    if (navigator.onLine === false) throw new Error('offline');
+    const url = await _uploadCloudinary(file, festaAtual.id, `ret_${tipo}_${idx}`);
+    await atualizarFesta(festaAtual.id, { [`fotosItensRet.${k}`]: url });
+  } catch (e) {
+    console.warn('Foto do retorno vai pra fila:', e);
+    try {
+      await atualizarFesta(festaAtual.id, { [`fotosItensRet.${k}`]: 'pendente' });
+      await guardarFotoNaFila(file, festaAtual.id, `ret_${tipo}_${idx}`, { tipo: 'item', campo: 'fotosItensRet', chave: k });
+    } catch (e2) {
+      console.error('Erro ao guardar foto do retorno:', e2);
+      delete _fotosRetSessao[k];
+      toast('Não foi possível guardar a foto. Tente novamente.', 'erro');
+      renderizarRetorno(festaAtual);
+    }
+  }
+}
+
 function renderizarRetorno(festa) {
   document.getElementById('ret-info').innerHTML = htmlInfoFesta(festa) + htmlLinkConferenciaBtn(festa);
+
+  /* A tela é redesenhada a cada atualização da festa (ex.: foto anexada) —
+     guarda o que já foi digitado pra não apagar. */
+  const digitado = {};
+  document.querySelectorAll('#ret-itens input[id^="ret-cons-"], #ret-itens input[id^="ret-dan-"], #ret-itens input[id^="ret-marca-"]')
+    .forEach(el => { digitado[el.id] = el.value; });
+  const val = (id, padrao) => (id in digitado ? digitado[id] : padrao);
 
   const noRetorno = (festa.itens || []).map((item, i) => ({ item, i })).filter(({ item }) => _itemNoRetorno(item));
 
   document.getElementById('ret-itens').innerHTML = noRetorno.map(({ item, i }) => {
+    const cfg       = buscarConfigItemPorNome(item.nome);
     const badgeForn = htmlBadgeForn(item);
     const enviado   = _qtdEnviadaItem(item);
     const unidade   = item.unidade || 'un';
     const fator     = _fatorEmbalagemItem(item.nome);
     const unQuebra  = _unidadeQuebraItem(item.nome, unidade);
-    const consumidoInicial  = item.qtdConsumida !== undefined ? item.qtdConsumida : '';
-    const danificadoInicial = item.qtdDanificada || 0;
-    const retornoInicial = _calcularRetornoNativo(enviado, parseFloat(consumidoInicial) || 0, danificadoInicial, fator);
+    const consumido = val(`ret-cons-${i}`, item.qtdConsumida !== undefined ? item.qtdConsumida : '');
+    const quebras   = val(`ret-dan-${i}`, item.qtdDanificada || 0);
+    const retorno   = _calcularRetornoNativo(enviado, parseFloat(consumido) || 0, parseFloat(quebras) || 0, fator);
     const forn = item.fornecimento || extrairFornDoNome(item.nome);
     const mostrarMarca = forn === 'cliente' || forn === 'consignado';
-    const marcaInicial = item.marca || '';
     return `
     <div class="item-row">
       <div class="item-topo">
@@ -3552,34 +3613,29 @@ function renderizarRetorno(festa) {
       <div class="item-entrada" style="margin-bottom:8px">
         <label>Marca:</label>
         <input type="text" class="qty-input" id="ret-marca-${i}"
-          value="${_escHtml(marcaInicial)}" placeholder="Ex: Hendricks" style="width:auto;flex:1" />
+          value="${_escHtml(val(`ret-marca-${i}`, item.marca || ''))}" placeholder="Ex: Hendricks" style="width:auto;flex:1" />
       </div>` : ''}
       <div class="item-entrada" style="margin-bottom:8px">
         <label>Consumido:</label>
         <input type="number" class="qty-input" id="ret-cons-${i}"
-          value="${consumidoInicial}"
+          value="${_escHtml(String(consumido))}"
           min="0" placeholder="0" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}', ${fator})" />
         <span class="item-unidade">${_escHtml(unidade)}</span>
       </div>
       <div class="item-entrada">
         <label>Quebras / Danificado:</label>
         <input type="number" class="qty-input" id="ret-dan-${i}"
-          value="${danificadoInicial}"
+          value="${_escHtml(String(quebras))}"
           min="0" placeholder="0" style="width:70px" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}', ${fator})" />
         <span class="item-unidade">${_escHtml(unQuebra)}</span>
       </div>
+      ${cfg?.exigeFoto ? _htmlFotoItemRet(festa, item, i, 'consumo', 'Foto do consumo') : ''}
+      <div class="item-sub" style="margin-top:10px;padding:8px 10px;background:#F0FDF4;border-radius:6px;font-size:14px">
+        Retorna pro galpão: <strong id="ret-ret-${i}">${_fmtQtd(retorno)} ${_escHtml(unidade)}</strong>
+      </div>
+      ${cfg?.exigeFoto ? _htmlFotoItemRet(festa, item, i, 'retorno', 'Foto do retorno') : ''}
     </div>
   `;
-  }).join('');
-
-  /* Retorno: o que volta de cada item, recalculado ao digitar consumo/quebras */
-  document.getElementById('ret-retorno-lista').innerHTML = noRetorno.map(({ item, i }) => {
-    const enviado = _qtdEnviadaItem(item);
-    const retorno = _calcularRetornoNativo(enviado, Number(item.qtdConsumida) || 0, item.qtdDanificada || 0, _fatorEmbalagemItem(item.nome));
-    return `<div class="detalhe-linha">
-      <span>${_escHtml(nomeBasDisplay(item.nome))}</span>
-      <span id="ret-ret-${i}"><strong>${_fmtQtd(retorno)}</strong> ${_escHtml(item.unidade || 'un')}</span>
-    </div>`;
   }).join('') || estadoVazio('Nenhum item.');
 }
 
@@ -3742,7 +3798,7 @@ function calcularRetornoItem(i, enviado, unidade, fator) {
   const danificado = parseFloat(document.getElementById(`ret-dan-${i}`)?.value) || 0;
   const retorno = _calcularRetornoNativo(enviado, consumido, danificado, fator || 0);
   const el = document.getElementById(`ret-ret-${i}`);
-  if (el) el.innerHTML = `<strong>${_fmtQtd(retorno)}</strong> ${_escHtml(unidade)}`;
+  if (el) el.textContent = `${_fmtQtd(retorno)} ${unidade}`;
 }
 
 async function concluirRetorno() {
@@ -3771,6 +3827,14 @@ async function concluirRetorno() {
       document.getElementById('ret-hora-extra-qtd').focus();
       btn.disabled = false; btn.textContent = 'Confirmar Retorno — Enviar para Galpão';
       return;
+    }
+
+    /* Foto obrigatória por item: avisa, não bloqueia (igual à conferência) */
+    const semFotoRet = (festaAtual.itens || []).filter((item, i) =>
+      _itemNoRetorno(item) && buscarConfigItemPorNome(item.nome)?.exigeFoto
+      && ['consumo', 'retorno'].some(t => !festaAtual.fotosItensRet?.[_chaveFotoRet(item, i, t)] && !_fotosRetSessao[_chaveFotoRet(item, i, t)]));
+    if (semFotoRet.length) {
+      toast(`Aviso: foto pendente em: ${semFotoRet.map(it => nomeBasDisplay(it.nome)).join(', ')}. Salvando mesmo assim.`, 'aviso');
     }
 
     const fotosCons = await _fotosEtapa(fotosCache.consumo, 'consumo', 'fotosConsumo');
@@ -4886,15 +4950,21 @@ function renderizarDetalhe(festa) {
       </div>` : ''}
 
     ${(() => {
-      const fotosItens = (festa.itens || [])
+      const bloco = (titulo, lista) => !lista.length ? '' : `
+      <div class="detalhe-card"><h3>${titulo}</h3>
+        ${lista.map(f => f.url === 'pendente'
+          ? `<div class="detalhe-linha"><span>${_escHtml(f.nome)}</span><span style="color:#B45309">foto salva no aparelho de quem registrou — ainda não enviada</span></div>`
+          : `<div class="detalhe-linha"><span>${_escHtml(f.nome)}</span><img src="${f.url}" class="foto-thumb" onclick="window.open('${f.url}','_blank')"></div>`).join('')}
+      </div>`;
+      const conf = (festa.itens || [])
         .map((it, i) => ({ nome: nomeBasDisplay(it.nome), url: _fotoItemConf(festa, it, i) }))
         .filter(f => f.url);
-      return fotosItens.length ? `
-      <div class="detalhe-card"><h3>Fotos dos itens (conferência)</h3>
-        ${fotosItens.map(f => f.url === 'pendente'
-          ? `<div class="detalhe-linha"><span>${_escHtml(f.nome)}</span><span style="color:#B45309">foto salva no aparelho de quem conferiu — ainda não enviada</span></div>`
-          : `<div class="detalhe-linha"><span>${_escHtml(f.nome)}</span><img src="${f.url}" class="foto-thumb" onclick="window.open('${f.url}','_blank')"></div>`).join('')}
-      </div>` : '';
+      const ret = [];
+      (festa.itens || []).forEach((it, i) => ['consumo', 'retorno'].forEach(t => {
+        const url = festa.fotosItensRet?.[_chaveFotoRet(it, i, t)];
+        if (url) ret.push({ nome: `${nomeBasDisplay(it.nome)} — ${t}`, url });
+      }));
+      return bloco('Fotos dos itens (conferência)', conf) + bloco('Fotos dos itens (consumo e retorno)', ret);
     })()}
 
     <div id="detalhe-mov-estoque"></div>
