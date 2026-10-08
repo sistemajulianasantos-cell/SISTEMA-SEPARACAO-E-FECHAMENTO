@@ -3629,11 +3629,11 @@ function renderizarRetorno(festa) {
           min="0" placeholder="0" style="width:70px" oninput="calcularRetornoItem(${i}, ${enviado}, '${_esc(unidade)}', ${fator})" />
         <span class="item-unidade">${_escHtml(unQuebra)}</span>
       </div>
-      ${cfg?.exigeFoto ? _htmlFotoItemRet(festa, item, i, 'consumo', 'Foto do consumo') : ''}
+      ${cfg?.exigeFoto ? `<div id="ret-foto-box-consumo-${i}" class="${(parseFloat(consumido) || 0) + (parseFloat(quebras) || 0) > 0 ? '' : 'hidden'}">${_htmlFotoItemRet(festa, item, i, 'consumo', 'Foto do consumo')}</div>` : ''}
       <div class="item-sub" style="margin-top:10px;padding:8px 10px;background:#F0FDF4;border-radius:6px;font-size:14px">
         Retorna pro galpão: <strong id="ret-ret-${i}">${_fmtQtd(retorno)} ${_escHtml(unidade)}</strong>
       </div>
-      ${cfg?.exigeFoto ? _htmlFotoItemRet(festa, item, i, 'retorno', 'Foto do retorno') : ''}
+      ${cfg?.exigeFoto ? `<div id="ret-foto-box-retorno-${i}" class="${retorno > 0 ? '' : 'hidden'}">${_htmlFotoItemRet(festa, item, i, 'retorno', 'Foto do retorno')}</div>` : ''}
     </div>
   `;
   }).join('') || estadoVazio('Nenhum item.');
@@ -3799,6 +3799,18 @@ function calcularRetornoItem(i, enviado, unidade, fator) {
   const retorno = _calcularRetornoNativo(enviado, consumido, danificado, fator || 0);
   const el = document.getElementById(`ret-ret-${i}`);
   if (el) el.textContent = `${_fmtQtd(retorno)} ${unidade}`;
+  /* Foto só do que existe: 100% consumido não tem retorno pra fotografar;
+     nada consumido/quebrado não tem consumo pra fotografar */
+  document.getElementById(`ret-foto-box-retorno-${i}`)?.classList.toggle('hidden', !(retorno > 0));
+  document.getElementById(`ret-foto-box-consumo-${i}`)?.classList.toggle('hidden', !(consumido + danificado > 0));
+}
+
+/* Quais fotos do retorno se aplicam ao item, pelo que foi digitado */
+function _fotosRetAplicaveis(item, i) {
+  const consumido  = parseFloat(document.getElementById(`ret-cons-${i}`)?.value) || 0;
+  const danificado = parseFloat(document.getElementById(`ret-dan-${i}`)?.value) || 0;
+  const retorno = _calcularRetornoNativo(_qtdEnviadaItem(item), consumido, danificado, _fatorEmbalagemItem(item.nome));
+  return [consumido + danificado > 0 && 'consumo', retorno > 0 && 'retorno'].filter(Boolean);
 }
 
 async function concluirRetorno() {
@@ -3832,7 +3844,7 @@ async function concluirRetorno() {
     /* Foto obrigatória por item: avisa, não bloqueia (igual à conferência) */
     const semFotoRet = (festaAtual.itens || []).filter((item, i) =>
       _itemNoRetorno(item) && buscarConfigItemPorNome(item.nome)?.exigeFoto
-      && ['consumo', 'retorno'].some(t => !festaAtual.fotosItensRet?.[_chaveFotoRet(item, i, t)] && !_fotosRetSessao[_chaveFotoRet(item, i, t)]));
+      && _fotosRetAplicaveis(item, i).some(t => !festaAtual.fotosItensRet?.[_chaveFotoRet(item, i, t)] && !_fotosRetSessao[_chaveFotoRet(item, i, t)]));
     if (semFotoRet.length) {
       toast(`Aviso: foto pendente em: ${semFotoRet.map(it => nomeBasDisplay(it.nome)).join(', ')}. Salvando mesmo assim.`, 'aviso');
     }
