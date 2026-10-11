@@ -3316,51 +3316,11 @@ function abrirFolhaConferencia(festa, voltarParaDetalhe) {
   _folhaPdf.catch(e => console.error('PDF da conferência:', e));
 }
 
-/* Mesmo visual da Folha de Fechamento: um bloco por item com o nome como
-   título, "Quantidade inicial" de subtítulo, o número e a foto embaixo
-   (Juliana, 10-11). Na tela os blocos ficam lado a lado. */
+/* Mesmo desenho da Folha de Fechamento (bloco por item com Inicial |
+   Reposição | Consumo | Quebras | Retorno), só com a Inicial e a foto dela
+   preenchidas — o resto fica em branco (Juliana, 10-11). */
 function _renderFolhaConferencia(festa) {
-  const linhas = _dadosFolhaConferencia(festa);
-
-  document.getElementById('folhaconf-content').innerHTML = `
-    <div class="card-festa-info" style="margin-bottom:16px">
-      <h2>${_escHtml(festa.cliente || festa.nome)}</h2>
-      <div class="card-festa-meta">${_escHtml(festa.nome)} · Folha de Conferência (chegada)</div>
-    </div>
-    <div class="folha-header">
-      ${_infoFolhaConferencia(festa).map(([k, v]) => `<div class="folha-header-linha"><strong>${k}:</strong> ${_escHtml(String(v))}</div>`).join('')}
-    </div>
-    <div class="folha-secao">
-      <h3 class="folha-secao-titulo">Itens conferidos (${linhas.length})</h3>
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">
-        ${linhas.map(l => `
-          <div style="border:1px solid #E5E7EB;border-radius:8px;overflow:hidden;text-align:center">
-            <div style="background:#2B3B2A;color:#fff;font-weight:700;font-size:13px;padding:7px 8px;text-align:left">${_escHtml(l.nome)}</div>
-            <div style="background:#F3F4F6;font-size:11px;font-weight:700;color:var(--cinza-600);padding:4px">Quantidade inicial</div>
-            <div style="padding:6px;font-size:13px"><strong>${_fmtQtd(l.qtd)} ${_escHtml(l.un)}</strong><div id="folhaconf-slot-${l.i}"></div></div>
-          </div>`).join('')}
-      </div>
-    </div>
-    <div class="folha-secao">
-      <h3 class="folha-secao-titulo">Observações</h3>
-      <div class="folha-texto">${festa.obsConferencia ? _escHtml(festa.obsConferencia).replace(/\n/g, '<br>') : '—'}</div>
-    </div>
-    <div class="folha-secao" id="folhaconf-fotos"></div>`;
-
-  const thumb = f => `<img src="${f.blob ? URL.createObjectURL(f.blob) : f.url}" title="${_escHtml(f.legenda)}"
-      style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:4px;cursor:pointer;display:block;margin-top:4px"
-      onclick="window.open(this.src,'_blank')">`;
-  _fotosDaConferencia(festa).then(({ porItem, gerais }) => {
-    if (_folhaConfAtual?.id !== festa.id) return;
-    Object.entries(porItem).forEach(([i, f]) => {
-      const el = document.getElementById(`folhaconf-slot-${i}`);
-      if (el) el.innerHTML = thumb(f);
-    });
-    const el = document.getElementById('folhaconf-fotos');
-    if (el) el.innerHTML = gerais.length ? `
-      <h3 class="folha-secao-titulo">Fotos gerais (${gerais.length})</h3>
-      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">${gerais.map(thumb).join('')}</div>` : '';
-  });
+  _renderFolhaFechamento(festa, true);
 }
 
 function _nomeArquivoFolhaConf(festa) {
@@ -3371,75 +3331,7 @@ function _nomeArquivoFolhaConf(festa) {
 }
 
 async function _gerarPdfFolhaConferencia(festa) {
-  const { porItem, gerais } = await _fotosDaConferencia(festa);
-  const preparar = (f, prop) => _prepararImagemPdf(f, prop).then(img => ({ ...img, legenda: f.legenda }))
-    .catch(e => { console.warn('Foto fora do PDF:', f.legenda, e); return { erro: true, legenda: f.legenda }; });
-  const imgsItem = {};
-  await Promise.all(Object.entries(porItem).map(async ([i, f]) => { imgsItem[i] = await preparar(f, 3 / 4); }));
-  const imgsGerais = await Promise.all(gerais.map(f => preparar(f)));
-
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const linhas = _dadosFolhaConferencia(festa);
-  const M = 14, LARG = 210 - 2 * M;
-  let y = await _pdfCabecalhoTimbrado(doc, festa, 'conferencia', 'FOLHA DE CONFERÊNCIA — CHEGADA');
-
-  /* Blocos como os da Folha de Fechamento (nome em faixa verde, subtítulo,
-     número e a foto logo abaixo, mesmo tamanho de foto), 3 por linha */
-  const POR_LINHA = 3, GAP = 4;
-  const BW = (LARG - GAP * (POR_LINHA - 1)) / POR_LINHA;
-  const FOTO_W = LARG / 5 - 5, FOTO_H = FOTO_W * 4 / 3;
-  const SUB = 5, VAL = 7;
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
-  const titulos = linhas.map(l => doc.splitTextToSize(l.nome, BW - 4).slice(0, 2));
-
-  for (let ini = 0; ini < linhas.length; ini += POR_LINHA) {
-    const grupo = linhas.slice(ini, ini + POR_LINHA);
-    const altTit = Math.max(...grupo.map((l, k) => titulos[ini + k].length)) * 3.8 + 2.6;
-    const temFoto = grupo.some(l => imgsItem[l.i]);
-    const altBloco = altTit + SUB + VAL + (temFoto ? FOTO_H + 3 : 0);
-    if (y + altBloco > PDF_RODAPE_LIVRE) { doc.addPage(); y = 16; }
-    grupo.forEach((l, k) => {
-      const x = M + k * (BW + GAP);
-      doc.setFillColor(43, 59, 42); doc.rect(x, y, BW, altTit, 'F');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(255);
-      doc.text(titulos[ini + k], x + 2, y + 4.4);
-      doc.setFillColor(235, 237, 233); doc.rect(x, y + altTit, BW, SUB, 'F');
-      doc.setFontSize(7.5); doc.setTextColor(80);
-      doc.text('Quantidade inicial', x + BW / 2, y + altTit + 3.5, { align: 'center' });
-      doc.setFontSize(10); doc.setTextColor(0);
-      doc.text(`${_fmtQtd(l.qtd)} ${l.un}`, x + BW / 2, y + altTit + SUB + 5, { align: 'center' });
-      const img = imgsItem[l.i];
-      if (img) {
-        const fx = x + (BW - FOTO_W) / 2, fy = y + altTit + SUB + VAL;
-        if (img.erro) {
-          doc.setDrawColor(200); doc.rect(fx, fy, FOTO_W, FOTO_H);
-          doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(150);
-          doc.text('foto não carregou', fx + FOTO_W / 2, fy + FOTO_H / 2, { align: 'center' });
-          doc.setTextColor(0);
-        } else {
-          doc.addImage(img.data, 'JPEG', fx, fy, FOTO_W, FOTO_H);
-        }
-      }
-      doc.setDrawColor(229, 231, 235); doc.setLineWidth(0.2); doc.rect(x, y, BW, altBloco);
-    });
-    y += altBloco + GAP;
-  }
-  doc.setTextColor(0); doc.setDrawColor(0);
-  y += 5;
-
-  if (festa.obsConferencia) {
-    if (y > 260) { doc.addPage(); y = 16; }
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text('Observações', M, y); y += 5;
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-    const linhasObs = doc.splitTextToSize(String(festa.obsConferencia), LARG);
-    doc.text(linhasObs, M, y); y += linhasObs.length * 4.5 + 4;
-  }
-
-  y = _pdfGradeFotos(doc, imgsGerais, y, M, LARG, 'Fotos gerais');
-
-  await _pdfRodapeTimbrado(doc, festa);
-  return doc.output('blob');
+  return _gerarPdfFolhaFechamento(festa, true);
 }
 
 /* Fotos em grade (2 por linha, legenda embaixo) a partir de y; devolve o y final */
@@ -4262,16 +4154,18 @@ const _slotsFotosFech = fotos => ({
    nome numa coluna ficava tudo embolado no celular. */
 const _COLS_FECH = ['Inicial', 'Reposição', 'Consumo', 'Quebras', 'Retorno'];
 
-function _renderFolhaFechamento(festa) {
-  const linhas = _dadosFolhaFechamento(festa);
+function _renderFolhaFechamento(festa, chegada = false) {
+  const linhas = chegada ? _dadosFolhaChegada(festa) : _dadosFolhaFechamento(festa);
+  const P = chegada ? 'folhaconf' : 'relret';   /* ids da tela de cada folha */
+  const obsFolha = chegada ? festa.obsConferencia : festa.obsRetorno;
   const cel = (c, extra = '') => `<td style="padding:4px 4px;font-size:12px;vertical-align:top;text-align:center;${extra}">${c}</td>`;
-  document.getElementById('relret-content').innerHTML = `
+  document.getElementById(P + '-content').innerHTML = `
     <div class="card-festa-info" style="margin-bottom:16px">
       <h2>${_escHtml(festa.cliente || festa.nome)}</h2>
-      <div class="card-festa-meta">${_escHtml(festa.nome)} · Folha de Fechamento</div>
+      <div class="card-festa-meta">${_escHtml(festa.nome)} · ${chegada ? "Folha de Conferência (chegada)" : "Folha de Fechamento"}</div>
     </div>
     <div class="folha-header">
-      ${_infoFolhaFechamento(festa).map(([k, v]) => `<div class="folha-header-linha"><strong>${k}:</strong> ${_escHtml(String(v))}</div>`).join('')}
+      ${(chegada ? _infoFolhaConferencia : _infoFolhaFechamento)(festa).map(([k, v]) => `<div class="folha-header-linha"><strong>${k}:</strong> ${_escHtml(String(v))}</div>`).join('')}
     </div>
     <div class="folha-secao">
       <h3 class="folha-secao-titulo">Itens (${linhas.length})</h3>
@@ -4281,38 +4175,39 @@ function _renderFolhaFechamento(festa) {
           <table style="border-collapse:collapse;width:100%;table-layout:fixed">
             <colgroup><col style="width:20%"><col style="width:20%"><col style="width:20%"><col style="width:20%"><col style="width:20%"></colgroup>
             <tr style="background:#F3F4F6">${_COLS_FECH.map(c => cel(c, 'font-size:11px;font-weight:700;color:var(--cinza-600)')).join('')}</tr>
-            <tr>${[l.inicial, l.reposta, l.consumo, l.quebras].map((v, c) => cel(`${_escHtml(v)}<div id="relret-slot-${l.i}-${c}"></div>`)).join('')}${cel(`<strong>${_escHtml(l.retorno)}</strong><div id="relret-slot-${l.i}-4"></div>`)}</tr>
+            <tr>${[l.inicial, l.reposta, l.consumo, l.quebras].map((v, c) => cel(`${_escHtml(v)}<div id="${P}-slot-${l.i}-${c}"></div>`)).join('')}${cel(`<strong>${_escHtml(l.retorno)}</strong><div id="${P}-slot-${l.i}-4"></div>`)}</tr>
           </table>
         </div>`).join('')}
     </div>
     <div class="folha-secao">
       <h3 class="folha-secao-titulo">Observações</h3>
-      <div class="folha-texto">${festa.obsRetorno ? _escHtml(festa.obsRetorno).replace(/\n/g, '<br>') : '—'}</div>
+      <div class="folha-texto">${obsFolha ? _escHtml(obsFolha).replace(/\n/g, '<br>') : '—'}</div>
     </div>
-    <div class="folha-secao" id="relret-fotos"></div>`;
+    <div class="folha-secao" id="${P}-fotos"></div>`;
 
   const thumb = f => `<img src="${f.blob ? URL.createObjectURL(f.blob) : f.url}" title="${_escHtml(f.legenda)}"
       style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:4px;cursor:pointer;display:block;margin-top:4px"
       onclick="window.open(this.src,'_blank')">`;
-  _fotosDoFechamento(festa).then(({ porItem, gerais }) => {
-    if (_fechAtual?.id !== festa.id) return;
+  (chegada ? _fotosChegadaFech(festa) : _fotosDoFechamento(festa)).then(({ porItem, gerais }) => {
+    if ((chegada ? _folhaConfAtual : _fechAtual)?.id !== festa.id) return;
     Object.entries(porItem).forEach(([i, fotos]) => {
       const slots = _slotsFotosFech(fotos);
       const colConsumo = _ehCopoItem(festa.itens[i]) ? 3 : 2;
       [[0, slots.inicial], [colConsumo, slots.consumo], [4, slots.retorno]].forEach(([col, f]) => {
-        const el = document.getElementById(`relret-slot-${i}-${col}`);
+        const el = document.getElementById(`${P}-slot-${i}-${col}`);
         if (el && f) el.innerHTML = thumb(f);
       });
     });
-    const el = document.getElementById('relret-fotos');
+    const el = document.getElementById(P + '-fotos');
     if (el) el.innerHTML = gerais.length ? `
       <h3 class="folha-secao-titulo">Fotos gerais (${gerais.length})</h3>
       <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px">${gerais.map(thumb).join('')}</div>` : '';
   });
 }
 
-async function _gerarPdfFolhaFechamento(festa) {
-  const { porItem, gerais } = await _fotosDoFechamento(festa);
+async function _gerarPdfFolhaFechamento(festa, chegada = false) {
+  const { porItem, gerais } = await (chegada ? _fotosChegadaFech(festa) : _fotosDoFechamento(festa));
+  const obsFolha = chegada ? festa.obsConferencia : festa.obsRetorno;
   const preparar = (f, prop) => _prepararImagemPdf(f, prop).then(img => ({ ...img, legenda: f.legenda }))
     .catch(e => { console.warn('Foto fora do PDF:', f.legenda, e); return { erro: true, legenda: f.legenda }; });
   const slotsImg = {};
@@ -4328,11 +4223,12 @@ async function _gerarPdfFolhaFechamento(festa) {
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const linhas = _dadosFolhaFechamento(festa);
+  const linhas = chegada ? _dadosFolhaChegada(festa) : _dadosFolhaFechamento(festa);
   const M = 14, LARG = 210 - 2 * M;
   const COL = LARG / 5;                    /* Inicial, Reposição, Consumo, Quebras, Retorno */
   const FOTO_W = COL - 5, FOTO_H = FOTO_W * 4 / 3, TXT = 7;
-  let y = await _pdfCabecalhoTimbrado(doc, festa, 'fechamento', 'FOLHA DE FECHAMENTO');
+  let y = await _pdfCabecalhoTimbrado(doc, festa, chegada ? 'conferencia' : 'fechamento',
+    chegada ? 'FOLHA DE CONFERÊNCIA — CHEGADA' : 'FOLHA DE FECHAMENTO');
 
   /* Foto dentro do campo da coluna, logo abaixo do número (Juliana, 10-07):
      todas no mesmo tamanho (recortadas em 3:4) */
@@ -4385,11 +4281,11 @@ async function _gerarPdfFolhaFechamento(festa) {
   });
   y += 4;
 
-  if (festa.obsRetorno) {
+  if (obsFolha) {
     if (y > 260) { doc.addPage(); y = 16; }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.text('Observações', M, y); y += 5;
     doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
-    const obs = doc.splitTextToSize(String(festa.obsRetorno), LARG);
+    const obs = doc.splitTextToSize(String(obsFolha), LARG);
     doc.text(obs, M, y); y += obs.length * 4.5 + 4;
   }
 
@@ -4397,6 +4293,27 @@ async function _gerarPdfFolhaFechamento(festa) {
 
   await _pdfRodapeTimbrado(doc, festa);
   return doc.output('blob');
+}
+
+/* Folha de Conferência (chegada) no mesmo desenho da de Fechamento: só a
+   Inicial (e a foto dela) preenchida, as outras colunas em branco */
+function _dadosFolhaChegada(festa) {
+  return _dadosFolhaConferencia(festa).map(l => {
+    const item = festa.itens[l.i];
+    return {
+      i: l.i, item,
+      nome: l.nome + (item.marca ? ` (${item.marca})` : ''),
+      inicial: `${_fmtQtd(l.qtd)} ${l.un}`,
+      reposta: '', consumo: '', quebras: '', retorno: '',
+    };
+  });
+}
+
+async function _fotosChegadaFech(festa) {
+  const { porItem, gerais } = await _fotosDaConferencia(festa);
+  const out = {};
+  Object.entries(porItem).forEach(([i, f]) => { out[i] = [{ ...f, ordem: 0, legenda: 'Inicial' }]; });
+  return { porItem: out, gerais };
 }
 
 function _nomeArquivoFolhaFech(festa) {
