@@ -744,6 +744,7 @@ function renderizarInicio(papel) {
       <div class="inicio-nav-col">${papel === 'ceo' ? navCeo : navColab}</div>
       <div class="inicio-dash-col">
         <div class="dash-stats-row" id="dash-stats"></div>
+        ${papel === 'ceo' ? '<div class="dash-card hidden" id="dash-divergencias"></div>' : ''}
         <div class="dash-card" id="dash-producao-semana"></div>
         <div class="dash-card" id="dash-compras-pendentes"></div>
       </div>
@@ -810,6 +811,71 @@ function renderizarDashboardInicio() {
   renderizarDashStats({ festasHoje, festasSemana, itensProducao, itensCompra });
   renderizarDashProducaoSemana(festasSemana, itensProducao);
   renderizarDashComprasPendentes(itensCompra);
+  renderizarDashDivergencias();
+}
+
+/* Divergências da conferência (só CEO): o coordenador conta uma vez, sem
+   recontagem e sem saber se bateu; o que não bateu com o separado aparece
+   aqui até o CEO marcar "Visto" (Juliana, 10-11). Últimos 30 dias. */
+function renderizarDashDivergencias() {
+  const el = document.getElementById('dash-divergencias');
+  if (!el) return;
+  const limite = Date.now() - 30 * 24 * 3600 * 1000;
+  const festas = todasFestasCache
+    .filter(f => (f.divergencias || []).length && !f.divergenciasVistas && f.status !== 'cancelada')
+    .filter(f => toDate(f.conferenciaFim || f.data).getTime() >= limite)
+    .sort((a, b) => toDate(b.conferenciaFim || b.data) - toDate(a.conferenciaFim || a.data));
+  el.classList.toggle('hidden', !festas.length);
+  if (!festas.length) { el.innerHTML = ''; return; }
+
+  const linhaItem = d => {
+    const dif = (Number(d.conferido) || 0) - (Number(d.separado) || 0);
+    const un = d.unidade || '';
+    return `
+      <div class="dash-bar-row">
+        <div class="dash-bar-cabecalho">
+          <span class="dash-bar-nome">${_escHtml(nomeBasDisplay(d.item))}</span>
+          <span class="dash-bar-val" style="color:${dif < 0 ? 'var(--vermelho)' : 'var(--amarelo)'}">
+            separado ${_fmtQtd(Number(d.separado) || 0)} · conferido ${_fmtQtd(Number(d.conferido) || 0)} ${_escHtml(un)}
+            (${dif < 0 ? 'faltou' : 'sobrou'} ${_fmtQtd(Math.abs(dif))})
+          </span>
+        </div>
+      </div>`;
+  };
+
+  el.innerHTML = `
+    <div class="dash-card-header">
+      <div>
+        <div class="dash-card-titulo" style="color:var(--vermelho)">Divergências na Conferência</div>
+        <div class="dash-card-sub">${festas.length} festa${festas.length !== 1 ? 's' : ''} com item que não bateu com o separado</div>
+      </div>
+    </div>
+    <div class="dash-card-scroll">
+      ${festas.map(f => `
+        <div style="border-top:1px solid #E5E7EB;padding:8px 0">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+            <div>
+              <strong>${_escHtml(f.nome)}</strong>
+              <div class="dash-card-sub">${formatarData(f.data)}${f.coordenador ? ' · conferida por ' + _escHtml(f.coordenador) : ''}${f.conferenciaFim ? ' em ' + formatarDataHora(f.conferenciaFim) : ''}</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="dash-card-link" onclick="historico=['tela-inicial']; abrirDetalheFesta('${f.id}')">Abrir festa</button>
+              <button class="dash-card-link" onclick="marcarDivergenciasVistas('${f.id}')">Visto</button>
+            </div>
+          </div>
+          ${f.divergencias.map(linhaItem).join('')}
+        </div>`).join('')}
+    </div>`;
+}
+
+async function marcarDivergenciasVistas(festaId) {
+  try {
+    await atualizarFesta(festaId, { divergenciasVistas: true, divergenciasVistasPor: usuarioAtual?.nome || '', divergenciasVistasEm: new Date() });
+    toast('Divergências marcadas como vistas.', 'sucesso');
+  } catch (e) {
+    console.error(e);
+    toast('Não foi possível marcar como visto.', 'erro');
+  }
 }
 
 /* O que falta comprar é o que as festas ainda não separadas (agendada ou
@@ -2584,10 +2650,9 @@ function htmlCardConfItem(item, ri, conferido) {
   const ceo        = souCeo();
   const confVal    = item.qtdConferida;
   const sepVal     = item.qtdSeparada || 0;
-  const emRecontagem     = (festaAtual?.itens || []).some(it => it.recontar);
-  const recontarPendente = !!item.recontar && item.recontagem === undefined;
-  /* Na fase de recontagem só os itens a recontar ficam editáveis; recontado, trava */
-  const travado = !ceo && emRecontagem && !recontarPendente;
+  /* Sem recontagem desde 10-11 — o coordenador conta uma vez só */
+  const recontarPendente = false;
+  const travado = false;
   const msgInicial = ceo
     ? ((confVal !== undefined && confVal !== null)
         ? (confVal > sepVal
@@ -2677,13 +2742,7 @@ function renderizarConferencia(festa) {
     </div>
   `;
 
-  const qtdRecontar = visiveis.filter(({ item }) => item.recontar && item.recontagem === undefined).length;
-  const avisoRecontagemHtml = (!souCeo() && qtdRecontar)
-    ? `<div class="alerta-divergencia" style="margin-bottom:12px">
-        <strong>${qtdRecontar} item(ns) precisam ser recontados</strong>
-        <div>Conte novamente os itens da aba "A Conferir". Esta é a contagem final — depois de marcar, não dá mais para alterar.</div>
-       </div>`
-    : '';
+  const avisoRecontagemHtml = '';
 
   const pendentesHtml = pendentes.length
     ? pendentes.map(({ item, ri }) => htmlCardConfItem(item, ri, false)).join('')
@@ -2766,12 +2825,6 @@ async function marcarItemConferido(idx) {
   }
   const val   = parseFloat(bruto) || 0;
   const patch = { qtdConferida: val, conferidoEm: new Date(), conferidoPor: usuarioAtual?.nome || '' };
-  /* Recontagem: chance única, grava a 2ª contagem separada da 1ª */
-  if (item?.recontar && item.recontagem === undefined) {
-    if (!souCeo() && !confirm(`Confirmar recontagem de "${nomeBasDisplay(item.nome)}": ${val} ${item.unidade || 'un'}?\n\nEsta é a contagem final e não poderá ser alterada.`)) return;
-    patch.recontagem  = val;
-    patch.recontadoEm = new Date();
-  }
   try {
     await persistirItemFesta(idx, patch);
   } catch (e) {
@@ -2957,61 +3010,27 @@ async function concluirConferencia() {
   if (semFoto.length) {
     toast(`Aviso: foto pendente em: ${semFoto.map(i => i.nome).join(', ')}. Liberando mesmo assim.`, 'aviso');
   }
-
-  const confereCoord = (item) => {
-    const cfg = buscarConfigItemPorNome(item.nome);
-    return !(cfg && cfg.conferirCoord === false);
-  };
-  const qtdDom = (i) => parseFloat(document.getElementById(`conf-qty-${i}`)?.value) || 0;
-
-  /* Contagem cega (coordenador): na 1ª confirmação, os itens que não batem com
-     o separado voltam para recontagem — sem dizer se ficou acima ou abaixo.
-     Na 2ª confirmação a festa é liberada com o que foi recontado, e as duas
-     contagens ficam registradas para o admin. O CEO não passa por isso. */
-  if (!souCeo()) {
-    const itensAtuais = festaAtual.itens || [];
-    if (itensAtuais.some(it => it.recontar)) {
-      const faltam = itensAtuais.filter(it => it.recontar && it.recontagem === undefined);
-      if (faltam.length) {
-        toast(`Falta recontar: ${faltam.map(it => nomeBasDisplay(it.nome)).join(', ')}.`, 'aviso');
-        trocarAbaConf('aconferir', document.querySelector('#conf-tabs .tab'));
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-    } else {
-      const divergentes = itensAtuais
-        .map((it, i) => i)
-        .filter(i => confereCoord(itensAtuais[i]) && qtdDom(i) !== (itensAtuais[i].qtdSeparada || 0));
-      if (divergentes.length) {
-        btn.disabled = true;
-        try {
-          const itens = itensAtuais.map((it, i) => {
-            if (!confereCoord(it)) return it;
-            const val = qtdDom(i);
-            return divergentes.includes(i)
-              ? { ...it, contagem1: val, qtdConferida: null, recontar: true, conferidoEm: undefined }
-              : { ...it, qtdConferida: val };
-          });
-          festaAtual = { ...festaAtual, itens };
-          await atualizarFesta(festaAtual.id, { itens });
-          abaConfAtual = 'aconferir';
-          renderizarConferencia(festaAtual);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-          toast(`${divergentes.length} item(ns) precisam ser recontados antes de liberar a festa.`, 'aviso');
-        } catch (e) {
-          console.error(e);
-          toast('Erro ao salvar. Tente novamente.', 'erro');
-        }
-        btn.disabled = false;
-        return;
-      }
-    }
-  }
+  /* Sem recontagem (Juliana, 10-11): a festa é liberada com a contagem do
+     coordenador, que continua sem saber se bateu; as divergências aparecem
+     pro CEO na tela inicial (card "Divergências na conferência"). */
 
   btn.disabled    = true;
   btn.textContent = 'Salvando...';
 
   try {
+    /* Conferência concluída em 2 aparelhos: a 2ª (campos em branco) gravou 0
+       por cima da 1ª (Juliana 14:02 x Franklin 14:03, 10-11). Se a festa já
+       saiu da conferência, não grava de novo. */
+    try {
+      const atual = await buscarFestaPorId(festaAtual.id);
+      if (atual && atual.status !== 'conferencia') {
+        toast(`Esta conferência já foi concluída${atual.coordenador ? ' por ' + atual.coordenador : ''}. Nada foi alterado.`, 'aviso');
+        btn.disabled    = false;
+        btn.textContent = 'Confirmar Conferência — Liberar para Festa';
+        return;
+      }
+    } catch (e) { console.warn('Checagem da conferência já concluída:', e); }
+
     /* Montar itens com qtdConferida; itens sem conferência do coord mantêm qtdSeparada.
        Cada foto é enviada isoladamente — se uma falhar, as demais e o resto da
        conferência (quantidades, etc.) não são perdidos. */
@@ -3059,7 +3078,7 @@ async function concluirConferencia() {
         return it.qtdConferida !== (it.qtdSeparada || 0);
       })
       .map(it => ({
-        item: it.nome, separado: it.qtdSeparada || 0, conferido: it.qtdConferida,
+        item: it.nome, separado: it.qtdSeparada || 0, conferido: it.qtdConferida, unidade: it.unidade || 'un',
         ...(it.contagem1 !== undefined ? { contagem1: it.contagem1 } : {}),
       }));
 
@@ -3094,10 +3113,14 @@ async function concluirConferencia() {
     _baixarEstoqueDaFesta({ ...festaAtual, estoqueBaixado: festaAtual.estoqueBaixado }, itens)
       .catch(e => console.error('Registro de saída da festa:', e));
 
-    const msg = divergencias.length
-      ? `Conferencia concluida com ${divergencias.length} divergencia(s). Festa liberada.`
-      : 'Conferencia concluida sem divergencias. Festa liberada.';
-    toast(msg, divergencias.length ? 'aviso' : 'sucesso');
+    /* Coordenador não fica sabendo se divergiu — isso vai pro CEO */
+    if (souCeo()) {
+      toast(divergencias.length
+        ? `Conferência concluída com ${divergencias.length} divergência(s). Festa liberada.`
+        : 'Conferência concluída sem divergências. Festa liberada.', divergencias.length ? 'aviso' : 'sucesso');
+    } else {
+      toast('Conferência concluída. Festa liberada.', 'sucesso');
+    }
 
     /* Folha de Conferência em PDF já pronta pra enviar no grupo (Juliana,
        10-07). Tenta abrir o compartilhar na hora; se o celular bloquear
