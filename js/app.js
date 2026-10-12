@@ -3057,7 +3057,8 @@ async function concluirConferencia() {
           catch (e2) { console.error(e2); falhasFoto.push(item.nome); }
         }
       }
-      return { ...item, qtdConferida, ...(fotoConferencia ? { fotoConferencia } : {}) };
+      return { ...item, qtdConferida, ...(fotoConferencia ? { fotoConferencia } : {}),
+        conferidoPor: item.conferidoPor || usuarioAtual?.nome || '', conferidoEm: item.conferidoEm || new Date() };
     }));
 
     /* Se algum item obrigatório continua sem foto após a tentativa, avisa mas
@@ -3580,6 +3581,10 @@ async function marcarItemRetorno(i, ok) {
   clearTimeout(_timersRascRet[i]);
   const patch = _patchRascunhoRetornoItem(i);
   patch[`rascunhoRetorno.${_chaveFotoItem(item, i)}.ok`] = ok;
+  if (ok) {
+    patch[`rascunhoRetorno.${_chaveFotoItem(item, i)}.por`] = usuarioAtual?.nome || '';
+    patch[`rascunhoRetorno.${_chaveFotoItem(item, i)}.em`]  = new Date();
+  }
   try { await atualizarFesta(festaAtual.id, patch); }
   catch (e) {
     console.error('Marcar item do retorno:', e);
@@ -4043,7 +4048,10 @@ async function concluirRetorno() {
       const retorno    = _calcularRetornoNativo(enviado, consumido, danificado, fator);
       const marcaInput = document.getElementById(`ret-marca-${i}`);
       const marca      = marcaInput ? marcaInput.value.trim() : (item.marca || '');
-      return { ...item, qtdConsumida: consumido, qtdDanificada: danificado, qtdRetorno: retorno, marca };
+      const rItem = rascRet[_chaveFotoItem(item, i)] || {};
+      return { ...item, qtdConsumida: consumido, qtdDanificada: danificado, qtdRetorno: retorno, marca,
+        retornoConferidoPor: (rItem.ok && rItem.por) || usuarioAtual?.nome || '',
+        retornoConferidoEm:  (rItem.ok && rItem.em) || new Date() };
     });
 
     const convPortariaVal = parseFloat(document.getElementById('ret-conv-portaria').value);
@@ -4223,6 +4231,20 @@ const _slotsFotosFech = fotos => ({
    nome numa coluna ficava tudo embolado no celular. */
 const _COLS_FECH = ['Inicial', 'Reposição', 'Consumo', 'Quebras', 'Retorno'];
 
+/* Quem conferiu o item e quando — vai embaixo de cada foto nas folhas
+   (Juliana, 10-12: com mais de um coordenador, saber quem fez o quê).
+   ordem 0 = foto Inicial (conferência de chegada); 1/2 = consumo/retorno. */
+function _quemFotoFech(item, ordem) {
+  if (!item) return [];
+  const por = ordem === 0 ? item.conferidoPor : item.retornoConferidoPor;
+  const em  = ordem === 0 ? item.conferidoEm  : item.retornoConferidoEm;
+  return [por, em ? formatarDataHora(em) : ''].filter(Boolean);
+}
+const _htmlQuemFoto = (item, ordem) => {
+  const q = _quemFotoFech(item, ordem);
+  return q.length ? `<div style="font-size:10px;color:var(--cinza-600);line-height:1.3;margin-top:2px">${q.map(_escHtml).join('<br>')}</div>` : '';
+};
+
 function _renderFolhaFechamento(festa, chegada = false) {
   const linhas = chegada ? _dadosFolhaChegada(festa) : _dadosFolhaFechamento(festa);
   const P = chegada ? 'folhaconf' : 'relret';   /* ids da tela de cada folha */
@@ -4264,7 +4286,7 @@ function _renderFolhaFechamento(festa, chegada = false) {
       const colConsumo = _ehCopoItem(festa.itens[i]) ? 3 : 2;
       [[0, slots.inicial], [colConsumo, slots.consumo], [4, slots.retorno]].forEach(([col, f]) => {
         const el = document.getElementById(`${P}-slot-${i}-${col}`);
-        if (el && f) el.innerHTML = thumb(f);
+        if (el && f) el.innerHTML = thumb(f) + _htmlQuemFoto(festa.itens[i], col === 0 ? 0 : col === 4 ? 2 : 1);
       });
     });
     const el = document.getElementById(P + '-fotos');
@@ -4301,8 +4323,14 @@ async function _gerarPdfFolhaFechamento(festa, chegada = false) {
 
   /* Foto dentro do campo da coluna, logo abaixo do número (Juliana, 10-07):
      todas no mesmo tamanho (recortadas em 3:4) */
-  const desenharFoto = (img, xCol, yTopo) => {
+  const desenharFoto = (img, xCol, yTopo, quem) => {
     const x = xCol + (COL - FOTO_W) / 2;
+    /* quem conferiu e quando, embaixo da foto (Juliana, 10-12) */
+    if (quem && quem.length) {
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(90);
+      quem.forEach((t, k) => doc.text(doc.splitTextToSize(t, COL - 2)[0], xCol + COL / 2, yTopo + FOTO_H + 3 + k * 2.8, { align: 'center' }));
+      doc.setTextColor(0);
+    }
     if (img.erro) {
       doc.setDrawColor(200); doc.rect(x, yTopo, FOTO_W, FOTO_H);
       doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(150);
@@ -4322,7 +4350,7 @@ async function _gerarPdfFolhaFechamento(festa, chegada = false) {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9);
     const linhasTxt = Math.max(...[l.inicial, l.reposta, l.consumo, l.quebras, l.retorno].map(v => doc.splitTextToSize(String(v), COL - 3.2).length));
     const altTxt = TXT + (linhasTxt - 1) * 3.9;
-    const altValores = altTxt + (temFoto ? FOTO_H + 4 : 0);
+    const altValores = altTxt + (temFoto ? FOTO_H + 4 + 6 : 0);
     if (y + 8 + 6 + altValores + 4 > PDF_RODAPE_LIVRE) { doc.addPage(); y = 16; }
     const colConsumo = _ehCopoItem(l.item) ? 3 : 2;   /* copo: foto das quebras no campo Quebras */
     const fotoDaColuna = { 0: s?.inicial, [colConsumo]: s?.consumo, 4: s?.retorno };
@@ -4342,7 +4370,7 @@ async function _gerarPdfFolhaFechamento(festa, chegada = false) {
       didDrawCell: h => {
         if (h.section !== 'body' || h.column.index !== 4 || !(h.cell.raw && h.cell.raw._valores) || !temFoto) return;
         Object.entries(fotoDaColuna).forEach(([col, img]) => {
-          if (img) desenharFoto(img, h.row.cells[col].x, h.cell.y + altTxt);
+          if (img) desenharFoto(img, h.row.cells[col].x, h.cell.y + altTxt, _quemFotoFech(l.item, +col === 0 ? 0 : +col === 4 ? 2 : 1));
         });
       },
     });
