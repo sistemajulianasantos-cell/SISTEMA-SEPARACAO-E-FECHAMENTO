@@ -2578,7 +2578,7 @@ async function abrirConferencia(id) {
   }
 
   unsubFesta = escutarFesta(id, festa => {
-    festaAtual = festa;
+    festaAtual = _festaConfMesclada(festa);
     _renderSemFecharTeclado('tela-conferencia', () => renderizarConferencia(festaAtual));
   });
 }
@@ -2612,7 +2612,9 @@ setInterval(_rodarRendersAdiados, 1000);   /* garantia, caso o "saiu do campo" n
    enquanto está guardada no aparelho esperando internet). */
 const _chaveFotoItem = (item, idx) => normalizarNomeItem(item?.nome) || `item_${idx}`;
 function _fotoItemConf(festa, item, idx) {
-  return item?.fotoConferencia || festa?.fotosItensConf?.[_chaveFotoItem(item, idx)] || null;
+  const porItem = festa?.fotosItensConf?.[_chaveFotoItem(item, idx)];
+  if (porItem && porItem !== 'pendente') return porItem;
+  return item?.fotoConferencia || porItem || null;
 }
 
 function htmlCardConfItem(item, ri, conferido) {
@@ -2784,6 +2786,42 @@ function filtrarItensConf(q) {
   });
 }
 
+/* ── Conferência com mais de um coordenador (Juliana, 10-12) ──
+   Cada item conferido grava SÓ ele, em festa.contagensConf.<chave> =
+   { qtd, ok, por, em } (e a foto em festa.fotosItensConf.<chave>) — antes
+   cada toque regravava a lista inteira de itens com o que estava no
+   celular de quem tocou, e dois coordenadores ao mesmo tempo apagavam o
+   item um do outro. A tela e a conclusão usam a festa "mesclada": itens
+   com o que está salvo no contagensConf por cima. */
+function _festaConfMesclada(festa) {
+  const mapa = festa?.contagensConf || {};
+  if (!Object.keys(mapa).length) return festa;
+  const itens = (festa.itens || []).map((it, i) => {
+    const c = mapa[_chaveFotoItem(it, i)];
+    if (!c) return it;
+    const out = { ...it };
+    if (c.qtd !== undefined && c.qtd !== null) out.qtdConferida = c.qtd;
+    if (c.ok === true)  { out.conferidoEm = c.em || out.conferidoEm || new Date(); out.conferidoPor = c.por || out.conferidoPor; }
+    if (c.ok === false) { delete out.conferidoEm; }
+    return out;
+  });
+  return { ...festa, itens };
+}
+
+async function _gravarContagemConf(idx, campos, fotoUrl) {
+  const item = festaAtual?.itens?.[idx];
+  if (!item) return;
+  const chave = _chaveFotoItem(item, idx);
+  const patch = {};
+  Object.entries(campos || {}).forEach(([k, v]) => { patch[`contagensConf.${chave}.${k}`] = v; });
+  if (fotoUrl) patch[`fotosItensConf.${chave}`] = fotoUrl;
+  /* local já reflete (o retorno do banco chega depois) */
+  const mapa = { ...(festaAtual.contagensConf || {}), [chave]: { ...((festaAtual.contagensConf || {})[chave] || {}), ...(campos || {}) } };
+  festaAtual = _festaConfMesclada({ ...festaAtual, contagensConf: mapa,
+    ...(fotoUrl ? { fotosItensConf: { ...(festaAtual.fotosItensConf || {}), [chave]: fotoUrl } } : {}) });
+  await atualizarFesta(festaAtual.id, patch);
+}
+
 /* Grava um campo de um item específico da festa no Firestore sem perder o resto,
    mantendo festaAtual local em sincronia (evita perder dados já salvos ao atualizar a página) */
 async function persistirItemFesta(idx, patch) {
@@ -2800,9 +2838,10 @@ async function persistirItemFesta(idx, patch) {
    aba sozinho apenas por o usuário ter tocado no campo. */
 async function salvarQtdConf(idx) {
   if (!festaAtual) return;
-  const val = parseFloat(document.getElementById(`conf-qty-${idx}`)?.value) || 0;
+  const bruto = (document.getElementById(`conf-qty-${idx}`)?.value || '').trim();
+  if (bruto === '') return;   /* campo vazio não grava 0 */
   try {
-    await persistirItemFesta(idx, { qtdConferida: val });
+    await _gravarContagemConf(idx, { qtd: parseFloat(bruto) || 0 });
   } catch (e) {
     console.error('Erro ao salvar quantidade conferida:', e);
     toast('Não foi possível salvar a quantidade. Verifique a conexão.', 'erro');
@@ -2824,9 +2863,8 @@ async function marcarItemConferido(idx) {
     return;
   }
   const val   = parseFloat(bruto) || 0;
-  const patch = { qtdConferida: val, conferidoEm: new Date(), conferidoPor: usuarioAtual?.nome || '' };
   try {
-    await persistirItemFesta(idx, patch);
+    await _gravarContagemConf(idx, { qtd: val, ok: true, em: new Date(), por: usuarioAtual?.nome || '' });
   } catch (e) {
     console.error('Erro ao marcar item como conferido:', e);
     toast('Não foi possível confirmar a conferência. Verifique a conexão.', 'erro');
@@ -2837,7 +2875,7 @@ async function marcarItemConferido(idx) {
 async function reabrirItemConf(idx) {
   if (!festaAtual) return;
   try {
-    await persistirItemFesta(idx, { conferidoEm: undefined });
+    await _gravarContagemConf(idx, { ok: false });
   } catch (e) {
     console.error('Erro ao reabrir item:', e);
     toast('Não foi possível reabrir o item. Verifique a conexão.', 'erro');
@@ -2868,7 +2906,7 @@ async function onFotoItemConf(idx, input) {
   try {
     if (navigator.onLine === false) throw new Error('offline');
     const urls = await uploadFotos([file], festaAtual.id, `conf_item_${idx}`);
-    await persistirItemFesta(idx, { fotoConferencia: urls[0] });
+    await _gravarContagemConf(idx, null, urls[0]);
     fotosCache.confItens[idx] = null; /* já persistida, não precisa reenviar no final */
     titulo.textContent = 'Foto anexada';
     desc.textContent   = 'Toque para trocar';
@@ -3029,6 +3067,9 @@ async function concluirConferencia() {
         btn.textContent = 'Confirmar Conferência — Liberar para Festa';
         return;
       }
+      /* Quantidades de TODOS os coordenadores: o que está salvo no banco,
+         não a tela de quem confirma (que pode estar desatualizada) */
+      if (atual) festaAtual = _festaConfMesclada(atual);
     } catch (e) { console.warn('Checagem da conferência já concluída:', e); }
 
     /* Montar itens com qtdConferida; itens sem conferência do coord mantêm qtdSeparada.
@@ -3041,9 +3082,12 @@ async function concluirConferencia() {
       if (cfg && cfg.conferirCoord === false) {
         return { ...item, qtdConferida: item.qtdSeparada || 0 };
       }
-      /* Campo vazio ou fora da tela não vira 0: fica a contagem já salva */
+      /* Vale o que está salvo (de qualquer coordenador); o campo da tela só
+         entra se esse item ainda não tem contagem salva */
+      const salvo        = festaAtual.contagensConf?.[_chaveFotoItem(item, i)]?.qtd;
       const bruto        = (document.getElementById(`conf-qty-${i}`)?.value || '').trim();
-      const qtdConferida = bruto !== '' ? (parseFloat(bruto) || 0) : _qtdInicialConf(item);
+      const qtdConferida = (salvo !== undefined && salvo !== null) ? salvo
+        : bruto !== '' ? (parseFloat(bruto) || 0) : _qtdInicialConf(item);
       const fotoFile     = fotosCache.confItens[i];
       let fotoConferencia = item.fotoConferencia || null;
       if (fotoFile) {
@@ -3548,13 +3592,18 @@ function _patchRascunhoRetornoItem(i) {
   const base = `rascunhoRetorno.${_chaveFotoItem(item, i)}`;
   return { [`${base}.cons`]: v(`ret-cons-${i}`), [`${base}.dan`]: v(`ret-dan-${i}`), [`${base}.marca`]: v(`ret-marca-${i}`) };
 }
+const _pendRascRet = {};   /* itens com digitação ainda não salva */
 function _salvarRascunhoRetornoItem(i) {
   clearTimeout(_timersRascRet[i]);
-  _timersRascRet[i] = setTimeout(() => {
-    const patch = _patchRascunhoRetornoItem(i);
-    if (!patch) return;
-    atualizarFesta(festaAtual.id, patch).catch(e => console.error('Rascunho do retorno:', e));
-  }, 600);
+  _pendRascRet[i] = true;
+  _timersRascRet[i] = setTimeout(() => _gravarRascunhoRetornoItem(i), 600);
+}
+function _gravarRascunhoRetornoItem(i) {
+  clearTimeout(_timersRascRet[i]);
+  delete _pendRascRet[i];
+  const patch = _patchRascunhoRetornoItem(i);
+  if (!patch) return Promise.resolve();
+  return atualizarFesta(festaAtual.id, patch).catch(e => console.error('Rascunho do retorno:', e));
 }
 
 let abaRetAtual = 'aconferir';   /* 'aconferir' | 'conferido' */
@@ -3579,6 +3628,7 @@ async function marcarItemRetorno(i, ok) {
     }
   }
   clearTimeout(_timersRascRet[i]);
+  delete _pendRascRet[i];
   const patch = _patchRascunhoRetornoItem(i);
   patch[`rascunhoRetorno.${_chaveFotoItem(item, i)}.ok`] = ok;
   if (ok) {
@@ -3739,7 +3789,7 @@ function renderizarRetorno(festa) {
     .forEach(el => { digitado[el.id] = el.value; });
   const rasc = festa.rascunhoRetorno || {};
   const val = (id, padrao, i, campo) => {
-    if (id in digitado) return digitado[id];
+    if (id in digitado && (i === undefined || _pendRascRet[i])) return digitado[id];
     const r = i !== undefined ? rasc[_chaveFotoItem(festa.itens[i], i)] : null;
     return r && r[campo] !== undefined && r[campo] !== '' ? r[campo] : padrao;
   };
@@ -4028,6 +4078,16 @@ function _fotosRetAplicaveis(item, i) {
 
 async function concluirRetorno() {
   if (!festaAtual) return;
+  await Promise.all(Object.keys(_pendRascRet).map(i => _gravarRascunhoRetornoItem(+i)));
+  /* Retorno concluído em outro aparelho: não grava de novo por cima */
+  try {
+    const atual = await buscarFestaPorId(festaAtual.id);
+    if (atual && atual.status !== 'retorno') {
+      toast('Este retorno já foi concluído em outro aparelho. Nada foi alterado.', 'aviso');
+      return;
+    }
+    if (atual) festaAtual = atual;
+  } catch (e) { console.warn('Checagem do retorno já concluído:', e); }
   /* Itens ainda em "A Conferir": avisa antes de fechar (não trava) */
   const rascRet = festaAtual.rascunhoRetorno || {};
   const faltamRet = (festaAtual.itens || []).filter((it, i) => _itemNoRetorno(it) && !rascRet[_chaveFotoItem(it, i)]?.ok);
@@ -4042,13 +4102,19 @@ async function concluirRetorno() {
   try {
     const itens = (festaAtual.itens || []).map((item, i) => {
       const enviado    = _qtdEnviadaItem(item);
-      const consumido  = parseFloat(document.getElementById(`ret-cons-${i}`)?.value) || 0;
-      const danificado = parseFloat(document.getElementById(`ret-dan-${i}`)?.value) || 0;
+      /* Vale o salvo no rascunho (qualquer coordenador); a tela só se o
+         item não tem nada salvo */
+      const rItem = rascRet[_chaveFotoItem(item, i)] || {};
+      const doSalvo = (campo, idEl) => {
+        const v = rItem[campo];
+        return v !== undefined && v !== null && String(v).trim() !== '' ? String(v) : (document.getElementById(idEl)?.value ?? '');
+      };
+      const consumido  = parseFloat(doSalvo('cons', `ret-cons-${i}`)) || 0;
+      const danificado = parseFloat(doSalvo('dan', `ret-dan-${i}`)) || 0;
       const fator      = _fatorEmbalagemItem(item.nome);
       const retorno    = _calcularRetornoNativo(enviado, consumido, danificado, fator);
-      const marcaInput = document.getElementById(`ret-marca-${i}`);
-      const marca      = marcaInput ? marcaInput.value.trim() : (item.marca || '');
-      const rItem = rascRet[_chaveFotoItem(item, i)] || {};
+      const temMarca   = !!document.getElementById(`ret-marca-${i}`) || rItem.marca;
+      const marca      = temMarca ? doSalvo('marca', `ret-marca-${i}`).trim() : (item.marca || '');
       return { ...item, qtdConsumida: consumido, qtdDanificada: danificado, qtdRetorno: retorno, marca,
         retornoConferidoPor: (rItem.ok && rItem.por) || usuarioAtual?.nome || '',
         retornoConferidoEm:  (rItem.ok && rItem.em) || new Date() };
@@ -5189,6 +5255,8 @@ function abrirDetalheFesta(id) {
 }
 
 function renderizarDetalhe(festa) {
+  /* conferência em andamento: contagens salvas item a item (contagensConf) */
+  if (festa.status === 'conferencia') festa = _festaConfMesclada(festa);
   const itens       = festa.itens || [];
   const divs        = festa.divergencias || [];
   const divsGal     = festa.divergenciasGalpao || [];
