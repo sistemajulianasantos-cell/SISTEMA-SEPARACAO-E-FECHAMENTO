@@ -2655,7 +2655,7 @@ function htmlCardConfItem(item, ri, conferido) {
         ${fotosCache.confItens[ri]
           ? `<img src="${URL.createObjectURL(fotosCache.confItens[ri])}" alt="foto">`
           : fotoSalva && !pendente
-            ? `<img src="${fotoSalva}" alt="foto">`
+            ? `<img src="${_urlMini(fotoSalva)}" alt="foto">`
             : `<div class="item-foto-placeholder"></div>`}
       </div>
       <div class="item-foto-label">
@@ -3334,10 +3334,17 @@ async function _fotosDaConferencia(festa) {
 }
 
 /* Foto reduzida (máx. 1000px, JPEG) pra caber no PDF sem pesar */
+/* Miniatura do Cloudinary (a foto original do celular tem vários MB —
+   carregar dezenas delas deixava as telas e o PDF lentos; Juliana, 10-12) */
+function _urlMini(u, w = 400) {
+  return typeof u === 'string' && u.includes('/image/upload/') ? u.replace('/image/upload/', `/image/upload/w_${w},q_70,c_limit/`) : u;
+}
+
 async function _prepararImagemPdf(foto, proporcao) {
+  const MAX = proporcao ? 600 : 1000;
   let blob = foto.blob;
   if (!blob) {
-    const url = foto.url.includes('/image/upload/') ? foto.url.replace('/image/upload/', '/image/upload/w_1000,q_75/') : foto.url;
+    const url = _urlMini(foto.url, MAX);
     blob = await Promise.race([
       fetch(url).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.blob(); }),
       new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 12000)),
@@ -3353,7 +3360,7 @@ async function _prepararImagemPdf(foto, proporcao) {
       if (sw / sh > proporcao) { const nw = sh * proporcao; sx = (sw - nw) / 2; sw = nw; }
       else { const nh = sw / proporcao; sy = (sh - nh) / 2; sh = nh; }
     }
-    const k = Math.min(1, 1000 / Math.max(sw, sh));
+    const k = Math.min(1, MAX / Math.max(sw, sh));
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(sw * k));
     c.height = Math.max(1, Math.round(sh * k));
@@ -3715,7 +3722,7 @@ function _htmlFotosGeraisSalvasRet(festa, tipo) {
   const fila = _fotosGeraisRetNaFila[tipo];
   if (!urls.length && !fila) return '';
   return `
-    ${urls.length ? `<div class="grade-fotos">${urls.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>` : ''}
+    ${urls.length ? `<div class="grade-fotos">${urls.map(u => `<img src="${_urlMini(u)}" class="foto-thumb" loading="lazy" onclick="window.open('${u}','_blank')">`).join('')}</div>` : ''}
     ${fila ? `<div style="font-size:12px;color:#B45309;margin-top:4px">${fila} foto(s) guardada(s) no aparelho — sobem quando tiver internet</div>` : ''}`;
 }
 
@@ -3768,7 +3775,7 @@ function _htmlFotoItemRet(festa, item, i, tipo, titulo) {
     <div class="item-foto-area${tem ? ' ok' : ''}" style="margin-top:8px">
       <div class="item-foto-preview">
         ${local ? `<img src="${URL.createObjectURL(local)}" alt="foto">`
-          : salva && !pendente ? `<img src="${salva}" alt="foto">` : `<div class="item-foto-placeholder"></div>`}
+          : salva && !pendente ? `<img src="${_urlMini(salva)}" alt="foto">` : `<div class="item-foto-placeholder"></div>`}
       </div>
       <div class="item-foto-label">
         <div class="item-foto-label-titulo${tem ? ' ok' : ''}">${pendente ? `${titulo} salva no aparelho` : tem ? `${titulo} anexada` : `${titulo} obrigatória`}</div>
@@ -4070,7 +4077,7 @@ function htmlReposicoesFesta(festa) {
           <div style="font-size:12px;color:var(--cinza-500)">${formatarDataHora(r.em)} · ${_escHtml(r.por || '—')}</div>
           ${(r.itens || []).map(it => `<div class="detalhe-linha"><span>${_escHtml(nomeBasDisplay(it.nome))}</span><span>+${_fmtQtd(it.qtd)} ${_escHtml(it.unidade || 'un')}</span></div>`).join('')}
           ${r.obs ? `<div style="font-size:12px;margin-top:4px">${_escHtml(r.obs)}</div>` : ''}
-          ${fotos.length ? `<div class="grade-fotos" style="margin-top:6px">${fotos.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>` : ''}
+          ${fotos.length ? `<div class="grade-fotos" style="margin-top:6px">${fotos.map(u => `<img src="${_urlMini(u)}" class="foto-thumb" loading="lazy" onclick="window.open('${u}','_blank')">`).join('')}</div>` : ''}
         </div>`;
       }).join('')}
     </div>`;
@@ -4368,9 +4375,9 @@ function _renderFolhaFechamento(festa, chegada = false) {
     </div>
     <div class="folha-secao" id="${P}-fotos"></div>`;
 
-  const thumb = f => `<img src="${f.blob ? URL.createObjectURL(f.blob) : f.url}" title="${_escHtml(f.legenda)}"
+  const thumb = f => `<img src="${f.blob ? URL.createObjectURL(f.blob) : _urlMini(f.url)}" title="${_escHtml(f.legenda)}"
       style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:4px;cursor:pointer;display:block;margin-top:4px"
-      onclick="window.open(this.src,'_blank')">`;
+      onclick="window.open('${f.blob ? '' : f.url}' || this.src,'_blank')">`;
   (chegada ? _fotosChegadaFech(festa) : _fotosDoFechamento(festa)).then(({ porItem, gerais }) => {
     if ((chegada ? _folhaConfAtual : _fechAtual)?.id !== festa.id) return;
     Object.entries(porItem).forEach(([i, fotos]) => {
@@ -5448,22 +5455,22 @@ function renderizarDetalhe(festa) {
 
     ${festa.fotosSeparacao?.length ? `
       <div class="detalhe-card"><h3>Fotos da Separacao</h3>
-        <div class="grade-fotos">${festa.fotosSeparacao.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
+        <div class="grade-fotos">${festa.fotosSeparacao.map(u => `<img src="${_urlMini(u)}" class="foto-thumb" loading="lazy" onclick="window.open('${u}','_blank')">`).join('')}</div>
       </div>` : ''}
 
     ${festa.fotosConferencia?.length ? `
       <div class="detalhe-card"><h3>Fotos da Conferencia</h3>
-        <div class="grade-fotos">${festa.fotosConferencia.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
+        <div class="grade-fotos">${festa.fotosConferencia.map(u => `<img src="${_urlMini(u)}" class="foto-thumb" loading="lazy" onclick="window.open('${u}','_blank')">`).join('')}</div>
       </div>` : ''}
 
     ${festa.fotosConsumo?.length ? `
       <div class="detalhe-card"><h3>Fotos do Consumo e Quebras</h3>
-        <div class="grade-fotos">${festa.fotosConsumo.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
+        <div class="grade-fotos">${festa.fotosConsumo.map(u => `<img src="${_urlMini(u)}" class="foto-thumb" loading="lazy" onclick="window.open('${u}','_blank')">`).join('')}</div>
       </div>` : ''}
 
     ${festa.fotosRetorno?.length ? `
       <div class="detalhe-card"><h3>Fotos do Retorno</h3>
-        <div class="grade-fotos">${festa.fotosRetorno.map(u => `<img src="${u}" class="foto-thumb" onclick="window.open('${u}','_blank')">`).join('')}</div>
+        <div class="grade-fotos">${festa.fotosRetorno.map(u => `<img src="${_urlMini(u)}" class="foto-thumb" loading="lazy" onclick="window.open('${u}','_blank')">`).join('')}</div>
       </div>` : ''}
 
     ${(() => {
@@ -5471,7 +5478,7 @@ function renderizarDetalhe(festa) {
       <div class="detalhe-card"><h3>${titulo}</h3>
         ${lista.map(f => f.url === 'pendente'
           ? `<div class="detalhe-linha"><span>${_escHtml(f.nome)}</span><span style="color:#B45309">foto salva no aparelho de quem registrou — ainda não enviada</span></div>`
-          : `<div class="detalhe-linha"><span>${_escHtml(f.nome)}</span><img src="${f.url}" class="foto-thumb" onclick="window.open('${f.url}','_blank')"></div>`).join('')}
+          : `<div class="detalhe-linha"><span>${_escHtml(f.nome)}</span><img src="${_urlMini(f.url)}" class="foto-thumb" loading="lazy" onclick="window.open('${f.url}','_blank')"></div>`).join('')}
       </div>`;
       const conf = (festa.itens || [])
         .map((it, i) => ({ nome: nomeBasDisplay(it.nome), url: _fotoItemConf(festa, it, i) }))
