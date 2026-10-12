@@ -235,7 +235,7 @@ function renderizarPainelTV(festas) {
      estoque suficiente e, em compras, mostrava alerta de estoque mínimo em
      vez do que falta pras festas (pedido da Juliana em 10-08). */
   const festasSemana = festas.filter(f => {
-    if (!festaAtiva(f)) return false;
+    if (!_festaAindaVaiSair(f)) return false;
     const fd = toDate(f.data);
     if (isNaN(fd)) return false;
     fd.setHours(0, 0, 0, 0);
@@ -821,7 +821,7 @@ function renderizarDashboardInicio() {
 
   const festasHoje = todasFestasCache.filter(f => festaAtiva(f) && normalizarData(f.data) === hojeKey);
   const festasSemana = todasFestasCache.filter(f => {
-    if (!festaAtiva(f)) return false;
+    if (!_festaAindaVaiSair(f)) return false;
     const fd = toDate(f.data);
     if (isNaN(fd)) return false;
     fd.setHours(0, 0, 0, 0);
@@ -834,7 +834,15 @@ function renderizarDashboardInicio() {
 
   const itensCompra = _itensFaltandoParaFestas();
 
-  renderizarDashStats({ festasHoje, festasSemana, itensProducao, itensCompra });
+  /* o número "Festas na Semana" continua contando todas as da semana */
+  const festasDaSemana = todasFestasCache.filter(f => {
+    if (!festaAtiva(f)) return false;
+    const fd = toDate(f.data);
+    if (isNaN(fd)) return false;
+    fd.setHours(0, 0, 0, 0);
+    return fd >= inicioSemana && fd <= fimSemana;
+  });
+  renderizarDashStats({ festasHoje, festasSemana: festasDaSemana, itensProducao, itensCompra });
   renderizarDashProducaoSemana(festasSemana, itensProducao);
   renderizarDashComprasPendentes(itensCompra);
   renderizarDashDivergencias();
@@ -842,14 +850,15 @@ function renderizarDashboardInicio() {
 
 /* Divergências da conferência (só CEO): o coordenador conta uma vez, sem
    recontagem e sem saber se bateu; o que não bateu com o separado aparece
-   aqui até o CEO marcar "Visto" (Juliana, 10-11). Últimos 30 dias. */
+   aqui até o CEO marcar "Visto" (Juliana, 10-11) ou a festa passar. */
 function renderizarDashDivergencias() {
   const el = document.getElementById('dash-divergencias');
   if (!el) return;
-  const limite = Date.now() - 30 * 24 * 3600 * 1000;
+  /* festa que já passou sai do card (Juliana, 10-12) */
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   const festas = todasFestasCache
     .filter(f => (f.divergencias || []).length && !f.divergenciasVistas && f.status !== 'cancelada')
-    .filter(f => toDate(f.conferenciaFim || f.data).getTime() >= limite)
+    .filter(f => { const d = toDate(f.data); return isNaN(d) || d >= hoje; })
     .sort((a, b) => toDate(b.conferenciaFim || b.data) - toDate(a.conferenciaFim || a.data));
   el.classList.toggle('hidden', !festas.length);
   if (!festas.length) { el.innerHTML = ''; return; }
@@ -859,7 +868,7 @@ function renderizarDashDivergencias() {
     const un = d.unidade || '';
     return `
       <div class="dash-bar-row">
-        <div class="dash-bar-cabecalho">
+        <div class="dash-bar-cabecalho dash-div-linha">
           <span class="dash-bar-nome">${_escHtml(nomeBasDisplay(d.item))}</span>
           <span class="dash-bar-val" style="color:${dif < 0 ? 'var(--vermelho)' : 'var(--amarelo)'}">
             separado ${_fmtQtd(Number(d.separado) || 0)} · conferido ${_fmtQtd(Number(d.conferido) || 0)} ${_escHtml(un)}
@@ -884,9 +893,9 @@ function renderizarDashDivergencias() {
               <strong>${_escHtml(f.nome)}</strong>
               <div class="dash-card-sub">${formatarData(f.data)}${f.coordenador ? ' · conferida por ' + _escHtml(f.coordenador) : ''}${f.conferenciaFim ? ' em ' + formatarDataHora(f.conferenciaFim) : ''}</div>
             </div>
-            <div style="display:flex;gap:6px">
-              <button class="dash-card-link" onclick="historico=['tela-inicial']; abrirDetalheFesta('${f.id}')">Abrir festa</button>
-              <button class="dash-card-link" onclick="marcarDivergenciasVistas('${f.id}')">Visto</button>
+            <div style="display:flex;gap:8px">
+              <button class="btn-secundario btn-sm" onclick="historico=['tela-inicial']; abrirDetalheFesta('${f.id}')">Abrir festa</button>
+              <button class="btn-secundario btn-sm" onclick="marcarDivergenciasVistas('${f.id}')">Visto</button>
             </div>
           </div>
           ${f.divergencias.map(linhaItem).join('')}
@@ -911,8 +920,20 @@ async function marcarDivergenciasVistas(festaId) {
    — diff = estoque atual - total pedido pelas festas), pra bater o número
    aqui com o de lá. Ver feedback da Juliana em 09-16: compras pendentes é
    "por festa", não por mínimo. */
+/* Festa que ainda vai sair do galpão: agendada/separando e data de hoje em
+   diante. Festa que já passou ou já está em conferência não entra em
+   Produção nem em Compras (Juliana, 10-12). */
+function _festaAindaVaiSair(f) {
+  if (f.status !== 'agendada' && f.status !== 'separando') return false;
+  const d = toDate(f.data);
+  if (isNaN(d)) return true;
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  d.setHours(0, 0, 0, 0);
+  return d >= hoje;
+}
+
 function _itensFaltandoParaFestas() {
-  const festasRelevantes = todasFestasCache.filter(f => f.status === 'agendada' || f.status === 'separando');
+  const festasRelevantes = todasFestasCache.filter(_festaAindaVaiSair);
   /* Item de produção não é compra — ele aparece só em Produção da Semana
      (pedido da Juliana em 10-07: os dois cards repetiam o mesmo item). */
   return agregarItensFestas(festasRelevantes)

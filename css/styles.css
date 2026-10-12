@@ -1376,9 +1376,24 @@ input, select, textarea { font-size: 16px !important; }
   .dash-stats-row { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 640px) {
-  .inicio-layout   { flex-direction: column; }
-  .inicio-nav-col  { width: 100%; order: 2; margin-top: 8px; }
-  .inicio-dash-col { order: 1; }
+  /* Celular: menu primeiro, em botões lado a lado; depois os números
+     (Juliana, 10-12: Agenda etc. ficavam lá embaixo, depois de tudo) */
+  .inicio-layout   { flex-direction: column; gap: 14px; }
+  .inicio-nav-col  { width: 100%; order: 1; padding: 12px; }
+  .inicio-dash-col { order: 2; width: 100%; gap: 12px; }
+  .inicio-nav      { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .inicio-nav-item {
+    justify-content: center; text-align: center;
+    background: var(--branco); border: var(--borda);
+    padding: 12px 6px; font-size: 13px; min-height: 48px;
+  }
+  .inicio-nav-secao-label { margin: 10px 2px 6px; }
+  .dash-stats-row  { gap: 8px; }
+  .dash-stat-tile  { padding: 10px 12px; }
+  .dash-stat-valor { font-size: 22px; }
+  .dash-card       { padding: 14px; }
+  .dash-div-linha  { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .dash-div-linha .dash-bar-val { white-space: normal; }
 }
 
 /* ══ AGENDA — CARDS DE MÊS E DE DATA ══════════════════ */
