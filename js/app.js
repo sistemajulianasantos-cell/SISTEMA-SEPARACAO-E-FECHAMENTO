@@ -20,6 +20,32 @@ let linkConferenciaPendente = null; /* { festaId } quando um link de Conferênci
 let timers    = {};
 let intervalos= {};
 
+/* ── Aviso de versão nova ──
+   Com vários aparelhos na mesma festa, um celular com o sistema aberto
+   desde antes de uma atualização continuava na versão velha (Juliana,
+   10-12: marcações de um coordenador não apareciam pro outro). De tempos
+   em tempos compara o app.js?v= do site com o desta página; se mudou,
+   mostra uma faixa pra atualizar. */
+const _VERSAO_APP = ((document.currentScript && document.currentScript.src) || '').match(/app\.js\?v=(\d+)/)?.[1] || null;
+async function _checarVersaoNova() {
+  if (!_VERSAO_APP || navigator.onLine === false) return;
+  try {
+    const html = await (await fetch('index.html?_=' + Date.now(), { cache: 'no-store' })).text();
+    const nova = html.match(/js\/app\.js\?v=(\d+)/)?.[1];
+    if (!nova || nova === _VERSAO_APP || document.getElementById('aviso-versao-nova')) return;
+    const el = document.createElement('div');
+    el.id = 'aviso-versao-nova';
+    el.style.cssText = 'position:fixed;left:12px;right:12px;top:12px;z-index:10000;padding:12px 14px;border-radius:8px;'
+      + 'background:#B91C1C;color:#fff;font-size:14px;font-weight:700;text-align:center;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.25)';
+    el.textContent = 'Saiu uma versão nova do sistema. Toque aqui para atualizar (nada do que você já salvou se perde).';
+    el.onclick = () => location.reload();
+    document.body.appendChild(el);
+  } catch (_) {}
+}
+setInterval(_checarVersaoNova, 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) _checarVersaoNova(); });
+window.addEventListener('load', () => setTimeout(_checarVersaoNova, 8000));
+
 let abaConfAtual       = 'aconferir';   /* 'aconferir' | 'conferido' */
 let abaEstoqueAtual    = 'sintetico';
 let abaProducaoAtual   = 'sintetico';

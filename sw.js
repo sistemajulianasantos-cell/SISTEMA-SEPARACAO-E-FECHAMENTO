@@ -64,6 +64,8 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (!ehArquivoDoApp(url)) return;
+  /* checagem de versão nova (index.html?_=...): sempre da rede, sem guardar */
+  if (url.searchParams.has('_')) return;
   if (req.mode === 'navigate') {
     /* iframe do reCAPTCHA também é "navigate" — só a página do app usa a cópia */
     if (url.origin === self.location.origin) e.respondWith(paginaRedePrimeiro(req));
