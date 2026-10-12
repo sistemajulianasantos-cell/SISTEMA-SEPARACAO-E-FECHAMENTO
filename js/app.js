@@ -3508,6 +3508,7 @@ function abrirRetorno(id) {
   pararListeners();
   fotosCache.retorno = [];
   fotosCache.consumo = [];
+  abaRetAtual = 'aconferir';
   document.getElementById('preview-ret').innerHTML = '';
   document.getElementById('preview-cons').innerHTML = '';
   document.getElementById('ret-obs').value = '';
@@ -3538,16 +3539,52 @@ function abrirRetorno(id) {
    ao atualizar). Por item: rascunhoRetorno.<chave> = { cons, dan, marca };
    gerais: rascunhoRetorno._geral. Apagado ao confirmar o retorno. */
 const _timersRascRet = {};
+/* Campo a campo (não o objeto inteiro), pra não apagar o "ok" do item */
+function _patchRascunhoRetornoItem(i) {
+  const item = festaAtual?.itens?.[i];
+  if (!item) return null;
+  const v = id => document.getElementById(id)?.value ?? '';
+  const base = `rascunhoRetorno.${_chaveFotoItem(item, i)}`;
+  return { [`${base}.cons`]: v(`ret-cons-${i}`), [`${base}.dan`]: v(`ret-dan-${i}`), [`${base}.marca`]: v(`ret-marca-${i}`) };
+}
 function _salvarRascunhoRetornoItem(i) {
   clearTimeout(_timersRascRet[i]);
   _timersRascRet[i] = setTimeout(() => {
-    const item = festaAtual?.itens?.[i];
-    if (!item) return;
-    const v = id => document.getElementById(id)?.value ?? '';
-    atualizarFesta(festaAtual.id, {
-      [`rascunhoRetorno.${_chaveFotoItem(item, i)}`]: { cons: v(`ret-cons-${i}`), dan: v(`ret-dan-${i}`), marca: v(`ret-marca-${i}`) },
-    }).catch(e => console.error('Rascunho do retorno:', e));
+    const patch = _patchRascunhoRetornoItem(i);
+    if (!patch) return;
+    atualizarFesta(festaAtual.id, patch).catch(e => console.error('Rascunho do retorno:', e));
   }, 600);
+}
+
+let abaRetAtual = 'aconferir';   /* 'aconferir' | 'conferido' */
+function trocarAbaRet(aba, btn) {
+  abaRetAtual = aba;
+  document.querySelectorAll('#ret-tabs .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+  document.getElementById('ret-lista-aconferir')?.classList.toggle('hidden', aba !== 'aconferir');
+  document.getElementById('ret-lista-conferido')?.classList.toggle('hidden', aba !== 'conferido');
+}
+
+/* Marca/desmarca o item como conferido no retorno — move de aba */
+async function marcarItemRetorno(i, ok) {
+  const item = festaAtual?.itens?.[i];
+  if (!item) return;
+  if (ok) {
+    const cons = document.getElementById(`ret-cons-${i}`);
+    if (cons && cons.value.trim() === '') {
+      toast('Digite o consumido antes de marcar (se não consumiu nada, digite 0).', 'aviso');
+      cons.focus();
+      return;
+    }
+  }
+  clearTimeout(_timersRascRet[i]);
+  const patch = _patchRascunhoRetornoItem(i);
+  patch[`rascunhoRetorno.${_chaveFotoItem(item, i)}.ok`] = ok;
+  try { await atualizarFesta(festaAtual.id, patch); }
+  catch (e) {
+    console.error('Marcar item do retorno:', e);
+    toast('Não foi possível salvar. Verifique a conexão.', 'erro');
+  }
 }
 
 function _salvarRascunhoRetornoGeral() {
@@ -3704,7 +3741,15 @@ function renderizarRetorno(festa) {
 
   const noRetorno = (festa.itens || []).map((item, i) => ({ item, i })).filter(({ item }) => _itemNoRetorno(item));
 
-  document.getElementById('ret-itens').innerHTML = noRetorno.map(({ item, i }) => {
+  /* Abas A Conferir / Conferido, igual à conferência de chegada (Juliana,
+     10-12: no retorno ficava tudo junto e não dava pra saber o que faltava).
+     "Conferido" fica no rascunho (rascunhoRetorno.<chave>.ok). As duas
+     listas ficam na tela (só uma visível) — a conclusão lê todos os campos. */
+  const okItem = ({ item, i }) => !!rasc[_chaveFotoItem(item, i)]?.ok;
+  const pendentesRet  = noRetorno.filter(x => !okItem(x));
+  const conferidosRet = noRetorno.filter(okItem);
+
+  const cardRet = ({ item, i }, conferido) => {
     const cfg       = buscarConfigItemPorNome(item.nome);
     const badgeForn = htmlBadgeForn(item);
     const enviado   = _qtdEnviadaItem(item);
@@ -3753,9 +3798,26 @@ function renderizarRetorno(festa) {
         Retorna pro galpão: <strong id="ret-ret-${i}">${_escHtml(_txtQtdRetorno(retorno, unidade, fator))}</strong>
       </div>
       ${cfg?.exigeFoto ? `<div id="ret-foto-box-retorno-${i}" class="${retorno > 0 || _temFotoRet(festa, item, i, 'retorno') ? '' : 'hidden'}">${_htmlFotoItemRet(festa, item, i, 'retorno', 'Foto do retorno')}</div>` : ''}
+      ${conferido
+        ? `<button class="btn-desfazer" onclick="marcarItemRetorno(${i}, false)">↺ Reabrir</button>`
+        : `<button class="btn-confirmar btn-sm" onclick="marcarItemRetorno(${i}, true)">Marcar como Conferido</button>`}
     </div>
   `;
-  }).join('') || estadoVazio('Nenhum item.');
+  };
+
+  document.getElementById('ret-itens').innerHTML = noRetorno.length ? `
+    <div class="filtros-tabs" id="ret-tabs">
+      <button class="tab${abaRetAtual === 'aconferir' ? ' ativo' : ''}"
+        onclick="trocarAbaRet('aconferir', this)">A Conferir (${pendentesRet.length})</button>
+      <button class="tab${abaRetAtual === 'conferido' ? ' ativo' : ''}"
+        onclick="trocarAbaRet('conferido', this)">Conferido (${conferidosRet.length})</button>
+    </div>
+    <div id="ret-lista-aconferir" class="${abaRetAtual === 'aconferir' ? '' : 'hidden'}">
+      ${pendentesRet.map(x => cardRet(x, false)).join('') || estadoVazio('Todos os itens foram conferidos.')}
+    </div>
+    <div id="ret-lista-conferido" class="${abaRetAtual === 'conferido' ? '' : 'hidden'}">
+      ${conferidosRet.map(x => cardRet(x, true)).join('') || estadoVazio('Nenhum item conferido ainda.')}
+    </div>` : estadoVazio('Nenhum item.');
 
   const salvasCons = document.getElementById('ret-fotos-salvas-cons');
   if (salvasCons) salvasCons.innerHTML = _htmlFotosGeraisSalvasRet(festa, 'consumo');
@@ -3961,6 +4023,13 @@ function _fotosRetAplicaveis(item, i) {
 
 async function concluirRetorno() {
   if (!festaAtual) return;
+  /* Itens ainda em "A Conferir": avisa antes de fechar (não trava) */
+  const rascRet = festaAtual.rascunhoRetorno || {};
+  const faltamRet = (festaAtual.itens || []).filter((it, i) => _itemNoRetorno(it) && !rascRet[_chaveFotoItem(it, i)]?.ok);
+  if (faltamRet.length) {
+    const lista = faltamRet.slice(0, 15).map(it => '- ' + nomeBasDisplay(it.nome)).join('\n') + (faltamRet.length > 15 ? '\n...' : '');
+    if (!confirm(`Ainda faltam ${faltamRet.length} item(ns) sem marcar como conferido:\n\n${lista}\n\nConfirmar o retorno mesmo assim?`)) return;
+  }
   const btn = document.getElementById('btn-ret-concluir');
   btn.disabled    = true;
   btn.textContent = 'Salvando...';
