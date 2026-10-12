@@ -596,6 +596,7 @@ async function _tentarAutoLogin() {
 let historico = [];
 
 function mostrarTela(id, subtitulo = '') {
+  fecharMenuLateral();
   document.querySelectorAll('.tela').forEach(t => t.classList.add('hidden'));
   document.getElementById(id).classList.remove('hidden');
 
@@ -721,6 +722,9 @@ function irParaPrincipal() {
    TELA INICIAL — HUB DE CARDS (pós-login)
 ══════════════════════════════════════════════════ */
 
+function abrirMenuLateral()  { document.body.classList.add('menu-lateral-aberto'); }
+function fecharMenuLateral() { document.body.classList.remove('menu-lateral-aberto'); }
+
 function renderizarInicio(papel) {
   const el = document.getElementById('inicio-conteudo');
   if (!el) return;
@@ -763,11 +767,24 @@ function renderizarInicio(papel) {
     </div>
   `;
 
+  /* No celular o menu vira gaveta lateral (botão de 3 pontos) — Juliana,
+     10-12: com o menu na tela ficava informação demais */
+  fecharMenuLateral();
   el.innerHTML = `
-    ${saudacao}
+    <div class="inicio-topo">
+      <button class="btn-menu-lateral" onclick="abrirMenuLateral()" aria-label="Abrir menu">⋮</button>
+      ${saudacao}
+    </div>
     <div class="inicio-data-hoje">${hojeFmt.charAt(0).toUpperCase() + hojeFmt.slice(1)}</div>
+    <div class="menu-lateral-fundo" onclick="fecharMenuLateral()"></div>
     <div class="inicio-layout">
-      <div class="inicio-nav-col">${papel === 'ceo' ? navCeo : navColab}</div>
+      <div class="inicio-nav-col" onclick="if (event.target.closest('.inicio-nav-item')) fecharMenuLateral()">
+        <div class="menu-lateral-cabecalho">
+          <span>Menu</span>
+          <button class="menu-lateral-fechar" onclick="fecharMenuLateral()">Fechar</button>
+        </div>
+        ${papel === 'ceo' ? navCeo : navColab}
+      </div>
       <div class="inicio-dash-col">
         <div class="dash-stats-row" id="dash-stats"></div>
         ${papel === 'ceo' ? '<div class="dash-card hidden" id="dash-divergencias"></div>' : ''}
