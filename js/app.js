@@ -3429,6 +3429,8 @@ function abrirFolhaConferencia(festa, voltarParaDetalhe) {
     _renderFolhaConferencia(comp);
   });
   _folhaPdf = _folhaConfPronta.then(() => _gerarPdfFolhaConferencia(_folhaConfAtual));
+  _folhaImgs = _folhaPdf.then(b => _pdfParaImagens(b, _nomeArquivoFolhaConf(_folhaConfAtual).replace(/.pdf$/, '')));
+  _folhaImgs.catch(e => console.error('Imagens da conferência:', e));
   _folhaPdf.catch(e => console.error('PDF da conferência:', e));
 }
 
@@ -3611,6 +3613,61 @@ async function _compartilharPdf(pdfPromise, nome, opts = {}) {
   }
   _baixarBlob(blob, nome);
   toast('PDF baixado — anexe no grupo do WhatsApp.', 'info');
+}
+
+/* ── Folha como IMAGEM (Juliana, 10-12: nem todo celular abre PDF) ──
+   Cada página do PDF vira uma foto JPEG (mesmo visual), gerada no
+   aparelho com o PDF.js que o app já carrega. Fica pronta em segundo plano
+   assim que o PDF fica pronto — o compartilhar do celular só abre logo
+   depois de um toque, então não dá pra esperar a conversão no toque. */
+async function _pdfParaImagens(blob, nomeBase) {
+  const pdf = await pdfjsLib.getDocument({ data: await blob.arrayBuffer() }).promise;
+  const arquivos = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const pagina = await pdf.getPage(p);
+    const vp = pagina.getViewport({ scale: 2 });
+    const c = document.createElement('canvas');
+    c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    await pagina.render({ canvasContext: ctx, viewport: vp }).promise;
+    const img = await new Promise(res => c.toBlob(res, 'image/jpeg', 0.85));
+    const sufixo = pdf.numPages > 1 ? ` - pagina ${p}` : '';
+    arquivos.push(new File([img], `${nomeBase}${sufixo}.jpg`, { type: 'image/jpeg' }));
+  }
+  return arquivos;
+}
+
+async function _compartilharImagens(imgsPromise, nomeBase) {
+  const pronto = await Promise.race([imgsPromise.then(() => true, () => true), new Promise(r => setTimeout(() => r(false), 400))]);
+  if (!pronto) toast('Preparando as imagens...', 'info');
+  let arquivos;
+  try { arquivos = await imgsPromise; }
+  catch (e) { console.error('Folha em imagem:', e); toast('Não foi possível gerar as imagens.', 'erro'); return; }
+  if (navigator.canShare && navigator.canShare({ files: arquivos })) {
+    try {
+      await navigator.share({ files: arquivos, title: nomeBase });
+      return;
+    } catch (e) {
+      if (e.name === 'AbortError') return;
+      if (e.name === 'NotAllowedError') { toast('Imagens prontas — toque em "Enviar como imagem" de novo.', 'info'); return; }
+      console.error('Compartilhar imagens:', e);
+    }
+  }
+  arquivos.forEach((f, i) => setTimeout(() => _baixarBlob(f, f.name), i * 400));
+  toast(`${arquivos.length} imagem(ns) baixada(s) — anexe no grupo do WhatsApp.`, 'info');
+}
+
+let _folhaImgs = null, _fechImgs = null;
+async function compartilharFolhaConferenciaImagem() {
+  if (!_folhaConfAtual || !_folhaPdf) return;
+  if (!_folhaImgs) _folhaImgs = _folhaPdf.then(b => _pdfParaImagens(b, _nomeArquivoFolhaConf(_folhaConfAtual).replace(/.pdf$/, '')));
+  return _compartilharImagens(_folhaImgs, _nomeArquivoFolhaConf(_folhaConfAtual).replace(/.pdf$/, ''));
+}
+async function compartilharFolhaFechamentoImagem() {
+  if (!_fechAtual || !_fechPdf) return;
+  if (!_fechImgs) _fechImgs = _fechPdf.then(b => _pdfParaImagens(b, _nomeArquivoFolhaFech(_fechAtual).replace(/.pdf$/, '')));
+  return _compartilharImagens(_fechImgs, _nomeArquivoFolhaFech(_fechAtual).replace(/.pdf$/, ''));
 }
 
 async function compartilharFolhaConferencia(opts = {}) {
@@ -4350,6 +4407,8 @@ function abrirRelatorioRetorno(festa, voltarParaDetalhe) {
     _renderFolhaFechamento(comp);
   });
   _fechPdf = _fechPronta.then(() => _gerarPdfFolhaFechamento(_fechAtual));
+  _fechImgs = _fechPdf.then(b => _pdfParaImagens(b, _nomeArquivoFolhaFech(_fechAtual).replace(/.pdf$/, '')));
+  _fechImgs.catch(e => console.error('Imagens do fechamento:', e));
   _fechPdf.catch(e => console.error('PDF do fechamento:', e));
 }
 
