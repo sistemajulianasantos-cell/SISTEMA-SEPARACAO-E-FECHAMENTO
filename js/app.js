@@ -4397,13 +4397,35 @@ function trocarPreencherFolhasImprimir(v) {
   _renderFolhasImprimir();
 }
 
+/* Edição da folha antes de imprimir (não grava nada — vale só pra essa impressão) */
+function fimpRemover(btn, seletor) {
+  btn.closest(seletor)?.remove();
+}
+
+function fimpAdicionarLinha(btn) {
+  const tabela = btn.closest('.fimp-bloco')?.querySelector('.fimp-tabela');
+  if (!tabela) return;
+  const nCols = tabela.rows[0].cells.length;
+  const tr = tabela.insertRow(-1);
+  for (let k = 0; k < nCols; k++) {
+    const td = tr.insertCell(-1);
+    if (k === 0) td.innerHTML = '<button class="fimp-x no-print" contenteditable="false" title="Remover linha" onclick="fimpRemover(this,\'tr\')">&times;</button>';
+  }
+}
+
+function recarregarFolhasImprimir() {
+  _renderFolhasImprimir();
+}
+
 function _renderFolhasImprimir() {
   const festa = _fimpFesta;
   const el = document.getElementById('fimp-content');
   if (!festa || !el) return;
   const e = v => _escHtml(_maiusc(v));
+  /* hortifruti não entra na folha de papel (Juliana, 10-28) */
   const itens = (festa.itens || [])
-    .filter(it => !it.origemReposicao && buscarConfigItemPorNome(it.nome)?.conferirCoord !== false)
+    .filter(it => !it.origemReposicao && buscarConfigItemPorNome(it.nome)?.conferirCoord !== false
+      && !_categoriaNormItem(it).includes('hortifrut'))
     .map(it => {
       const qtd = _qtdInicialConf(it) || Number(it.qtdNecessaria) || 0;
       return {
@@ -4428,34 +4450,43 @@ function _renderFolhasImprimir() {
       </table>
     </div>`;
 
-  /* tabela vazia ganha linhas em branco pra escrever à mão */
+  /* tabela vazia ganha linhas em branco pra escrever à mão; botões de
+     remover/adicionar linha e remover tabela só na tela (no-print) */
+  const xLinha = '<button class="fimp-x no-print" contenteditable="false" title="Remover linha" onclick="fimpRemover(this,\'tr\')">&times;</button>';
   const tabela = (titulo, cols, linhas, celulas) => `
+    <div class="fimp-bloco">
     <div class="fimp-titulo">${_escHtml(titulo.toUpperCase())}</div>
     <table class="fimp-tabela">
       <tr>${cols.map(c => `<th>${_escHtml(c)}</th>`).join('')}</tr>
       ${(linhas.length ? linhas.map(celulas) : [0, 1, 2].map(() => cols.map(() => '')))
-        .map(cs => `<tr>${cs.map(c => `<td>${_escHtml(_maiusc(c))}</td>`).join('')}</tr>`).join('')}
-    </table>`;
+        .map(cs => `<tr>${cs.map((c, k) => `<td>${k === 0 ? xLinha : ''}${_escHtml(_maiusc(c))}</td>`).join('')}</tr>`).join('')}
+    </table>
+    <div class="fimp-acoes no-print" contenteditable="false">
+      <button class="btn-secundario btn-sm" onclick="fimpAdicionarLinha(this)">+ Linha</button>
+      <button class="btn-secundario btn-sm" onclick="fimpRemover(this,'.fimp-bloco')">Remover tabela</button>
+    </div>
+    </div>`;
   const bebidas = l => [l.nome, l.marca, l.inicial, ''];
   const obs = `
     <div class="fimp-obs"><strong>OBSERVAÇÕES:</strong><span class="fimp-linha"></span></div>
     <div class="fimp-obs"><span class="fimp-linha"></span></div>`;
 
   const consignadas = doGrupo('consignado');
+  const doCliente   = doGrupo('cliente');
   const marca = v => festa.horaExtra === v ? '&#9679;' : '&#9675;';
   const valorHE = festa.valorHoraExtra ? ` (VALOR DE CADA HORA EXTRA R$ ${_escHtml(String(festa.valorHoraExtra).replace(/^R\$\s*/, ''))})` : '';
 
   el.innerHTML = `
-    <div class="fimp-pagina">
+    <div class="fimp-pagina" contenteditable="true" spellcheck="false">
       ${cabecalho}
       ${tabela('Bebidas Romero', ['BEBIDAS', 'MARCAS', 'QUANTIDADE INICIAL', 'CONSUMO'], doGrupo('romero'), bebidas)}
       ${tabela('Fechamento interno', ['PRODUTO', 'QUANTIDADE INICIAL', 'CONSUMO', 'RETORNO'], doGrupo('insumos'), l => [l.nome, l.inicial, '', ''])}
       ${obs}
       <div class="fimp-assinaturas"><div><span class="fimp-linha"></span>Assinatura Coordenação</div></div>
     </div>
-    <div class="fimp-pagina">
+    <div class="fimp-pagina" contenteditable="true" spellcheck="false">
       ${cabecalho}
-      ${tabela('Bebidas cliente', ['BEBIDAS', 'MARCAS', 'QUANTIDADE INICIAL', 'CONSUMO'], doGrupo('cliente'), bebidas)}
+      ${doCliente.length ? tabela('Bebidas cliente', ['BEBIDAS', 'MARCAS', 'QUANTIDADE INICIAL', 'CONSUMO'], doCliente, bebidas) : ''}
       ${consignadas.length ? tabela('Bebidas consignadas', ['BEBIDAS', 'MARCAS', 'QUANTIDADE INICIAL', 'CONSUMO'], consignadas, bebidas) : ''}
       ${tabela('Copos e decoração', ['MODELO', 'QUANTIDADE INICIAL', 'QUEBRAS'], doGrupo('copos'), l => [l.nome, l.inicial, ''])}
       <div class="fimp-he">

@@ -3113,6 +3113,15 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
 .fimp-assinaturas { display: flex; gap: 40px; justify-content: center; margin-top: 50px; font-size: 12px; font-weight: 700; text-align: center; }
 .fimp-assinaturas > div { flex: 1; max-width: 260px; }
 .fimp-assinaturas .fimp-linha { display: block; width: 100%; margin-bottom: 6px; }
+.fimp-pagina[contenteditable]:focus { outline: 2px dashed var(--blue); outline-offset: 4px; }
+.fimp-tabela td:first-child { position: relative; }
+.fimp-x {
+  position: absolute; left: -26px; top: 50%; transform: translateY(-50%);
+  width: 20px; height: 20px; padding: 0; border: none; border-radius: 50%;
+  background: var(--cinza-200, #e5e7eb); color: var(--cinza-700, #374151);
+  font-size: 14px; line-height: 20px; cursor: pointer;
+}
+.fimp-acoes { display: flex; gap: 8px; margin-top: 6px; }
 @media print {
   @page { size: A4; margin: 10mm; }
   #tela-folhas-imprimir, #tela-folhas-imprimir * { visibility: visible; }

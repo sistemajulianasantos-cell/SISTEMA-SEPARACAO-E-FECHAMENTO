@@ -31,7 +31,7 @@
     form-action 'self';
   ">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=51">
+  <link rel="stylesheet" href="css/styles.css?v=52">
 </head>
 <body>
 
@@ -866,7 +866,9 @@
           <input type="checkbox" id="fimp-preencher" onchange="trocarPreencherFolhasImprimir(this.checked)">
           Preencher quantidade inicial
         </label>
+        <button class="btn-secundario btn-sm" onclick="recarregarFolhasImprimir()">Desfazer edições</button>
       </div>
+      <p class="desc-tela no-print">Clique em qualquer texto da folha para editar. Use o &times; para tirar uma linha, "+ Linha" para acrescentar e "Remover tabela" para tirar uma tabela inteira. As edições valem só para esta impressão — não alteram a festa.</p>
       <div id="fimp-content"></div>
     </div>
   </div>
@@ -1884,7 +1886,7 @@
 
   <script src="js/config.js?v=5"></script>
   <script src="js/firestore.js?v=67"></script>
-  <script src="js/app.js?v=184"></script>
+  <script src="js/app.js?v=185"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>
