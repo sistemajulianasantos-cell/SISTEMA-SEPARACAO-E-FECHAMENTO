@@ -391,8 +391,8 @@ function _tvRenderProducao(producao) {
     <div class="tv-prod-grupo">
       <div class="tv-prod-grupo-header">Compras pendentes (${compras.length})</div>
       ${compras.length
-        ? compras.map(c => renderFalta(c.nome, c.nomeKey, c.falta, c.unidade, 'Falta para as festas', c.pct)).join('')
-        : '<div class="tv-vazio">Nenhum item faltando para as festas</div>'}
+        ? compras.map(c => renderFalta(c.nome, c.nomeKey, c.falta, c.unidade, 'Falta para as festas da semana', c.pct)).join('')
+        : '<div class="tv-vazio">Nenhum item faltando para as festas da semana</div>'}
     </div>`;
 
   el.innerHTML = htmlProducao + htmlCompras;
@@ -949,8 +949,21 @@ function _festaAindaVaiSair(f) {
   return d >= hoje;
 }
 
+/* Só as festas desta semana (segunda a domingo), igual à Produção da
+   Semana — contar todas as festas futuras inflava a lista (Juliana, 10-28). */
+function _festaDestaSemana(f) {
+  const d = toDate(f.data);
+  if (isNaN(d)) return false;
+  d.setHours(0, 0, 0, 0);
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const dia  = hoje.getDay();
+  const inicio = new Date(hoje); inicio.setDate(hoje.getDate() + (dia === 0 ? -6 : 1 - dia));
+  const fim    = new Date(inicio); fim.setDate(inicio.getDate() + 6);
+  return d >= inicio && d <= fim;
+}
+
 function _itensFaltandoParaFestas() {
-  const festasRelevantes = todasFestasCache.filter(_festaAindaVaiSair);
+  const festasRelevantes = todasFestasCache.filter(f => _festaAindaVaiSair(f) && _festaDestaSemana(f));
   /* Item de produção não é compra — ele aparece só em Produção da Semana
      (pedido da Juliana em 10-07: os dois cards repetiam o mesmo item). */
   return agregarItensFestas(festasRelevantes)
@@ -978,7 +991,7 @@ function renderizarDashStats({ festasHoje, festasSemana, itensProducao, itensCom
     { label: 'Festas Hoje',       valor: festasHoje.length,   sub: festasHoje.length === 1 ? '1 festa' : `${festasHoje.length} festas` },
     { label: 'Festas na Semana',  valor: festasSemana.length, sub: 'segunda a domingo' },
     { label: 'Itens de Produção', valor: itensProducao.length, sub: 'a produzir na semana' },
-    { label: 'Itens em Falta',    valor: itensCompra.length,  sub: 'faltam para as festas', alerta: itensCompra.length > 0 },
+    { label: 'Itens em Falta',    valor: itensCompra.length,  sub: 'faltam para a semana', alerta: itensCompra.length > 0 },
   ];
 
   el.innerHTML = tiles.map(t => `
@@ -1053,14 +1066,14 @@ function renderizarDashComprasPendentes(urgentes) {
     <div class="dash-card-header">
       <div>
         <div class="dash-card-titulo">Compras Pendentes</div>
-        <div class="dash-card-sub">${urgentes.length} item${urgentes.length !== 1 ? 's' : ''} faltando para as festas</div>
+        <div class="dash-card-sub">${urgentes.length} item${urgentes.length !== 1 ? 's' : ''} faltando para as festas da semana</div>
       </div>
       <button class="dash-card-link" onclick="historico=['tela-inicial']; abrirEstoque()">Ver tudo</button>
     </div>
   `;
 
   if (!urgentes.length) {
-    el.innerHTML = header + `<div class="dash-empty">Nenhum item faltando para as festas ativas.</div>`;
+    el.innerHTML = header + `<div class="dash-empty">Nenhum item faltando para as festas da semana.</div>`;
     return;
   }
 
