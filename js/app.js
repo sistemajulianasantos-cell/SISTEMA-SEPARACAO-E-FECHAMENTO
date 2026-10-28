@@ -8464,6 +8464,8 @@ function trocarAbaEstoque(aba, btn) {
   const elHistorico = document.getElementById('estoque-historico');
   const elMovFilt   = document.getElementById('estoque-mov-filtros');
   if (elMovFilt) elMovFilt.classList.toggle('hidden', aba !== 'historico');
+  const elPeriodo = document.getElementById('estoque-periodo');
+  if (elPeriodo) elPeriodo.classList.toggle('hidden', aba === 'historico');
 
   if (aba === 'historico') {
     if (elConteudo)  elConteudo.classList.add('hidden');
@@ -8491,6 +8493,61 @@ function _reRenderEstoqueAtual() {
   } else {
     renderizarEstoque(todasFestasCache, estoqueCache);
   }
+}
+
+/* ── Filtro de período do Controle de Estoque ──
+   Limita o "Necessário" (Sintético / Por Festa / Estoque R$) às festas com
+   data dentro do período. 'YYYY-MM-DD' ou null; null/null = "Tudo". */
+let _estPeriodoDe  = null;
+let _estPeriodoAte = null;
+
+function setEstoquePeriodo() {
+  _estPeriodoDe  = document.getElementById('est-periodo-de')?.value  || null;
+  _estPeriodoAte = document.getElementById('est-periodo-ate')?.value || null;
+  document.querySelectorAll('#estoque-periodo-presets .tab').forEach(b => b.classList.remove('ativo'));
+  if (!_estPeriodoDe && !_estPeriodoAte) {
+    const t = document.querySelector('#estoque-periodo-presets .tab[data-preset="tudo"]');
+    if (t) t.classList.add('ativo');
+  }
+  _reRenderEstoqueAtual();
+}
+
+function presetEstoquePeriodo(preset, btn) {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  const fmt  = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  if (preset === 'tudo') {
+    _estPeriodoDe = null; _estPeriodoAte = null;
+  } else if (preset === '7d') {
+    const ate = new Date(hoje); ate.setDate(ate.getDate() + 6);
+    _estPeriodoDe = fmt(hoje); _estPeriodoAte = fmt(ate);
+  } else if (preset === 'mes') {
+    const ate = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+    _estPeriodoDe = fmt(hoje); _estPeriodoAte = fmt(ate);
+  } else if (preset === 'prox') {
+    const de  = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1);
+    const ate = new Date(hoje.getFullYear(), hoje.getMonth() + 2, 0);
+    _estPeriodoDe = fmt(de); _estPeriodoAte = fmt(ate);
+  }
+
+  const elDe  = document.getElementById('est-periodo-de');
+  const elAte = document.getElementById('est-periodo-ate');
+  if (elDe)  elDe.value  = _estPeriodoDe  || '';
+  if (elAte) elAte.value = _estPeriodoAte || '';
+
+  document.querySelectorAll('#estoque-periodo-presets .tab').forEach(b => b.classList.remove('ativo'));
+  if (btn) btn.classList.add('ativo');
+
+  _reRenderEstoqueAtual();
+}
+
+function _festaNoPeriodoEstoque(f) {
+  if (!_estPeriodoDe && !_estPeriodoAte) return true;
+  const d = normalizarData(f.data);
+  if (!d) return false;
+  if (_estPeriodoDe  && d < _estPeriodoDe)  return false;
+  if (_estPeriodoAte && d > _estPeriodoAte) return false;
+  return true;
 }
 
 function filtrarEstoque(valor) {
@@ -9544,7 +9601,8 @@ function renderizarEstoque(festas, estoqueMap) {
      (agendada ou separando). A partir de conferência em diante, os itens
      já foram fisicamente pegos do estoque durante a separação — contar
      de novo aqui infla o "necessário" com pedidos que já saíram. */
-  const festasRelevantes = festas.filter(f => f.status === 'agendada' || f.status === 'separando');
+  const festasRelevantes = festas.filter(f =>
+    (f.status === 'agendada' || f.status === 'separando') && _festaNoPeriodoEstoque(f));
   const todos = agregarItensFestas(festasRelevantes);
 
   /* Itens do Cadastro sem nenhuma festa ativa pedindo também entram na tela,

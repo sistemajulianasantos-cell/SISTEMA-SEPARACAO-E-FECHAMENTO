@@ -1358,6 +1358,18 @@
           <option value="menor">Menos em estoque</option>
         </select>
       </div>
+      <div class="producao-periodo" id="estoque-periodo">
+        <span class="producao-periodo-label">Período das festas:</span>
+        <input type="date" id="est-periodo-de"  onchange="setEstoquePeriodo()" aria-label="De">
+        <span class="producao-periodo-ate">até</span>
+        <input type="date" id="est-periodo-ate" onchange="setEstoquePeriodo()" aria-label="Até">
+        <div class="filtros-tabs" id="estoque-periodo-presets">
+          <button class="tab" data-preset="7d"   onclick="presetEstoquePeriodo('7d',this)">7 dias</button>
+          <button class="tab" data-preset="mes"  onclick="presetEstoquePeriodo('mes',this)">Este mês</button>
+          <button class="tab" data-preset="prox" onclick="presetEstoquePeriodo('prox',this)">Próximo mês</button>
+          <button class="tab ativo" data-preset="tudo" onclick="presetEstoquePeriodo('tudo',this)">Tudo</button>
+        </div>
+      </div>
       <div class="filtros-tabs" id="estoque-tabs">
         <button class="tab ativo" data-aba="sintetico" onclick="trocarAbaEstoque('sintetico',this)">Sintético</button>
         <button class="tab"       data-aba="analitico" onclick="trocarAbaEstoque('analitico',this)">Por Festa</button>
@@ -1858,7 +1870,7 @@
 
   <script src="js/config.js?v=5"></script>
   <script src="js/firestore.js?v=67"></script>
-  <script src="js/app.js?v=181"></script>
+  <script src="js/app.js?v=182"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>
