@@ -3090,6 +3090,38 @@ input:checked + .toggle-slider::before        { transform: translateX(22px); }
   .no-print { display: none !important; }
 }
 
+/* Folhas para imprimir (Coordenador / Cliente) — imita o papel do modelo,
+   por isso branco e preto fixos, mesmo no modo escuro */
+.fimp-pagina {
+  background: #fff; color: #000; font-family: Calibri, Arial, sans-serif;
+  max-width: 794px; margin: 0 auto 24px; padding: 28px 32px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.15);
+}
+.fimp-topo { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 26px; }
+.fimp-logo { width: 96px; flex-shrink: 0; }
+.fimp-quadro, .fimp-tabela { border-collapse: collapse; width: 100%; }
+.fimp-quadro td { border: 1px solid #000; padding: 3px 6px; font-size: 13px; }
+.fimp-quadro td:first-child:not([colspan]) { width: 64%; }
+.fimp-titulo { text-align: center; font-weight: 700; font-size: 13px; margin: 22px 0 8px; }
+.fimp-tabela th, .fimp-tabela td { border: 1px solid #000; padding: 2px 6px; font-size: 12px; text-align: center; height: 18px; }
+.fimp-tabela th { font-weight: 700; }
+.fimp-linha { display: inline-block; flex: 1; border-bottom: 1px solid #000; min-width: 60%; height: 14px; vertical-align: bottom; }
+.fimp-obs { display: flex; gap: 4px; align-items: flex-end; margin-top: 18px; font-size: 12px; }
+.fimp-he { margin-top: 24px; font-size: 12px; }
+.fimp-he-op { margin: 4px 0 0 60px; font-weight: 700; }
+.fimp-he .fimp-linha { min-width: 30%; margin-left: 6px; }
+.fimp-assinaturas { display: flex; gap: 40px; justify-content: center; margin-top: 50px; font-size: 12px; font-weight: 700; text-align: center; }
+.fimp-assinaturas > div { flex: 1; max-width: 260px; }
+.fimp-assinaturas .fimp-linha { display: block; width: 100%; margin-bottom: 6px; }
+@media print {
+  @page { size: A4; margin: 10mm; }
+  #tela-folhas-imprimir, #tela-folhas-imprimir * { visibility: visible; }
+  #tela-folhas-imprimir { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
+  #tela-folhas-imprimir .container { padding: 0; max-width: none; }
+  .fimp-pagina { box-shadow: none; margin: 0; padding: 0; max-width: none; page-break-after: always; break-after: page; }
+  .fimp-pagina:last-child { page-break-after: auto; break-after: auto; }
+}
+
 /* Folha de Fechamento — mesmo layout da folha de papel usada na festa
    (Bebidas Cliente / Bebidas Consignada / Copos e Decoração), gerada a
    partir dos dados do Retorno. Fica dentro de #tela-relatorio-retorno,

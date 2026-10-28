@@ -31,7 +31,7 @@
     form-action 'self';
   ">
   <title>Romero Coquetéis — Sistema</title>
-  <link rel="stylesheet" href="css/styles.css?v=50">
+  <link rel="stylesheet" href="css/styles.css?v=51">
 </head>
 <body>
 
@@ -854,6 +854,20 @@
         <button class="btn-confirmar btn-full" onclick="compartilharFolhaFechamento()">Enviar PDF no grupo</button>
         <button class="btn-secundario btn-full" onclick="compartilharFolhaFechamentoImagem()">Enviar como imagem</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ══════════ TELA: FOLHAS PARA IMPRIMIR (Coordenador / Cliente) ══════════ -->
+  <div id="tela-folhas-imprimir" class="tela hidden">
+    <div class="container">
+      <div class="no-print" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+        <button class="btn-primario" onclick="window.print()">Imprimir</button>
+        <label style="display:flex;gap:6px;align-items:center;font-size:14px">
+          <input type="checkbox" id="fimp-preencher" onchange="trocarPreencherFolhasImprimir(this.checked)">
+          Preencher quantidade inicial
+        </label>
+      </div>
+      <div id="fimp-content"></div>
     </div>
   </div>
 
@@ -1870,7 +1884,7 @@
 
   <script src="js/config.js?v=5"></script>
   <script src="js/firestore.js?v=67"></script>
-  <script src="js/app.js?v=183"></script>
+  <script src="js/app.js?v=184"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>

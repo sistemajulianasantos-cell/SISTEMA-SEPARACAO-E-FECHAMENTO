@@ -3350,6 +3350,7 @@ async function _completarFestaComGestao(festa) {
     preencher('hora', p.hrInicio, sep.hrInicio);
     preencher('horaFim', p.hrFim, sep.hrFim);
     preencher('convidados', p.convidados, sep.convidados);
+    preencher('valorHoraExtra', p.horaExtra);
     return comp;
   } catch (e) {
     console.warn('Completar folha com dados da Gestão:', e);
@@ -4321,6 +4322,156 @@ function _categoriaNormItem(item) {
   return normalizarNomeItem(cfg?.grupo || item.categoria || '');
 }
 
+/* ── Folha do Coordenador x Folha do Cliente (Juliana, 10-28) ──
+   O modelo de papel separa em duas folhas:
+   - Coordenador: Bebidas Romero + Fechamento interno (insumos)
+   - Cliente: Bebidas cliente / consignadas + Copos e decoração + hora extra
+   Copo/decoração pela categoria do Cadastro; bebida pelo fornecimento
+   (sufixo do nome ou campo) ou, sem ele, por categoria de bebida. */
+const _GRUPOS_FOLHA = [
+  { id: 'romero',     folha: 'coord',   titulo: 'Bebidas Romero' },
+  { id: 'insumos',    folha: 'coord',   titulo: 'Fechamento interno' },
+  { id: 'cliente',    folha: 'cliente', titulo: 'Bebidas cliente' },
+  { id: 'consignado', folha: 'cliente', titulo: 'Bebidas consignadas' },
+  { id: 'copos',      folha: 'cliente', titulo: 'Copos e decoração' },
+];
+const _FOLHAS_TITULO = { coord: 'Folha do Coordenador', cliente: 'Folha do Cliente' };
+
+function _grupoFolhaItem(item) {
+  const cat = _categoriaNormItem(item);
+  if (cat.includes('copo') || cat.includes('decor')) return 'copos';
+  const forn = item.fornecimento || extrairFornDoNome(item.nome);
+  if (forn === 'cliente' || forn === 'terceiro') return 'cliente';
+  if (forn === 'consignado') return 'consignado';
+  if (forn) return 'romero';
+  if (/destilad|bebida|vinho|espumante|cerveja|licor|aperitiv/.test(cat) && !/nao_alcoo|sem_alcoo/.test(cat)) return 'romero';
+  return 'insumos';
+}
+
+/* Linhas (com .item) → [{ folha, grupos: [{ id, titulo, linhas }] }],
+   só os grupos/folhas que têm linha */
+function _secoesFolha(linhas) {
+  return ['coord', 'cliente'].map(folha => ({
+    folha,
+    grupos: _GRUPOS_FOLHA.filter(g => g.folha === folha)
+      .map(g => ({ ...g, linhas: linhas.filter(l => _grupoFolhaItem(l.item) === g.id) }))
+      .filter(g => g.linhas.length),
+  })).filter(s => s.grupos.length);
+}
+
+function _txtHoraExtraFolha(festa) {
+  return festa.horaExtra === 'sim'
+    ? 'Sim' + (festa.horaExtraHoras ? ` — ${_fmtQtd(Number(festa.horaExtraHoras)).replace('.', ',')} hora(s)` : '')
+    : festa.horaExtra === 'nao' ? 'Não' : 'Não informado';
+}
+
+/* ══════════════════════════════════════════════════
+   FOLHAS PARA IMPRIMIR (papel) — Juliana, 10-28
+   Prévia no formato do modelo de papel (Folha do Coordenador e Folha do
+   Cliente), pra imprimir e preencher à mão quando não usar o sistema.
+══════════════════════════════════════════════════ */
+let _fimpFesta = null;
+let _fimpPreencher = false;
+
+function abrirFolhasImprimir(festa) {
+  pararListeners();
+  _fimpFesta = festa;
+  festaAtual = festa;
+  historico.push('tela-folhas-imprimir');
+  mostrarTela('tela-folhas-imprimir', 'Folhas para imprimir');
+  const chk = document.getElementById('fimp-preencher');
+  if (chk) chk.checked = _fimpPreencher;
+  document.getElementById('fimp-content').innerHTML = '<div class="estado-vazio"><p>Montando as folhas...</p></div>';
+  _garantirItemConfigs().then(() => {
+    if (_fimpFesta === festa) _renderFolhasImprimir();
+    return _completarFestaComGestao(festa);
+  }).then(comp => {
+    if (_fimpFesta !== festa) return;
+    _fimpFesta = comp;
+    _renderFolhasImprimir();
+  });
+}
+
+function trocarPreencherFolhasImprimir(v) {
+  _fimpPreencher = !!v;
+  _renderFolhasImprimir();
+}
+
+function _renderFolhasImprimir() {
+  const festa = _fimpFesta;
+  const el = document.getElementById('fimp-content');
+  if (!festa || !el) return;
+  const e = v => _escHtml(_maiusc(v));
+  const itens = (festa.itens || [])
+    .filter(it => !it.origemReposicao && buscarConfigItemPorNome(it.nome)?.conferirCoord !== false)
+    .map(it => {
+      const qtd = _qtdInicialConf(it) || Number(it.qtdNecessaria) || 0;
+      return {
+        item: it,
+        nome: nomeBasDisplay(it.nome),
+        marca: it.marca || '',
+        inicial: _fimpPreencher && qtd ? `${_fmtQtd(qtd)} ${it.unidade || 'un'}` : '',
+      };
+    });
+  const doGrupo = id => itens.filter(l => _grupoFolhaItem(l.item) === id);
+
+  const hora = [festa.hora && _horaFolha(festa.hora), festa.horaFim && _horaFolha(festa.horaFim)].filter(Boolean).join(' ÀS ');
+  const cabecalho = `
+    <div class="fimp-topo">
+      <img class="fimp-logo" src="icons/folha-logo-topo.png" alt="">
+      <table class="fimp-quadro">
+        <tr><td>CLIENTE: ${e(festa.cliente)}</td><td>DATA: ${e(festa.data ? formatarData(festa.data) : '')}</td></tr>
+        <tr><td>EVENTO: ${e(festa.tipoEvento)}</td><td>CONTRATO: ${e(festa.contrato)}</td></tr>
+        <tr><td colspan="2">LOCAL: ${e(festa.local)}</td></tr>
+        <tr><td colspan="2">HORA INÍCIO: ${e(hora)}</td></tr>
+        <tr><td>CONVIDADOS PORTARIA: ${e(festa.convidados)}</td><td>CONVIDADOS FINAL: ${e(festa.convidadosPortaria)}</td></tr>
+      </table>
+    </div>`;
+
+  /* tabela vazia ganha linhas em branco pra escrever à mão */
+  const tabela = (titulo, cols, linhas, celulas) => `
+    <div class="fimp-titulo">${_escHtml(titulo.toUpperCase())}</div>
+    <table class="fimp-tabela">
+      <tr>${cols.map(c => `<th>${_escHtml(c)}</th>`).join('')}</tr>
+      ${(linhas.length ? linhas.map(celulas) : [0, 1, 2].map(() => cols.map(() => '')))
+        .map(cs => `<tr>${cs.map(c => `<td>${_escHtml(_maiusc(c))}</td>`).join('')}</tr>`).join('')}
+    </table>`;
+  const bebidas = l => [l.nome, l.marca, l.inicial, ''];
+  const obs = `
+    <div class="fimp-obs"><strong>OBSERVAÇÕES:</strong><span class="fimp-linha"></span></div>
+    <div class="fimp-obs"><span class="fimp-linha"></span></div>`;
+
+  const consignadas = doGrupo('consignado');
+  const marca = v => festa.horaExtra === v ? '&#9679;' : '&#9675;';
+  const valorHE = festa.valorHoraExtra ? ` (VALOR DE CADA HORA EXTRA R$ ${_escHtml(String(festa.valorHoraExtra).replace(/^R\$\s*/, ''))})` : '';
+
+  el.innerHTML = `
+    <div class="fimp-pagina">
+      ${cabecalho}
+      ${tabela('Bebidas Romero', ['BEBIDAS', 'MARCAS', 'QUANTIDADE INICIAL', 'CONSUMO'], doGrupo('romero'), bebidas)}
+      ${tabela('Fechamento interno', ['PRODUTO', 'QUANTIDADE INICIAL', 'CONSUMO', 'RETORNO'], doGrupo('insumos'), l => [l.nome, l.inicial, '', ''])}
+      ${obs}
+      <div class="fimp-assinaturas"><div><span class="fimp-linha"></span>Assinatura Coordenação</div></div>
+    </div>
+    <div class="fimp-pagina">
+      ${cabecalho}
+      ${tabela('Bebidas cliente', ['BEBIDAS', 'MARCAS', 'QUANTIDADE INICIAL', 'CONSUMO'], doGrupo('cliente'), bebidas)}
+      ${consignadas.length ? tabela('Bebidas consignadas', ['BEBIDAS', 'MARCAS', 'QUANTIDADE INICIAL', 'CONSUMO'], consignadas, bebidas) : ''}
+      ${tabela('Copos e decoração', ['MODELO', 'QUANTIDADE INICIAL', 'QUEBRAS'], doGrupo('copos'), l => [l.nome, l.inicial, ''])}
+      <div class="fimp-he">
+        <strong>O EVENTO TEVE HORA EXTRA?</strong>
+        <div class="fimp-he-op">${marca('nao')} NÃO</div>
+        <div class="fimp-he-op">${marca('sim')} SIM${festa.horaExtra === 'sim' && festa.horaExtraHoras ? ` — ${_escHtml(_fmtQtd(Number(festa.horaExtraHoras)).replace('.', ','))} HORA(S)` : ''}</div>
+        <div style="margin-top:14px"><strong>HORA EXTRA${valorHE}:</strong><span class="fimp-linha"></span></div>
+      </div>
+      ${obs}
+      <div class="fimp-assinaturas">
+        <div><span class="fimp-linha"></span>Assinatura Coordenação</div>
+        <div><span class="fimp-linha"></span>Assinatura Cerimonial / Cliente</div>
+      </div>
+    </div>`;
+}
+
 /* Folha de Fechamento (PDF pro grupo, depois do retorno): os mesmos itens
    que o coordenador confere (+ reposição), com quantidade inicial,
    reposição, consumo, quebras e retorno; fotos de consumo e de retorno
@@ -4467,9 +4618,12 @@ function _renderFolhaFechamento(festa, chegada = false) {
     <div class="folha-header">
       ${(chegada ? _infoFolhaConferencia : _infoFolhaFechamento)(festa).map(([k, v]) => `<div class="folha-header-linha"><strong>${k}:</strong> ${_escHtml(String(v))}</div>`).join('')}
     </div>
+    ${_secoesFolha(linhas).map(sec => `
+    <h2 style="font-size:16px;margin:18px 0 8px;color:#2B3B2A">${_FOLHAS_TITULO[sec.folha]}</h2>
+    ${sec.grupos.map(g => `
     <div class="folha-secao">
-      <h3 class="folha-secao-titulo">Itens (${linhas.length})</h3>
-      ${linhas.map(l => `
+      <h3 class="folha-secao-titulo">${_escHtml(g.titulo)} (${g.linhas.length})</h3>
+      ${g.linhas.map(l => `
         <div style="border:1px solid #E5E7EB;border-radius:8px;margin-bottom:12px;overflow:hidden">
           <div style="background:#2B3B2A;color:#fff;font-weight:700;font-size:14px;padding:8px 10px">${_escHtml(l.nome)}</div>
           <table style="border-collapse:collapse;width:100%;table-layout:fixed">
@@ -4478,7 +4632,12 @@ function _renderFolhaFechamento(festa, chegada = false) {
             <tr>${[l.inicial, l.reposta, l.consumo, l.quebras].map((v, c) => cel(`${_escHtml(v)}<div id="${P}-slot-${l.i}-${c}"></div>`)).join('')}${cel(`<strong>${_escHtml(l.retorno)}</strong><div id="${P}-slot-${l.i}-4"></div>`)}</tr>
           </table>
         </div>`).join('')}
-    </div>
+    </div>`).join('')}
+    ${sec.folha === 'cliente' && !chegada ? `
+    <div class="folha-secao">
+      <h3 class="folha-secao-titulo">Hora extra</h3>
+      <div class="folha-texto">${_escHtml(_txtHoraExtraFolha(festa))}</div>
+    </div>` : ''}`).join('')}
     <div class="folha-secao">
       <h3 class="folha-secao-titulo">Observações</h3>
       <div class="folha-texto">${obsFolha ? _escHtml(obsFolha).replace(/\n/g, '<br>') : '—'}</div>
@@ -4550,9 +4709,35 @@ async function _gerarPdfFolhaFechamento(festa, chegada = false) {
     }
   };
 
+  /* Título de folha/grupo: não fica sozinho no pé da página */
+  const titulo = (txt, tam, espaco) => {
+    if (y + espaco + 30 > PDF_RODAPE_LIVRE) { doc.addPage(); y = 16; }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(tam); doc.setTextColor(43, 59, 42);
+    doc.text(txt, M, y + tam * 0.35); doc.setTextColor(0);
+    y += espaco;
+  };
+
+  /* Folha do Coordenador (Bebidas Romero + Fechamento interno) e, em página
+     nova, Folha do Cliente (Bebidas cliente/consignadas + Copos + hora
+     extra) — Juliana, 10-28 */
+  const secoes = _secoesFolha(linhas);
+  secoes.forEach((sec, k) => {
+    if (k > 0) { doc.addPage(); y = 16; }
+    titulo(_FOLHAS_TITULO[sec.folha].toUpperCase(), 12, 8);
+    sec.grupos.forEach(g => {
+      titulo(`${g.titulo} (${g.linhas.length})`, 10, 6);
+      g.linhas.forEach(desenharItem);
+    });
+    if (sec.folha === 'cliente' && !chegada) {
+      titulo('Hora extra', 10, 6);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5);
+      doc.text(_txtHoraExtraFolha(festa), M, y); y += 8;
+    }
+  });
+
   /* Um bloco por item (título + subtítulo + quantidades com as fotos),
      sempre inteiro na mesma página */
-  linhas.forEach(l => {
+  function desenharItem(l) {
     const s = slotsImg[l.i];
     const temFoto = !!(s && (s.inicial || s.consumo || s.retorno));
     /* texto que quebra em 2 linhas (ex.: "147 un (= 9 cx e 12 un)") empurra a foto pra baixo */
@@ -4584,7 +4769,7 @@ async function _gerarPdfFolhaFechamento(festa, chegada = false) {
       },
     });
     y = doc.lastAutoTable.finalY + 6;
-  });
+  }
   y += 4;
 
   if (obsFolha) {
@@ -5425,6 +5610,12 @@ function renderizarDetalhe(festa) {
        </div>`
     : '';
 
+  const folhasImprimirHTML = festa.status !== 'cancelada'
+    ? `<div class="detalhe-acoes" style="margin-bottom:16px">
+        <button class="btn-secundario" onclick="abrirFolhasImprimir(festaAtual)">Folhas para imprimir (Coordenador / Cliente)</button>
+       </div>`
+    : '';
+
   const editarHTML = (festa.status === 'agendada' || festa.status === 'separando')
     ? `<div class="detalhe-acoes" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
         <button class="btn-secundario" onclick="abrirEditarFesta('${festa.id}')">Editar Detalhes / Quantidades</button>
@@ -5508,6 +5699,7 @@ function renderizarDetalhe(festa) {
     ${htmlReposicoesFesta(festa)}
     ${folhaConferenciaHTML}
     ${folhaFechamentoHTML}
+    ${folhasImprimirHTML}
     ${editarHTML}
     <div id="banner-divergencia-gestao"></div>
     ${importarItensHTML}
