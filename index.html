@@ -729,6 +729,7 @@
       <button class="btn-secundario btn-sm no-print" style="margin:0 0 12px" onclick="abrirFolhasImprimir(festaAtual)">Folhas para imprimir (Coordenador / Cliente)</button>
       <h3 class="titulo-secao">Conferência de Itens</h3>
       <div id="conf-itens"></div>
+      <button class="btn-secundario btn-full" style="margin:8px 0 16px" onclick="abrirIncluirItemCoord()">+ Incluir item (ex.: bebida do cliente)</button>
       <div id="conf-div-box" class="hidden alerta-divergencia">
         <strong>Divergências identificadas:</strong>
         <div id="conf-div-lista"></div>
@@ -815,6 +816,7 @@
 
       <h3 class="titulo-secao">Itens — consumo, quebras e retorno</h3>
       <div id="ret-itens"></div>
+      <button class="btn-secundario btn-full" style="margin:8px 0 16px" onclick="abrirIncluirItemCoord()">+ Incluir item (ex.: bebida do cliente)</button>
 
       <div class="form-group mt-lg">
         <label>Fotos gerais do consumo e quebras (opcional)</label>
@@ -1789,6 +1791,52 @@
   </div>
 
   <!-- ══════════ MODAL: REGISTRAR MOVIMENTAÇÃO DE ESTOQUE ══════════ -->
+  <!-- Incluir item na festa (coordenador) — ex.: bebida do cliente fora do Cadastro -->
+  <div id="modal-incluir-item" class="modal-overlay hidden" onclick="fecharIncluirItemCoord()">
+    <div class="modal-box" onclick="event.stopPropagation()" style="max-width:480px;width:95%">
+      <div class="modal-titulo">Incluir item na festa</div>
+      <p class="desc-tela" style="margin:6px 0 12px">Use para o que chegou e não estava na lista — ex.: bebidas que o cliente trouxe. O item entra na conferência, no retorno e na Folha de Fechamento.</p>
+      <div class="form-group">
+        <label>Fornecimento</label>
+        <select id="inc-forn">
+          <option value="cliente">Bebida do cliente</option>
+          <option value="consignado">Consignado</option>
+          <option value="romero">Romero</option>
+          <option value="">Outro (insumo, decoração...)</option>
+        </select>
+      </div>
+      <datalist id="inc-itens-datalist"></datalist>
+      <div class="form-group">
+        <label>Bebida / item</label>
+        <input type="text" id="inc-nome" list="inc-itens-datalist" placeholder="Ex: Whisky, Vodka, Espumante" />
+      </div>
+      <div class="form-group">
+        <label>Marca</label>
+        <input type="text" id="inc-marca" placeholder="Ex: Johnnie Walker Black Label" />
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Quantidade que chegou</label>
+          <input type="number" id="inc-qtd" min="0" step="any" inputmode="decimal" placeholder="Ex: 6" />
+        </div>
+        <div class="form-group">
+          <label>Unidade</label>
+          <select id="inc-un">
+            <option value="garrafa">garrafa</option>
+            <option value="un">un</option>
+            <option value="cx">cx</option>
+            <option value="lata">lata</option>
+            <option value="kg">kg</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button class="btn-secundario" onclick="fecharIncluirItemCoord()">Cancelar</button>
+        <button class="btn-primario" id="btn-inc-salvar" onclick="salvarIncluirItemCoord()">Incluir</button>
+      </div>
+    </div>
+  </div>
+
   <div id="modal-registrar-mov" class="modal-overlay hidden" onclick="fecharModalRegistrarMov()">
     <div class="modal-box" onclick="event.stopPropagation()" style="max-width:560px;width:95%">
       <div class="modal-titulo">Registrar movimentação de estoque</div>
@@ -1891,7 +1939,7 @@
 
   <script src="js/config.js?v=5"></script>
   <script src="js/firestore.js?v=67"></script>
-  <script src="js/app.js?v=186"></script>
+  <script src="js/app.js?v=187"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>

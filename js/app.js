@@ -2732,7 +2732,7 @@ function htmlCardConfItem(item, ri, conferido) {
   /* Sem recontagem desde 10-11 — o coordenador conta uma vez só */
   const recontarPendente = false;
   const travado = false;
-  const msgInicial = ceo
+  const msgInicial = ceo && !item.origemCoordenador
     ? ((confVal !== undefined && confVal !== null)
         ? (confVal > sepVal
             ? `<span class="msg-item msg-alerta">Quantidade acima do separado</span>`
@@ -2756,6 +2756,8 @@ function htmlCardConfItem(item, ri, conferido) {
             <button class="btn-editar-nome" title="Editar nome" onclick="editarNomeItem(${ri})">Editar</button>
           </div>
           ${htmlBadgeForn(item) || ''}
+          ${item.marca ? `<div class="item-sub">Marca: <strong>${_escHtml(item.marca)}</strong></div>` : ''}
+          ${item.origemCoordenador ? `<div class="item-sub">Incluído na festa${item.incluidoPor ? ` por <strong>${_escHtml(item.incluidoPor)}</strong>` : ''}</div>` : ''}
           ${souCeo() && item.separado && item.qtdSeparada !== undefined ? `
             <div class="item-sub">
               Separado: <strong>${item.qtdSeparada} ${_escHtml(item.unidade || 'un')}</strong>${item.separadoPor ? ` por <strong>${_escHtml(item.separadoPor)}</strong>` : ''}${item.separadoEm ? ` às ${formatarHora(item.separadoEm)}` : ''}
@@ -3111,6 +3113,67 @@ function atualizarBoxDivConf() {
   }
 }
 
+/* ── Coordenador inclui item na festa (Juliana, 10-31) ──
+   Ex.: bebidas que o cliente trouxe, com marcas fora do Cadastro. Entra em
+   festa.itens via arrayUnion (não regrava a lista — outro coordenador pode
+   estar conferindo ao mesmo tempo) já conferido, com a quantidade que
+   chegou; segue pro retorno (consumo), Folha de Fechamento e folhas de
+   imprimir. Não gera divergência nem lançamento de estoque. */
+function abrirIncluirItemCoord() {
+  if (!festaAtual) return;
+  ['inc-nome', 'inc-marca', 'inc-qtd'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('inc-forn').value = 'cliente';
+  document.getElementById('inc-un').value = 'garrafa';
+  const nomes = new Set(Object.values(itemConfigsCache).map(c => nomeBasDisplay(c.nome)).filter(Boolean));
+  document.getElementById('inc-itens-datalist').innerHTML =
+    [...nomes].sort((a, b) => a.localeCompare(b, 'pt-BR')).map(n => `<option value="${_escHtml(n)}">`).join('');
+  document.getElementById('modal-incluir-item').classList.remove('hidden');
+  setTimeout(() => document.getElementById('inc-nome').focus(), 50);
+}
+
+function fecharIncluirItemCoord() {
+  document.getElementById('modal-incluir-item').classList.add('hidden');
+}
+
+async function salvarIncluirItemCoord() {
+  if (!festaAtual) return;
+  const nomeBase = document.getElementById('inc-nome').value.trim().toUpperCase();
+  const marca    = document.getElementById('inc-marca').value.trim();
+  const qtd      = parseFloat(String(document.getElementById('inc-qtd').value).replace(',', '.'));
+  const forn     = document.getElementById('inc-forn').value;
+  const unidade  = document.getElementById('inc-un').value || 'un';
+  if (!nomeBase) return toast('Informe a bebida / item.', 'erro');
+  if (!(qtd > 0)) return toast('Informe a quantidade que chegou.', 'erro');
+
+  /* o nome é a chave do item na conferência/retorno: duas bebidas iguais de
+     marcas diferentes (ex.: 2 vodkas do cliente) viram itens separados */
+  const usados = new Set((festaAtual.itens || []).map(it => normalizarNomeItem(it.nome)));
+  let nome = nomeBase;
+  if (usados.has(normalizarNomeItem(nome)) && marca) nome = `${nomeBase} - ${marca.toUpperCase()}`;
+  for (let n = 2; usados.has(normalizarNomeItem(nome)); n++) nome = `${nomeBase} ${n}`;
+
+  const agora = new Date();
+  const por = usuarioAtual?.nome || '';
+  const novo = {
+    nome, unidade, marca,
+    ...(forn ? { fornecimento: forn } : {}),
+    qtdNecessaria: 0, qtdSeparada: 0, qtdConferida: qtd,
+    conferidoEm: agora, conferidoPor: por,
+    origemCoordenador: true, incluidoPor: por, incluidoEm: agora,
+  };
+  fecharIncluirItemCoord();
+  try {
+    /* sem internet a gravação fica pendente e sobe sozinha; a tela já
+       atualiza pelo listener */
+    atualizarFesta(festaAtual.id, { itens: ARR_UNION(novo) })
+      .catch(e => { console.error('Incluir item:', e); toast('Não foi possível incluir o item. Tente de novo.', 'erro'); });
+    toast(`${nome}${marca ? ' (' + marca + ')' : ''} incluído na festa.`, 'sucesso');
+  } catch (e) {
+    console.error('Incluir item:', e);
+    toast('Não foi possível incluir o item. Tente de novo.', 'erro');
+  }
+}
+
 async function concluirConferencia() {
   if (!festaAtual) return;
   const btn = document.getElementById('btn-conf-concluir');
@@ -3197,6 +3260,7 @@ async function concluirConferencia() {
       .filter(it => {
         const cfg = buscarConfigItemPorNome(it.nome);
         if (cfg && cfg.conferirCoord === false) return false;
+        if (it.origemCoordenador) return false;   /* incluído na hora, não foi separado */
         return it.qtdConferida !== (it.qtdSeparada || 0);
       })
       .map(it => ({
@@ -9854,6 +9918,7 @@ async function _baixarEstoqueDaFesta(festa, itens) {
   if (festa.estoqueBaixado) return 0;
   let n = 0;
   for (const item of (itens || [])) {
+    if (item.origemCoordenador && item.fornecimento !== 'romero') continue;   /* bebida do cliente: não é estoque */
     const q = qtdEmUnidadeBase(item.nome, item.qtdConferida ?? item.qtdSeparada ?? 0);
     if (!(q > 0)) continue;
     const ref = _movEstoqueRefsDoItem(item.nome);
@@ -9876,6 +9941,7 @@ async function _retornarEstoqueDaFesta(festa, itens) {
   if (festa.estoqueRetornado) return 0;
   let n = 0;
   for (const item of (itens || [])) {
+    if (item.origemCoordenador && item.fornecimento !== 'romero') continue;   /* bebida do cliente: não é estoque */
     const q = qtdEmUnidadeBase(item.nome, item.qtdRetorno || 0);
     if (!(q > 0)) continue;
     const ref = _movEstoqueRefsDoItem(item.nome);
