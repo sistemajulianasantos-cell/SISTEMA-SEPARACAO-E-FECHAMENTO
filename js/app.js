@@ -4373,10 +4373,14 @@ function _txtHoraExtraFolha(festa) {
 let _fimpFesta = null;
 let _fimpPreencher = false;
 
+/* Abre de qualquer tela da festa (Detalhe, Separação, Conferência, Retorno,
+   Galpão) sem desligar o listener dela: o Voltar só reexibe a tela de
+   antes, com o que já estava digitado (fotos/contagens da conferência). */
 function abrirFolhasImprimir(festa) {
-  pararListeners();
+  if (!festa) return;
   _fimpFesta = festa;
-  festaAtual = festa;
+  const atual = document.querySelector('.tela:not(.hidden)')?.id;
+  if (atual && atual !== 'tela-folhas-imprimir' && historico[historico.length - 1] !== atual) historico.push(atual);
   historico.push('tela-folhas-imprimir');
   mostrarTela('tela-folhas-imprimir', 'Folhas para imprimir');
   const chk = document.getElementById('fimp-preencher');
@@ -4415,6 +4419,87 @@ function fimpAdicionarLinha(btn) {
 
 function recarregarFolhasImprimir() {
   _renderFolhasImprimir();
+}
+
+/* Word (Juliana, 10-31): .doc em MHTML (HTML + logo embutido), que o Word
+   abre e deixa editar. Parte da folha como está na tela, já com as edições;
+   flex (que o Word não entende) vira tabela e as linhas de escrever viram
+   sublinhado. */
+async function baixarFolhasWord() {
+  const fonte = document.getElementById('fimp-content');
+  if (!fonte || !_fimpFesta || !fonte.querySelector('.fimp-pagina')) return;
+  let logoB64 = '', logoAlt = 120;
+  try {
+    const blob = await (await fetch('icons/folha-logo-topo.png')).blob();
+    /* o Word ignora o CSS da imagem: largura E altura vão no próprio <img> */
+    try { const bmp = await createImageBitmap(blob); logoAlt = Math.round(96 * bmp.height / bmp.width); } catch (_) {}
+    const buf = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    logoB64 = btoa(bin).replace(/.{76}/g, '$&\r\n');
+  } catch (e) { console.warn('Logo fora do Word:', e); }
+
+  const clone = fonte.cloneNode(true);
+  clone.querySelectorAll('.no-print, .fimp-x').forEach(n => n.remove());
+  clone.querySelectorAll('[contenteditable]').forEach(n => n.removeAttribute('contenteditable'));
+  const sub = n => '_'.repeat(n);
+  clone.querySelectorAll('.fimp-topo').forEach(t => {
+    const quadro = t.querySelector('.fimp-quadro');
+    t.outerHTML = `<table style="width:100%;border-collapse:collapse;margin-bottom:18pt"><tr>
+      <td style="width:85pt;vertical-align:top;border:none">${logoB64 ? `<img src="logo.png" width="96" height="${logoAlt}">` : ''}</td>
+      <td style="vertical-align:top;border:none">${quadro ? quadro.outerHTML : ''}</td></tr></table>`;
+  });
+  clone.querySelectorAll('.fimp-obs').forEach(o => {
+    const rot = o.querySelector('strong');
+    o.outerHTML = `<p style="margin:14pt 0 0">${rot ? `<b>${rot.textContent}</b>` : ''}${sub(rot ? 70 : 85)}</p>`;
+  });
+  clone.querySelectorAll('.fimp-he .fimp-linha').forEach(l => { l.outerHTML = sub(30); });
+  clone.querySelectorAll('.fimp-assinaturas').forEach(a => {
+    const nomes = [...a.children].map(d => d.textContent.trim());
+    a.outerHTML = `<table style="width:100%;margin-top:40pt"><tr>${nomes.map(n =>
+      `<td style="border:none;text-align:center;font-weight:bold">${sub(32)}<br>${n}</td>`).join('')}</tr></table>`;
+  });
+  const paginas = [...clone.querySelectorAll('.fimp-pagina')].map(p => p.innerHTML);
+
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="utf-8"><title>Folhas</title>
+<!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+<style>
+@page Section1 { size: 21cm 29.7cm; margin: 1.5cm; }
+div.Section1 { page: Section1; }
+body { font-family: Calibri, Arial, sans-serif; font-size: 10pt; }
+table { border-collapse: collapse; }
+.fimp-quadro { width: 100%; }
+.fimp-quadro td { border: 1px solid #000; padding: 2pt 4pt; font-size: 10pt; }
+.fimp-titulo { text-align: center; font-weight: bold; font-size: 10pt; margin: 14pt 0 6pt; }
+.fimp-tabela { width: 100%; }
+.fimp-tabela th, .fimp-tabela td { border: 1px solid #000; padding: 1pt 4pt; font-size: 9pt; text-align: center; }
+.fimp-he { margin-top: 16pt; }
+.fimp-he-op { margin: 3pt 0 0 40pt; font-weight: bold; }
+</style></head>
+<body><div class="Section1">
+${paginas.join('<p style="page-break-before:always;margin:0;font-size:1pt;line-height:1pt">&nbsp;</p>')}
+</div></body></html>`;
+
+  const B = '----=_FolhasRomero';
+  const partes = [
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/related; boundary="${B}"; type="text/html"`,
+    '',
+    `--${B}`,
+    'Content-Type: text/html; charset="utf-8"',
+    'Content-Transfer-Encoding: 8bit',
+    'Content-Location: file:///C:/folhas.htm',
+    '',
+    html,
+  ];
+  if (logoB64) partes.push('', `--${B}`, 'Content-Type: image/png', 'Content-Transfer-Encoding: base64',
+    'Content-Location: file:///C:/logo.png', '', logoB64);
+  partes.push('', `--${B}--`, '');
+  const nome = _nomeArquivoFolhaConf(_fimpFesta).replace(/^Conferencia - /, 'Folhas - ').replace(/\.pdf$/, '.doc');
+  /* o Word só abre o MHTML com quebra de linha CRLF em tudo */
+  _baixarBlob(new Blob([partes.join('\n').replace(/\r?\n/g, '\r\n')], { type: 'application/msword' }), nome);
 }
 
 function _renderFolhasImprimir() {

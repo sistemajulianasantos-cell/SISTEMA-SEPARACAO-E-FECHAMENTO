@@ -679,6 +679,7 @@
   <div id="tela-separacao" class="tela hidden">
     <div class="container">
       <div id="sep-info" class="card-festa-info"></div>
+      <button class="btn-secundario btn-sm no-print" style="margin:0 0 12px" onclick="abrirFolhasImprimir(festaAtual)">Folhas para imprimir (Coordenador / Cliente)</button>
       <div class="sep-agrupamento-bar">
         <span class="sep-agrupamento-label">Agrupar por:</span>
         <div class="sep-agrupamento-tabs">
@@ -725,6 +726,7 @@
   <div id="tela-conferencia" class="tela hidden">
     <div class="container">
       <div id="conf-info" class="card-festa-info"></div>
+      <button class="btn-secundario btn-sm no-print" style="margin:0 0 12px" onclick="abrirFolhasImprimir(festaAtual)">Folhas para imprimir (Coordenador / Cliente)</button>
       <h3 class="titulo-secao">Conferência de Itens</h3>
       <div id="conf-itens"></div>
       <div id="conf-div-box" class="hidden alerta-divergencia">
@@ -788,6 +790,7 @@
   <div id="tela-retorno" class="tela hidden">
     <div class="container">
       <div id="ret-info" class="card-festa-info"></div>
+      <button class="btn-secundario btn-sm no-print" style="margin:0 0 12px" onclick="abrirFolhasImprimir(festaAtual)">Folhas para imprimir (Coordenador / Cliente)</button>
 
       <div class="form-secao">
         <div class="form-group">
@@ -862,6 +865,7 @@
     <div class="container">
       <div class="no-print" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
         <button class="btn-primario" onclick="window.print()">Imprimir</button>
+        <button class="btn-secundario" onclick="baixarFolhasWord()">Baixar Word</button>
         <label style="display:flex;gap:6px;align-items:center;font-size:14px">
           <input type="checkbox" id="fimp-preencher" onchange="trocarPreencherFolhasImprimir(this.checked)">
           Preencher quantidade inicial
@@ -888,6 +892,7 @@
   <div id="tela-galpao" class="tela hidden">
     <div class="container">
       <div id="gal-info" class="card-festa-info"></div>
+      <button class="btn-secundario btn-sm no-print" style="margin:0 0 12px" onclick="abrirFolhasImprimir(festaAtual)">Folhas para imprimir (Coordenador / Cliente)</button>
       <h3 class="titulo-secao">Conferência do Galpão</h3>
       <div id="gal-itens"></div>
       <div id="gal-div-box" class="hidden alerta-divergencia">
@@ -1886,7 +1891,7 @@
 
   <script src="js/config.js?v=5"></script>
   <script src="js/firestore.js?v=67"></script>
-  <script src="js/app.js?v=185"></script>
+  <script src="js/app.js?v=186"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>
