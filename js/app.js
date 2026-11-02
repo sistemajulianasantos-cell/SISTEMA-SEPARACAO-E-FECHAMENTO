@@ -2788,8 +2788,6 @@ function htmlCardConfItem(item, ri, conferido) {
 function renderizarConferencia(festa) {
   document.getElementById('conf-info').innerHTML = htmlInfoFesta(festa) + htmlLinkConferenciaBtn(festa);
 
-  const buscaConf = document.getElementById('busca-conf-input')?.value || '';
-
   /* Item com "Conferir" desligado no Cadastro não aparece pra ninguém —
      antes o CEO via todos e o Bar Back aparecia na conferência dela mesmo
      desligado (Juliana, 10-07). A conclusão já trata esses itens
@@ -2805,14 +2803,7 @@ function renderizarConferencia(festa) {
   const pendentes  = visiveis.filter(({ item }) => item.conferidoEm === undefined);
   const conferidos = visiveis.filter(({ item }) => item.conferidoEm !== undefined);
 
-  const buscaHtml = `
-    <div class="busca-sep-wrap">
-      <input type="search" id="busca-conf-input" class="busca-sep"
-        placeholder="Pesquisar item..."
-        oninput="filtrarItensConf(this.value)"
-        value="${buscaConf.replace(/"/g, '&quot;')}" />
-    </div>
-  `;
+  const buscaHtml = _htmlBuscaECategorias('conf', visiveis);
 
   const tabsHtml = `
     <div class="filtros-tabs" id="conf-tabs">
@@ -2826,11 +2817,11 @@ function renderizarConferencia(festa) {
   const avisoRecontagemHtml = '';
 
   const pendentesHtml = pendentes.length
-    ? pendentes.map(({ item, ri }) => htmlCardConfItem(item, ri, false)).join('')
+    ? _htmlPorCategoria(pendentes, ({ item, ri }) => htmlCardConfItem(item, ri, false))
     : estadoVazio('Nenhum item pendente de conferência.');
 
   const conferidosHtml = conferidos.length
-    ? conferidos.map(({ item, ri }) => htmlCardConfItem(item, ri, true)).join('')
+    ? _htmlPorCategoria(conferidos, ({ item, ri }) => htmlCardConfItem(item, ri, true))
     : estadoVazio('Nenhum item conferido ainda.');
 
   const avisoOcultosHtml = (souCeo() && ocultos.length)
@@ -2846,7 +2837,71 @@ function renderizarConferencia(festa) {
     <div id="conf-lista-conferido" class="${abaConfAtual === 'conferido' ? '' : 'hidden'}">${conferidosHtml}</div>
   `;
 
-  if (buscaConf) filtrarItensConf(buscaConf);
+  _aplicarFiltroLista('conf');
+}
+
+/* ── Busca + categoria nas listas da Conferência e do Retorno (Juliana, 11-02) ──
+   Itens agrupados por categoria do Cadastro (na ordem da tela Categorias) e
+   botões pra mostrar só uma categoria (Copos, Destilados...) — conferir por
+   setor fica mais rápido. ctx: 'conf' (chegada) ou 'ret' (retorno). */
+const _filtroCatLista = {};
+const _catDoItemLista = item => buscarConfigItemPorNome(item.nome)?.grupo || item.categoria || 'Sem categoria';
+const _ordemCatLista = (a, b) =>
+  (categoriasCache.find(c => c.nome === a)?.ordem ?? 999) - (categoriasCache.find(c => c.nome === b)?.ordem ?? 999)
+  || a.localeCompare(b, 'pt-BR');
+
+function _htmlPorCategoria(lista, render) {
+  const grupos = {};
+  lista.forEach(x => { const c = _catDoItemLista(x.item); (grupos[c] = grupos[c] || []).push(x); });
+  return Object.keys(grupos).sort(_ordemCatLista).map(c => `
+    <div class="lista-cat-grupo" data-cat="${_escHtml(c)}">
+      <div class="sep-grupo-header">
+        <span class="sep-grupo-nome">${_escHtml(c)}</span>
+        <span class="sep-grupo-badge">${grupos[c].length} ${grupos[c].length !== 1 ? 'itens' : 'item'}</span>
+      </div>
+      ${grupos[c].map(render).join('')}
+    </div>`).join('');
+}
+
+function _htmlBuscaECategorias(ctx, lista) {
+  const busca = document.getElementById(`busca-${ctx}-input`)?.value || '';
+  const cats = [...new Set(lista.map(x => _catDoItemLista(x.item)))].sort(_ordemCatLista);
+  if (_filtroCatLista[ctx] && !cats.includes(_filtroCatLista[ctx])) _filtroCatLista[ctx] = '';
+  const sel = _filtroCatLista[ctx] || '';
+  const chip = (c, rot) => `<button class="tab${sel === c ? ' ativo' : ''}" data-cat="${_escHtml(c)}"
+    onclick="_escolherCatLista('${ctx}', this)">${_escHtml(rot)}</button>`;
+  return `
+    <div class="busca-sep-wrap">
+      <input type="search" id="busca-${ctx}-input" class="busca-sep" placeholder="Pesquisar item..."
+        oninput="_aplicarFiltroLista('${ctx}')" value="${_escHtml(busca)}" />
+    </div>
+    ${cats.length > 1 ? `<div class="filtros-tabs" id="cats-${ctx}" style="flex-wrap:wrap;margin-bottom:10px">
+      ${chip('', 'Todas')}${cats.map(c => chip(c, c)).join('')}
+    </div>` : ''}`;
+}
+
+function _escolherCatLista(ctx, btn) {
+  _filtroCatLista[ctx] = btn.dataset.cat || '';
+  document.querySelectorAll(`#cats-${ctx} .tab`).forEach(b => b.classList.toggle('ativo', b === btn));
+  _aplicarFiltroLista(ctx);
+}
+
+function _aplicarFiltroLista(ctx) {
+  const cont = document.getElementById(ctx === 'conf' ? 'conf-itens' : 'ret-itens');
+  if (!cont) return;
+  const termo = (document.getElementById(`busca-${ctx}-input`)?.value || '').trim().toLowerCase();
+  const cat = _filtroCatLista[ctx] || '';
+  cont.querySelectorAll('.lista-cat-grupo').forEach(g => {
+    const okCat = !cat || g.dataset.cat === cat;
+    let algum = false;
+    g.querySelectorAll('.item-row').forEach(card => {
+      const nome = card.querySelector('.item-nome')?.textContent.toLowerCase() || '';
+      const ok = okCat && (!termo || nome.includes(termo));
+      card.style.display = ok ? '' : 'none';
+      if (ok) algum = true;
+    });
+    g.style.display = algum ? '' : 'none';
+  });
 }
 
 function trocarAbaConf(aba, btn) {
@@ -4066,7 +4121,9 @@ function renderizarRetorno(festa) {
   `;
   };
 
+  const buscaRetHtml = _htmlBuscaECategorias('ret', noRetorno);
   document.getElementById('ret-itens').innerHTML = noRetorno.length ? `
+    ${buscaRetHtml}
     <div class="filtros-tabs" id="ret-tabs">
       <button class="tab${abaRetAtual === 'aconferir' ? ' ativo' : ''}"
         onclick="trocarAbaRet('aconferir', this)">A Conferir (${pendentesRet.length})</button>
@@ -4074,11 +4131,12 @@ function renderizarRetorno(festa) {
         onclick="trocarAbaRet('conferido', this)">Conferido (${conferidosRet.length})</button>
     </div>
     <div id="ret-lista-aconferir" class="${abaRetAtual === 'aconferir' ? '' : 'hidden'}">
-      ${pendentesRet.map(x => cardRet(x, false)).join('') || estadoVazio('Todos os itens foram conferidos.')}
+      ${_htmlPorCategoria(pendentesRet, x => cardRet(x, false)) || estadoVazio('Todos os itens foram conferidos.')}
     </div>
     <div id="ret-lista-conferido" class="${abaRetAtual === 'conferido' ? '' : 'hidden'}">
-      ${conferidosRet.map(x => cardRet(x, true)).join('') || estadoVazio('Nenhum item conferido ainda.')}
+      ${_htmlPorCategoria(conferidosRet, x => cardRet(x, true)) || estadoVazio('Nenhum item conferido ainda.')}
     </div>` : estadoVazio('Nenhum item.');
+  _aplicarFiltroLista('ret');
 
   const salvasCons = document.getElementById('ret-fotos-salvas-cons');
   if (salvasCons) salvasCons.innerHTML = _htmlFotosGeraisSalvasRet(festa, 'consumo');
