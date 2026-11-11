@@ -6171,6 +6171,10 @@ async function abrirEditarFesta(id) {
   pararListeners();
   historico.push('tela-editar-festa');
   mostrarTela('tela-editar-festa', 'Editar Festa');
+  /* Limpa os campos da última vez que esta tela foi aberta — senão o
+     render reaproveitava como "editado" o que foi digitado antes (até em
+     outra festa) e o Salvar gravava esses valores junto. */
+  document.getElementById('ef-itens').innerHTML = '';
 
   /* Avisar o separador que o admin está editando */
   try { await atualizarFesta(id, { editandoAgora: usuarioAtual.nome }); } catch(_) {}
@@ -6207,6 +6211,14 @@ function renderizarEditarFesta(festa) {
   const itens     = festa.itens || [];
   const todos     = itens.concat(_efItensExtras);
 
+  /* O que a pessoa digitou nesta sessão, por NOME do item e só desta festa
+     (antes era pela posição na lista: se a ordem mudava, o valor ia pro item
+     errado; e sobrava de uma abertura anterior da tela). */
+  const digitadosPorNome = {};
+  document.querySelectorAll('#ef-itens .qty-input[data-dirty]').forEach(inp => {
+    if (inp.dataset.festa === festaEditandoId && inp.dataset.nome) digitadosPorNome[inp.dataset.nome] = inp.value;
+  });
+
   const htmlItemRow = (item, i) => {
     /* Item existente marcado pra remover: mostra riscado com "Desfazer",
        sem campo de quantidade (a remoção só é gravada ao Salvar). */
@@ -6224,13 +6236,12 @@ function renderizarEditarFesta(festa) {
     `;
     }
 
-    const inputExistente = document.getElementById(`ef-qty-${i}`);
     /* Só reaproveita o valor do input se a pessoa REALMENTE mexeu nele nesta
        sessão (data-dirty). Sem isso, um eco do listener (ou uma alteração
        feita em paralelo em outra tela/por outra pessoa) era ignorada e depois
        revertida ao Salvar — que era o bug de "editei 2 e ele mexeu em 13". */
-    const sujo = !!(inputExistente && inputExistente.dataset.dirty);
-    const valorAtual = sujo ? inputExistente.value : (item.qtdNecessaria ?? 0);
+    const sujo = Object.prototype.hasOwnProperty.call(digitadosPorNome, item.nome || '');
+    const valorAtual = sujo ? digitadosPorNome[item.nome] : (item.qtdNecessaria ?? 0);
     return `
     <div class="item-row">
       <div class="item-topo">
@@ -6246,6 +6257,7 @@ function renderizarEditarFesta(festa) {
         <label>Quantidade necessaria:</label>
         <input type="number" class="qty-input" id="ef-qty-${i}"
           value="${valorAtual}" min="0"${sujo ? ' data-dirty="1"' : ''}
+          data-festa="${_escHtml(festaEditandoId || '')}" data-nome="${_escHtml(item.nome || '')}"
           oninput="this.dataset.dirty='1';document.getElementById('ef-conv-${i}').innerHTML = htmlConversaoUnidades('${_esc(item.nome)}', this.value)" />
         <span class="item-unidade">${_escHtml(item.unidade || 'un')}</span>
         <span id="ef-conv-${i}">${htmlConversaoUnidades(item.nome, valorAtual)}</span>
