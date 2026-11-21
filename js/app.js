@@ -2654,10 +2654,33 @@ async function abrirConferencia(id) {
     } catch(e) { console.error('Erro ao carregar configs:', e); }
   }
 
+  let primeira = true;
   unsubFesta = escutarFesta(id, festa => {
+    /* Conferência já feita (ex.: coordenador abriu de novo o link da festa
+       no fim do evento): vai pra etapa certa em vez de mostrar a conferência
+       — antes ficava preso nela e o "Confirmar" dizia "já foi concluída",
+       sem caminho pro retorno (Juliana, 11-21). */
+    if (primeira) {
+      primeira = false;
+      if (['festa', 'retorno', 'galpao', 'concluida'].includes(festa.status)) {
+        _abrirFestaNaEtapaCerta(festa);
+        return;
+      }
+    }
     festaAtual = _festaConfMesclada(festa);
     _renderSemFecharTeclado('tela-conferencia', () => renderizarConferencia(festaAtual));
   });
+}
+
+function _abrirFestaNaEtapaCerta(festa) {
+  pararListeners();
+  if (festa.status === 'retorno') { abrirRetorno(festa.id); return; }
+  if (papelAtual() === 'coordenador') {
+    if (festa.status === 'festa') toast('A conferência desta festa já foi feita. Quando a festa encerrar, toque em "Iniciar retorno".', 'info');
+    irParaPrincipal();
+    return;
+  }
+  abrirDetalheFesta(festa.id);
 }
 
 /* Redesenhar a tela enquanto a pessoa digita recria o campo e o celular
