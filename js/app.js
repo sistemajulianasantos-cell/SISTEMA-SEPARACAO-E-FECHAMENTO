@@ -4363,6 +4363,7 @@ async function concluirRetorno() {
   btn.disabled    = true;
   btn.textContent = 'Salvando...';
 
+  let salvo = false;
   try {
     const itens = (festaAtual.itens || []).map((item, i) => {
       const enviado    = _qtdEnviadaItem(item);
@@ -4419,23 +4420,40 @@ async function concluirRetorno() {
     };
 
     await concluirEtapa(festaAtual.id, 'retorno', patchRetorno);
+    salvo = true;
 
     /* Registra no histórico o que voltou da festa (informativo). */
     try { await _retornarEstoqueDaFesta(festaAtual, itens); }
     catch (e) { console.error('Registro de retorno da festa:', e); }
 
     toast('Retorno registrado. Festa enviada para o Galpao.', 'sucesso');
-    abrirRelatorioRetorno({ ...festaAtual, ...patchRetorno, retornoFim: new Date(),
-      fotosRetorno: [...(festaAtual.fotosRetorno || []), ...fotos.urls],
-      fotosConsumo: [...(festaAtual.fotosConsumo || []), ...fotosCons.urls] });
-    compartilharFolhaFechamento({ automatico: true });
+    /* Folha de Fechamento: já salvou — erro aqui não pode virar "Erro ao
+       salvar" (a pessoa tentava de novo e via "já concluído") */
+    try {
+      const festaFolha = { ...festaAtual, ...patchRetorno, retornoFim: new Date(),
+        fotosRetorno: [...(festaAtual.fotosRetorno || []), ...fotos.urls],
+        fotosConsumo: [...(festaAtual.fotosConsumo || []), ...fotosCons.urls] };
+      delete festaFolha.rascunhoRetorno;   /* no patch é FieldValue.delete(), não dado */
+      abrirRelatorioRetorno(festaFolha);
+      compartilharFolhaFechamento({ automatico: true })?.catch?.(e => console.error('Compartilhar Folha de Fechamento:', e));
+    } catch (e) {
+      console.error('Folha de Fechamento:', e);
+      toast('Retorno salvo, mas a Folha de Fechamento não abriu: ' + _msgErro(e) + '. Abra pelo Detalhe da Festa.', 'aviso');
+    }
 
   } catch (e) {
-    console.error(e);
-    toast('Erro ao salvar. Tente novamente.', 'erro');
+    console.error('Concluir retorno:', e);
+    if (salvo) return;
+    toast('Erro ao salvar o retorno: ' + _msgErro(e), 'erro');
     btn.disabled    = false;
     btn.textContent = 'Confirmar Retorno — Enviar para Galpão';
   }
+}
+
+/* Texto do erro pra mostrar na tela (a pessoa manda o print) */
+function _msgErro(e) {
+  const m = (e && (e.message || e.code)) || String(e || 'erro desconhecido');
+  return m.length > 160 ? m.slice(0, 160) + '...' : m;
 }
 
 /* ── FOLHA DE FECHAMENTO ── categoria normalizada do item (Cadastro) */
@@ -10053,6 +10071,39 @@ async function _renderMovEstoqueFesta(festaId) {
     </div>`;
 }
 
+/* Aviso (só CEO) de produto com o estoque gravado em 2+ registros — ver
+   escutarEstoque. A tela já mostra o registro certo; o botão apaga os extras. */
+function _htmlAvisoEstoqueDuplicado() {
+  const grupos = Object.values(estoqueDuplicados || {});
+  if (!grupos.length || !souCeo()) return '';
+  const linhas = grupos.map(docs => {
+    const [m, ...ex] = docs;
+    return `<li><strong>${_escHtml(m.nome || m.nomeKey)}</strong>: vale ${m.qtd ?? 0} ${_escHtml(m.unidade || 'un')} (registro que recebe as contagens) — some ${ex.map(e => e.qtd ?? 0).join(', ')}</li>`;
+  }).join('');
+  return `
+    <div class="estoque-item-card" style="border-left:4px solid #B45309">
+      <div style="font-size:13px;font-weight:700;color:#B45309">${grupos.length} produto(s) com o estoque gravado em 2 registros</div>
+      <p style="font-size:12px;margin:4px 0 6px">A contagem ia pra um registro e a tela mostrava o outro. A tela agora mostra o que recebe as contagens; os registros velhos podem ser apagados.</p>
+      <ul style="font-size:12px;margin:0 0 8px;padding-left:18px">${linhas}</ul>
+      <button class="btn-secundario btn-sm" onclick="limparEstoqueDuplicadoTela(this)">Apagar registros velhos</button>
+    </div>`;
+}
+
+async function limparEstoqueDuplicadoTela(btn) {
+  const grupos = Object.values(estoqueDuplicados || {});
+  if (!grupos.length) return;
+  if (!confirm(`Apagar os registros velhos de ${grupos.length} produto(s)? O estoque mostrado na tela não muda.`)) return;
+  btn.disabled = true; btn.textContent = 'Apagando...';
+  try {
+    const n = await limparEstoqueDuplicado(grupos, usuarioAtual?.nome);
+    toast(`${n} registro(s) velho(s) apagado(s).`, 'sucesso');
+  } catch (e) {
+    console.error('Limpar estoque duplicado:', e);
+    toast('Não foi possível apagar: ' + (e.message || e), 'erro');
+    btn.disabled = false; btn.textContent = 'Apagar registros velhos';
+  }
+}
+
 function renderizarEstoque(festas, estoqueMap) {
   /* "Necessário" só conta festa que ainda não foi separada de fato
      (agendada ou separando). A partir de conferência em diante, os itens
@@ -10139,6 +10190,7 @@ function renderizarEstoque(festas, estoqueMap) {
     `;
   }
 
+  resumoValorHTML = _htmlAvisoEstoqueDuplicado() + resumoValorHTML;
   const elOut = document.getElementById('estoque-conteudo');
 
   if (_estoqueOrdem === 'maior' || _estoqueOrdem === 'menor') {

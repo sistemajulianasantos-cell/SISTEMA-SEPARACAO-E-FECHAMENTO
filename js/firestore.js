@@ -505,15 +505,51 @@ async function buscarEstoque() {
 /* Listener em tempo real do estoque inteiro — mantido vivo pela sessão toda
    (ver garantirListenerEstoque em app.js), pra não precisar de um .get() da
    coleção inteira toda vez que uma tela de estoque abre. */
+/* Mesmo nomeKey em 2+ docs: vale o de MENOR id — é o que a gravação usa
+   (where nomeKey == x .limit(1) devolve em ordem de id). Antes a tela ficava
+   com o último, então a contagem ia pra um doc e a tela mostrava o outro
+   (Absolut 97 x contagem 29, 11-21). Os outros ficam em estoqueDuplicados
+   pro CEO limpar. */
+let estoqueDuplicados = {};   /* nomeKey -> [{ id, ...data }] (o 1º é o que vale) */
+
 function escutarEstoque(callback) {
   return db.collection('estoque').onSnapshot(snap => {
     const result = {};
-    snap.docs.forEach(d => {
+    const porKey = {};
+    snap.docs.slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)).forEach(d => {
       const data = d.data();
-      result[data.nomeKey] = { id: d.id, ...data };
+      if (!data.nomeKey) return;
+      (porKey[data.nomeKey] = porKey[data.nomeKey] || []).push({ id: d.id, ...data });
     });
+    const dup = {};
+    Object.entries(porKey).forEach(([k, docs]) => {
+      result[k] = docs[0];
+      if (docs.length > 1) dup[k] = docs;
+    });
+    estoqueDuplicados = dup;
     callback(result);
   }, err => console.error('Firestore listener error (estoque):', err));
+}
+
+/* Apaga os docs extras de cada nomeKey duplicado, mantendo o 1º (o que
+   recebe as contagens). O valor de cada doc apagado fica guardado no doc
+   mantido (duplicadosRemovidos) pra consulta. */
+async function limparEstoqueDuplicado(grupos, por) {
+  let n = 0;
+  for (const docs of grupos) {
+    const [manter, ...extras] = docs;
+    if (!manter || !extras.length) continue;
+    const batch = db.batch();
+    extras.forEach(e => batch.delete(db.collection('estoque').doc(e.id)));
+    batch.update(db.collection('estoque').doc(manter.id), {
+      duplicadosRemovidos: firebase.firestore.FieldValue.arrayUnion(...extras.map(e => ({
+        id: e.id, qtd: e.qtd ?? null, nome: e.nome || '', removidoEm: new Date(), por: por || '—',
+      }))),
+    });
+    await batch.commit();
+    n += extras.length;
+  }
+  return n;
 }
 
 async function salvarItemEstoque(nomeKey, dados) {
