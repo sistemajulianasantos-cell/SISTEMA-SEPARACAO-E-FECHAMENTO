@@ -521,14 +521,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       const link = await buscarLinkConferencia(confToken);
       if (!link) {
         toast('Link inválido.', 'erro');
+      } else if (!link.expiraEm || link.expiraEm.toMillis() < Date.now()) {
+        toast('Este link expirou. Peça um novo ao responsável.', 'erro');
       } else {
-        /* Passou das 24h: ainda vale se a festa não terminou — confere
-           depois do login (antes dele não dá pra ler a festa). Antes o 2º
-           coordenador que abria o link no fim do evento ficava sem acesso
-           (Juliana, 11-21). */
-        const expirado = !link.expiraEm || link.expiraEm.toMillis() < Date.now();
-        linkConferenciaPendente = { festaId: link.festaId, expirado };
-        try { sessionStorage.setItem('rc_link_conf', link.festaId + (expirado ? '|exp' : '')); } catch (_) {}
+        linkConferenciaPendente = { festaId: link.festaId };
+        try { sessionStorage.setItem('rc_link_conf', link.festaId); } catch (_) {}
         document.getElementById('login-aviso-link').classList.remove('hidden');
       }
       /* O link é usado UMA vez: tira o ?conf= do endereço. Senão cada
@@ -545,8 +542,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const pend = sessionStorage.getItem('rc_link_conf');
       if (pend) {
-        const [festaIdPend, flag] = pend.split('|');
-        linkConferenciaPendente = { festaId: festaIdPend, expirado: flag === 'exp' };
+        linkConferenciaPendente = { festaId: pend };
         document.getElementById('login-aviso-link').classList.remove('hidden');
       }
     } catch (_) {}
@@ -1461,21 +1457,9 @@ function roteamentoPosLogin(usuario) {
   garantirListenerEstoque(); /* dispara em background — não trava o roteamento esperando */
 
   if (linkConferenciaPendente) {
-    const { festaId, expirado } = linkConferenciaPendente;
+    const { festaId } = linkConferenciaPendente;
     linkConferenciaPendente = null;
     try { sessionStorage.removeItem('rc_link_conf'); } catch (_) {}
-    if (expirado) {
-      /* Link com mais de 24h: só vale se a festa ainda está em andamento */
-      buscarFestaPorId(festaId).catch(() => null).then(festa => {
-        if (festa && ['agendada', 'separando', 'conferencia', 'festa', 'retorno'].includes(festa.status)) {
-          linkConferenciaPendente = { festaId };
-        } else {
-          toast('Este link expirou (a festa já terminou). Peça um novo ao responsável.', 'erro');
-        }
-        roteamentoPosLogin(usuario);
-      });
-      return;
-    }
     const rolesLink = usuario.roles || [usuario.role];
     if (rolesLink.includes('coordenador') || rolesLink.includes('ceo')) {
       if (!rolesLink.includes('ceo')) {
