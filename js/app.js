@@ -7425,10 +7425,9 @@ function recarregarProducao() {
   carregarCEO();
 }
 
-function renderizarProducaoCEO() {
-  const el = document.getElementById('producao-conteudo');
-  if (!el) return;
-
+/* Festas do período + itens agrupados (categoria ou prioridade) — usado pela
+   tela e pela impressão, pra imprimir exatamente o que está na tela. */
+function _dadosProducaoCEO() {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   /* Período: sem "De" definido cai no padrão (a partir de hoje). */
   const de  = _prodPeriodoDe  ? new Date(_prodPeriodoDe  + 'T00:00:00') : hoje;
@@ -7443,29 +7442,7 @@ function renderizarProducaoCEO() {
     return true;
   });
 
-  /* Subtítulo reflete o período escolhido */
-  const sub = document.getElementById('producao-subtitulo');
-  if (sub) {
-    if (!_prodPeriodoDe && !_prodPeriodoAte) {
-      sub.textContent = 'Totais de todas as festas ativas';
-    } else if (_prodPeriodoDe && _prodPeriodoAte) {
-      sub.textContent = `Festas de ${formatarData(de)} a ${formatarData(ate)} — ${ativas.length} festa${ativas.length !== 1 ? 's' : ''}`;
-    } else if (_prodPeriodoDe) {
-      sub.textContent = `Festas a partir de ${formatarData(de)} — ${ativas.length} festa${ativas.length !== 1 ? 's' : ''}`;
-    } else {
-      sub.textContent = `Festas de hoje até ${formatarData(ate)} — ${ativas.length} festa${ativas.length !== 1 ? 's' : ''}`;
-    }
-  }
-
   const todosItens = agregarItensFestas(ativas);
-
-  if (!todosItens.length) {
-    el.innerHTML = estadoVazio(
-      (_prodPeriodoDe || _prodPeriodoAte)
-        ? 'Nenhuma festa ativa nesse período.'
-        : 'Nenhum item encontrado nas festas ativas.');
-    return;
-  }
 
   /* Separar em: produção ativa, e não classificados (sem nenhum cadastro) */
   const itensProducao = todosItens.filter(item => {
@@ -7506,6 +7483,39 @@ function renderizarProducaoCEO() {
 
   const gruposOrdenados = Object.values(grupos)
     .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
+
+  return { de, ate, ativas, todosItens, itensProducao, naoClas, gruposOrdenados };
+}
+
+function renderizarProducaoCEO() {
+  const el = document.getElementById('producao-conteudo');
+  if (!el) return;
+
+  const { de, ate, ativas, todosItens, itensProducao, naoClas, gruposOrdenados } = _dadosProducaoCEO();
+
+  /* Subtítulo reflete o período escolhido */
+  const sub = document.getElementById('producao-subtitulo');
+  if (sub) {
+    if (!_prodPeriodoDe && !_prodPeriodoAte) {
+      sub.textContent = 'Totais de todas as festas ativas';
+    } else if (_prodPeriodoDe && _prodPeriodoAte) {
+      sub.textContent = `Festas de ${formatarData(de)} a ${formatarData(ate)} — ${ativas.length} festa${ativas.length !== 1 ? 's' : ''}`;
+    } else if (_prodPeriodoDe) {
+      sub.textContent = `Festas a partir de ${formatarData(de)} — ${ativas.length} festa${ativas.length !== 1 ? 's' : ''}`;
+    } else {
+      sub.textContent = `Festas de hoje até ${formatarData(ate)} — ${ativas.length} festa${ativas.length !== 1 ? 's' : ''}`;
+    }
+  }
+
+
+  if (!todosItens.length) {
+    el.innerHTML = estadoVazio(
+      (_prodPeriodoDe || _prodPeriodoAte)
+        ? 'Nenhuma festa ativa nesse período.'
+        : 'Nenhum item encontrado nas festas ativas.');
+    return;
+  }
+
 
   const htmlGrupos = gruposOrdenados.map(g => htmlGrupoProducao(g)).join('');
 
@@ -7642,6 +7652,88 @@ function htmlProducaoAnalitico(itens) {
       </div>
     `;
   }).join('');
+}
+
+/* ── Impressão da Lista de Produção (pedido 11-26) ──
+   Imprime exatamente o que está na tela: mesmo período, mesma ordem
+   (categoria ou prioridade). modo = 'sintetico' | 'analitico'. Abre uma
+   janela com a folha pronta e chama a impressão do navegador (dá pra
+   escolher a impressora ou "Salvar como PDF"). */
+function imprimirProducao(modo) {
+  const { ativas, itensProducao, naoClas, gruposOrdenados } = _dadosProducaoCEO();
+  if (!itensProducao.length) { toast('Nada para imprimir nesse período.', 'erro'); return; }
+
+  const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const txt = h => String(h || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  const esc = s => _escHtml(String(s == null ? '' : s));
+  const periodo = (document.getElementById('producao-subtitulo') || {}).textContent || '';
+  const titulo = 'Lista de Produção — ' + (modo === 'analitico' ? 'Analítico' : 'Sintético');
+  const logo = new URL('icons/folha-logo-topo.png', location.href).href;
+
+  let corpo = '';
+  gruposOrdenados.forEach(g => {
+    const itens = g.itens.slice().sort((a, b) => {
+      const oA = a.cfg?.ordemSeparacao != null ? a.cfg.ordemSeparacao : 999;
+      const oB = b.cfg?.ordemSeparacao != null ? b.cfg.ordemSeparacao : 999;
+      return oA - oB || a.nome.localeCompare(b.nome, 'pt-BR');
+    });
+    corpo += `<tr><td colspan="5" class="grupo">${esc(g.nome)} <span>(${itens.length} ${itens.length === 1 ? 'item' : 'itens'})</span></td></tr>`;
+    itens.forEach(item => {
+      const qtdEst = estoqueDoItem(item.nomeKey)?.qtd || 0;
+      const diff   = qtdEst - item.totalBase;
+      const nome   = esc(nomeBasDisplay(item.nome)) + (item.cfg?.refrigerado ? ' <i>(refrig.)</i>' : '');
+      const necess = `${item.total} ${esc(item.unidade)} ${esc(txt(htmlConversaoUnidades(item.nome, item.total)))}`;
+      const estTxt = `${qtdEst} un ${esc(txt(htmlConversaoCaixas(item.nome, qtdEst)))}`;
+      const resTxt = diff < 0
+        ? `<b class="falta">Produzir ${Math.abs(diff)} un</b> ${esc(txt(htmlConversaoCaixas(item.nome, Math.abs(diff))))}`
+        : `<span class="ok">OK (+${diff})</span>`;
+      corpo += `<tr class="item"><td class="ck"></td><td>${nome}</td><td class="n">${necess}</td><td class="n">${estTxt}</td><td class="n">${resTxt}</td></tr>`;
+      if (modo === 'analitico') {
+        item.festas.forEach(f => {
+          let dataTxt = '';
+          if (f.festaData) {
+            const d = toDate(f.festaData);
+            if (!isNaN(d)) dataTxt = `${String(d.getDate()).padStart(2, '0')} ${MESES_ABR[d.getMonth()]} — `;
+          }
+          corpo += `<tr class="festa"><td></td><td>${esc(dataTxt + (f.festaNome || ''))}</td><td class="n">${f.qtd} ${esc(item.unidade)}</td><td></td><td></td></tr>`;
+        });
+      }
+    });
+  });
+
+  const w = window.open('', '_blank');
+  if (!w) { toast('O navegador bloqueou a janela de impressão. Libere pop-ups para este site.', 'erro'); return; }
+  w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>
+    @page { size: A4; margin: 12mm; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #222; margin: 0; }
+    .topo { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+    .topo img { width: 90px; }
+    h1 { font-size: 16px; margin: 0; color: #2b3b2a; }
+    .sub { color: #555; font-size: 11px; margin-top: 2px; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 10px; color: #555; border-bottom: 1.5px solid #333; padding: 4px; }
+    td { padding: 4px; border-bottom: 1px solid #ddd; vertical-align: top; }
+    .grupo { background: #e9e4da; font-weight: bold; text-transform: uppercase; font-size: 11px; border-bottom: 1px solid #999; }
+    .grupo span { font-weight: normal; text-transform: none; color: #666; }
+    tr.item td { font-weight: bold; }
+    tr.festa td { color: #555; font-size: 10px; border-bottom: 1px dotted #ddd; padding-top: 2px; padding-bottom: 2px; }
+    tr.festa td:nth-child(2) { padding-left: 16px; }
+    .n { text-align: right; white-space: nowrap; }
+    .falta { color: #a33; }
+    .ok { color: #2d6a3a; font-weight: normal; }
+    .ck { width: 14px; }
+    tr.item .ck:before { content: ""; display: inline-block; width: 10px; height: 10px; border: 1px solid #555; }
+    tr { page-break-inside: avoid; }
+    .rodape { margin-top: 10px; font-size: 10px; color: #777; }
+  </style></head><body>
+    <div class="topo"><img src="${logo}" alt=""><div><h1>${esc(titulo)}</h1>
+      <div class="sub">${esc(periodo)} · ordem por ${ordemProducaoAtual === 'prioridade' ? 'prioridade' : 'categoria'} · impresso em ${new Date().toLocaleString('pt-BR')}</div></div></div>
+    <table><thead><tr><th></th><th>Item</th><th class="n">Necessário</th><th class="n">Estoque</th><th class="n">Situação</th></tr></thead>
+    <tbody>${corpo}</tbody></table>
+    <div class="rodape">${ativas.length} festa${ativas.length !== 1 ? 's' : ''} no período${naoClas.length ? ` · ${naoClas.length} item(ns) não classificado(s) ficaram fora (configure no Cadastro)` : ''}</div>
+    <script>window.onload = function () { setTimeout(function () { window.print(); }, 300); };<\/script>
+  </body></html>`);
+  w.document.close();
 }
 
 function toggleGrupo(grupoKey) {

@@ -176,7 +176,11 @@
           <h2 class="titulo-tela" style="margin-bottom:2px">Lista de Produção</h2>
           <p class="producao-subtitulo" id="producao-subtitulo">Totais de todas as festas ativas</p>
         </div>
-        <button class="btn-secundario btn-sm" onclick="recarregarProducao()">&#8635; Atualizar</button>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+          <button class="btn-secundario btn-sm" onclick="imprimirProducao('sintetico')">Imprimir sintético</button>
+          <button class="btn-secundario btn-sm" onclick="imprimirProducao('analitico')">Imprimir analítico</button>
+          <button class="btn-secundario btn-sm" onclick="recarregarProducao()">&#8635; Atualizar</button>
+        </div>
       </div>
 
       <!-- Aba Sintético / Analítico  +  Ordenar Por  -->
@@ -1939,7 +1943,7 @@
 
   <script src="js/config.js?v=5"></script>
   <script src="js/firestore.js?v=68"></script>
-  <script src="js/app.js?v=194"></script>
+  <script src="js/app.js?v=195"></script>
   <script src="js/catalogo.js?v=2"></script>
 </body>
 </html>
