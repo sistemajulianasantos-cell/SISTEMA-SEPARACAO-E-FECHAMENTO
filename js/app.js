@@ -7427,13 +7427,13 @@ function recarregarProducao() {
 
 /* Festas do período + itens agrupados (categoria ou prioridade) — usado pela
    tela e pela impressão, pra imprimir exatamente o que está na tela. */
-function _dadosProducaoCEO() {
+function _dadosProducaoCEO(festasFora) {
   const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
   /* Período: sem "De" definido cai no padrão (a partir de hoje). */
   const de  = _prodPeriodoDe  ? new Date(_prodPeriodoDe  + 'T00:00:00') : hoje;
   const ate = _prodPeriodoAte ? new Date(_prodPeriodoAte + 'T23:59:59') : null;
 
-  const ativas = todasFestasCache.filter(f => {
+  let ativas = todasFestasCache.filter(f => {
     if (!festaAtiva(f)) return false;
     const d = toDate(f.data);
     if (isNaN(d)) return false;
@@ -7441,6 +7441,9 @@ function _dadosProducaoCEO() {
     if (ate && d > ate) return false;
     return true;
   });
+  /* Impressão: festas desmarcadas na janela "O que imprimir" saem da conta. */
+  const ativasPeriodo = ativas;
+  if (festasFora) ativas = ativas.filter(f => !festasFora[f.id]);
 
   const todosItens = agregarItensFestas(ativas);
 
@@ -7484,7 +7487,7 @@ function _dadosProducaoCEO() {
   const gruposOrdenados = Object.values(grupos)
     .sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
 
-  return { de, ate, ativas, todosItens, itensProducao, naoClas, gruposOrdenados };
+  return { de, ate, ativas, ativasPeriodo, todosItens, itensProducao, naoClas, gruposOrdenados };
 }
 
 function renderizarProducaoCEO() {
@@ -7660,8 +7663,146 @@ function htmlProducaoAnalitico(itens) {
    janela com a folha pronta e chama a impressão do navegador (dá pra
    escolher a impressora ou "Salvar como PDF"). */
 function imprimirProducao(modo) {
-  const { ativas, itensProducao, naoClas, gruposOrdenados } = _dadosProducaoCEO();
-  if (!itensProducao.length) { toast('Nada para imprimir nesse período.', 'erro'); return; }
+  _impProd.modo = modo === 'analitico' ? 'analitico' : 'sintetico';
+  _impProd.festasFora = {};            // festas: começa sempre com todas
+  _impProdCarregarSalvo();
+  _impProdAbrir();
+}
+
+/* ── Janela "O que imprimir" (pedido 11-26) ──
+   Escolhe festas, categorias e itens que entram na folha impressa, e se
+   imprime só o que falta produzir. Categorias/itens desmarcados ficam
+   salvos neste aparelho (localStorage) para a próxima impressão; festas
+   desmarcadas valem só para esta impressão (o período muda sempre). */
+const _impProd = { modo: 'sintetico', festasFora: {}, gruposFora: {}, itensFora: {}, soFalta: false, abertos: {} };
+const _IMP_PROD_KEY = 'impProducaoFiltro';
+
+function _impProdCarregarSalvo() {
+  try {
+    const s = JSON.parse(localStorage.getItem(_IMP_PROD_KEY) || '{}');
+    _impProd.gruposFora = s.gruposFora || {};
+    _impProd.itensFora  = s.itensFora  || {};
+    _impProd.soFalta    = !!s.soFalta;
+  } catch (e) { /* sem filtro salvo */ }
+}
+function _impProdSalvar() {
+  try {
+    localStorage.setItem(_IMP_PROD_KEY, JSON.stringify({
+      gruposFora: _impProd.gruposFora, itensFora: _impProd.itensFora, soFalta: _impProd.soFalta }));
+  } catch (e) { /* aparelho sem espaço: só não lembra */ }
+}
+
+function _impProdAbrir() {
+  let el = document.getElementById('modal-imprimir-producao');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'modal-imprimir-producao';
+    el.className = 'modal-overlay hidden';
+    el.onclick = () => _impProdFechar();
+    el.innerHTML = `<div class="modal-box" style="max-width:560px;width:95%;max-height:88vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+        <div class="modal-titulo">O que imprimir</div>
+        <div id="imp-prod-corpo" style="overflow-y:auto;flex:1;margin:10px 0"></div>
+        <div class="modal-acoes">
+          <button class="btn-secundario" onclick="_impProdFechar()">Cancelar</button>
+          <button class="btn-primario" onclick="_impProdConfirmar()">Imprimir</button>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+  }
+  _impProdRender();
+  el.classList.remove('hidden');
+}
+function _impProdFechar() {
+  const el = document.getElementById('modal-imprimir-producao');
+  if (el) el.classList.add('hidden');
+}
+
+function _impProdRender() {
+  const corpo = document.getElementById('imp-prod-corpo');
+  if (!corpo) return;
+  const esc = s => _escHtml(String(s == null ? '' : s));
+  const js  = s => _esc(String(s == null ? '' : s));
+  const { ativasPeriodo, gruposOrdenados } = _dadosProducaoCEO(_impProd.festasFora);
+  const lbl = 'display:flex;align-items:center;gap:6px;font-size:13px;padding:3px 0;cursor:pointer';
+  const btn = 'class="btn-secundario btn-sm" style="padding:2px 8px;font-size:11px"';
+  const sec = t => `<div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--cinza-500,#6B7280);margin:12px 0 4px">${t}</div>`;
+
+  let h = sec('Tipo de folha') +
+    ['sintetico', 'analitico'].map(m => `<label style="${lbl};display:inline-flex;margin-right:16px">
+      <input type="radio" name="imp-prod-modo" ${_impProd.modo === m ? 'checked' : ''} onchange="_impProd.modo='${m}'">
+      ${m === 'sintetico' ? 'Sintético (só os totais)' : 'Analítico (totais + cada festa)'}</label>`).join('') +
+    `<label style="${lbl};margin-top:4px"><input type="checkbox" ${_impProd.soFalta ? 'checked' : ''}
+      onchange="_impProd.soFalta=this.checked;_impProdSalvar()"> Só o que falta produzir</label>`;
+
+  /* Festas do período */
+  const nFestasDentro = ativasPeriodo.filter(f => !_impProd.festasFora[f.id]).length;
+  h += sec(`Festas (${nFestasDentro} de ${ativasPeriodo.length})`) +
+    `<div style="display:flex;gap:6px;margin-bottom:4px">
+      <button ${btn} onclick="_impProdTodasFestas(true)">Marcar todas</button>
+      <button ${btn} onclick="_impProdTodasFestas(false)">Desmarcar todas</button></div>` +
+    ativasPeriodo.slice().sort((a, b) => toDate(a.data) - toDate(b.data)).map(f => {
+      const d = toDate(f.data);
+      return `<label style="${lbl}"><input type="checkbox" ${_impProd.festasFora[f.id] ? '' : 'checked'}
+        onchange="_impProdFesta('${js(f.id)}',this.checked)"> ${isNaN(d) ? '' : esc(formatarData(d)) + ' — '}${esc(f.nome || f.cliente || '—')}</label>`;
+    }).join('');
+
+  /* Categorias e itens */
+  h += sec(ordemProducaoAtual === 'prioridade' ? 'Prioridades e itens' : 'Categorias e itens') +
+    `<div style="display:flex;gap:6px;margin-bottom:4px">
+      <button ${btn} onclick="_impProdTudo(true)">Marcar tudo</button>
+      <button ${btn} onclick="_impProdTudo(false)">Desmarcar tudo</button></div>`;
+  if (!gruposOrdenados.length) h += '<div style="font-size:13px;color:#6B7280">Nenhum item com as festas marcadas.</div>';
+  gruposOrdenados.forEach(g => {
+    const gFora = !!_impProd.gruposFora[g.nome];
+    const nItensDentro = g.itens.filter(it => !_impProd.itensFora[it.nomeKey]).length;
+    const aberto = !!_impProd.abertos[g.nome];
+    h += `<div style="border:1px solid var(--cinza-200,#E5E7EB);border-radius:8px;padding:4px 8px;margin-bottom:6px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="${lbl};flex:1;font-weight:600"><input type="checkbox" ${gFora ? '' : 'checked'}
+          onchange="_impProdGrupo('${js(g.nome)}',this.checked)"> ${esc(g.nome)}
+          <span style="font-weight:400;color:#6B7280;font-size:12px">${gFora ? 'fora' : `${nItensDentro} de ${g.itens.length} itens`}</span></label>
+        <button ${btn} onclick="_impProdAbrirGrupo('${js(g.nome)}')">${aberto ? 'Esconder itens' : 'Escolher itens'}</button>
+      </div>` +
+      (aberto ? `<div style="padding-left:22px;${gFora ? 'opacity:.5' : ''}">` +
+        g.itens.slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')).map(it =>
+          `<label style="${lbl}"><input type="checkbox" ${_impProd.itensFora[it.nomeKey] ? '' : 'checked'} ${gFora ? 'disabled' : ''}
+            onchange="_impProdItem('${js(it.nomeKey)}',this.checked)"> ${esc(nomeBasDisplay(it.nome))}</label>`).join('') +
+        '</div>' : '') +
+      '</div>';
+  });
+  h += '<div style="font-size:11px;color:#6B7280;margin-top:8px">Categorias e itens desmarcados ficam guardados neste aparelho para a próxima impressão. A tela não muda — só a folha impressa.</div>';
+  const scroll = corpo.scrollTop;
+  corpo.innerHTML = h;
+  corpo.scrollTop = scroll;
+}
+
+function _impProdFesta(id, dentro)    { if (dentro) delete _impProd.festasFora[id]; else _impProd.festasFora[id] = true; _impProdRender(); }
+function _impProdGrupo(nome, dentro)  { if (dentro) delete _impProd.gruposFora[nome]; else _impProd.gruposFora[nome] = true; _impProdSalvar(); _impProdRender(); }
+function _impProdItem(key, dentro)    { if (dentro) delete _impProd.itensFora[key]; else _impProd.itensFora[key] = true; _impProdSalvar(); _impProdRender(); }
+function _impProdAbrirGrupo(nome)     { _impProd.abertos[nome] = !_impProd.abertos[nome]; _impProdRender(); }
+function _impProdTodasFestas(dentro) {
+  _impProd.festasFora = {};
+  if (!dentro) _dadosProducaoCEO().ativasPeriodo.forEach(f => { _impProd.festasFora[f.id] = true; });
+  _impProdRender();
+}
+function _impProdTudo(dentro) {
+  const { gruposOrdenados } = _dadosProducaoCEO(_impProd.festasFora);
+  gruposOrdenados.forEach(g => {
+    if (dentro) delete _impProd.gruposFora[g.nome]; else _impProd.gruposFora[g.nome] = true;
+    g.itens.forEach(it => { if (dentro) delete _impProd.itensFora[it.nomeKey]; });
+  });
+  _impProdSalvar();
+  _impProdRender();
+}
+function _impProdConfirmar() {
+  _impProdFechar();
+  _gerarImpressaoProducao(_impProd.modo, _impProd);
+}
+
+function _gerarImpressaoProducao(modo, sel) {
+  const { ativas, itensProducao, naoClas, gruposOrdenados } = _dadosProducaoCEO(sel.festasFora);
+  if (!itensProducao.length) { toast('Nada para imprimir com essa seleção.', 'erro'); return; }
+  let nImpressos = 0;
 
   const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const txt = h => String(h || '').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
@@ -7672,11 +7813,18 @@ function imprimirProducao(modo) {
 
   let corpo = '';
   gruposOrdenados.forEach(g => {
-    const itens = g.itens.slice().sort((a, b) => {
+    if (sel.gruposFora[g.nome]) return;
+    const itens = g.itens.filter(it => {
+      if (sel.itensFora[it.nomeKey]) return false;
+      if (sel.soFalta && (estoqueDoItem(it.nomeKey)?.qtd || 0) - it.totalBase >= 0) return false;
+      return true;
+    }).sort((a, b) => {
       const oA = a.cfg?.ordemSeparacao != null ? a.cfg.ordemSeparacao : 999;
       const oB = b.cfg?.ordemSeparacao != null ? b.cfg.ordemSeparacao : 999;
       return oA - oB || a.nome.localeCompare(b.nome, 'pt-BR');
     });
+    if (!itens.length) return;
+    nImpressos += itens.length;
     corpo += `<tr><td colspan="5" class="grupo">${esc(g.nome)} <span>(${itens.length} ${itens.length === 1 ? 'item' : 'itens'})</span></td></tr>`;
     itens.forEach(item => {
       const qtdEst = estoqueDoItem(item.nomeKey)?.qtd || 0;
@@ -7701,6 +7849,7 @@ function imprimirProducao(modo) {
     });
   });
 
+  if (!nImpressos) { toast('Nenhum item marcado para imprimir.', 'erro'); return; }
   const w = window.open('', '_blank');
   if (!w) { toast('O navegador bloqueou a janela de impressão. Libere pop-ups para este site.', 'erro'); return; }
   w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)}</title><style>
@@ -7727,7 +7876,7 @@ function imprimirProducao(modo) {
     .rodape { margin-top: 10px; font-size: 10px; color: #777; }
   </style></head><body>
     <div class="topo"><img src="${logo}" alt=""><div><h1>${esc(titulo)}</h1>
-      <div class="sub">${esc(periodo)} · ordem por ${ordemProducaoAtual === 'prioridade' ? 'prioridade' : 'categoria'} · impresso em ${new Date().toLocaleString('pt-BR')}</div></div></div>
+      <div class="sub">${esc(periodo)} · ordem por ${ordemProducaoAtual === 'prioridade' ? 'prioridade' : 'categoria'}${sel.soFalta ? ' · só o que falta produzir' : ''}${Object.keys(sel.festasFora).length ? ` · ${ativas.length} festa(s) selecionada(s)` : ''} · impresso em ${new Date().toLocaleString('pt-BR')}</div></div></div>
     <table><thead><tr><th></th><th>Item</th><th class="n">Necessário</th><th class="n">Estoque</th><th class="n">Situação</th></tr></thead>
     <tbody>${corpo}</tbody></table>
     <div class="rodape">${ativas.length} festa${ativas.length !== 1 ? 's' : ''} no período${naoClas.length ? ` · ${naoClas.length} item(ns) não classificado(s) ficaram fora (configure no Cadastro)` : ''}</div>
