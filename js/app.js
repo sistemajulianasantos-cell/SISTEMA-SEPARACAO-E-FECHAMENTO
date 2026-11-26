@@ -5394,10 +5394,11 @@ function _sepGestaoParaItens(sep) {
     const nomesObj = catObj[cat] || {};
     Object.keys(nomesObj).forEach(nome => {
       const qtd = Number(nomesObj[nome]) || 0;
-      if (qtd <= 0) return;
-
       const fornRaw = String(((sep.fornecedores || {})[cat] || {})[nome] || '').toLowerCase();
       const fornecimento = SUFIXOS_FORNECIMENTO.includes(fornRaw) ? fornRaw : '';
+      /* Bebida da Cliente vem zerada (não vamos levar), mas precisa aparecer
+         na separação — só ela passa com qtd 0 (11-26). */
+      if (qtd <= 0 && fornecimento !== 'cliente') return;
 
       const key     = normalizarNomeItem(nome);
       const cfgLocal = itemConfigsCache[key] || itemConfigsCache[nomeBaseKey(key)];
