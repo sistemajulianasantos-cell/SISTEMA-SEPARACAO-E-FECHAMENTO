@@ -7614,6 +7614,12 @@ function htmlProducaoSintetico(itens) {
   }).join('');
 }
 
+/* "150 convidados" — vazio quando a festa não tem o número. */
+function _txtConvidados(n) {
+  const v = Number(n);
+  return n != null && n !== '' && !isNaN(v) && v > 0 ? `${v} convidado${v === 1 ? '' : 's'}` : '';
+}
+
 function htmlProducaoAnalitico(itens) {
   const MESES_ABR = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   return itens.map(item => {
@@ -7632,7 +7638,7 @@ function htmlProducaoAnalitico(itens) {
       }
       return `
         <div class="analitico-sub-row">
-          <span class="analitico-sub-nome">${_escHtml(f.festaNome)}${dataTxt}</span>
+          <span class="analitico-sub-nome">${_escHtml(f.festaNome)}${dataTxt}${_txtConvidados(f.festaConvidados) ? ` <span style="color:var(--cinza-500,#6B7280);font-weight:600">· ${_txtConvidados(f.festaConvidados)}</span>` : ''}</span>
           <span class="analitico-sub-qty">${f.qtd} ${item.unidade}</span>
         </div>
       `;
@@ -7843,7 +7849,7 @@ function _gerarImpressaoProducao(modo, sel) {
             const d = toDate(f.festaData);
             if (!isNaN(d)) dataTxt = `${String(d.getDate()).padStart(2, '0')} ${MESES_ABR[d.getMonth()]} — `;
           }
-          corpo += `<tr class="festa"><td></td><td>${esc(dataTxt + (f.festaNome || ''))}</td><td class="n">${f.qtd} ${esc(item.unidade)}</td><td></td><td></td></tr>`;
+          corpo += `<tr class="festa"><td></td><td>${esc(dataTxt + (f.festaNome || ''))}${_txtConvidados(f.festaConvidados) ? ' · ' + _txtConvidados(f.festaConvidados) : ''}</td><td class="n">${f.qtd} ${esc(item.unidade)}</td><td></td><td></td></tr>`;
         });
       }
     });
